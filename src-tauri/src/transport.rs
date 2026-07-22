@@ -1,0 +1,213 @@
+//! Line-oriented transports for the core's JSON Lines RPC channel.
+//!
+//! The session layer only knows [`LineTransport`]: write one request line,
+//! read inbound items. The local implementation spawns `jmcl-core rpc` as a
+//! child process. A future SSH transport (running `jmcl-core rpc` on a remote
+//! host over an SSH channel) implements the same trait and plugs into
+//! sessions without changes.
+
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+
+use async_trait::async_trait;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, ChildStdin, Command};
+use tokio::sync::mpsc;
+
+/// One inbound item from a transport.
+#[derive(Debug)]
+pub enum TransportEvent {
+    /// One line of the RPC stream (a JSON event).
+    Line(String),
+    /// One diagnostics line (child stderr).
+    Diagnostic(String),
+    /// The RPC stream ended; carries a human-readable reason.
+    Closed(String),
+}
+
+/// A bidirectional JSON Lines channel to one core endpoint.
+#[async_trait]
+pub trait LineTransport: Send {
+    /// Write one request line; the transport appends the newline.
+    async fn write_line(&mut self, line: &str) -> Result<(), String>;
+    /// Wait for the next inbound item. Yields [`TransportEvent::Closed`]
+    /// once the stream ends.
+    async fn next_event(&mut self) -> TransportEvent;
+    /// Half-close the request stream; the core exits after draining.
+    async fn close(&mut self) -> Result<(), String>;
+}
+
+#[cfg(windows)]
+const CORE_EXE: &str = "jmcl-core.exe";
+#[cfg(not(windows))]
+const CORE_EXE: &str = "jmcl-core";
+
+fn find_core_near(executable: &Path) -> Option<PathBuf> {
+    for dir in executable.ancestors().skip(1).take(8) {
+        let adjacent = dir.join(CORE_EXE);
+        if adjacent.is_file() {
+            return Some(adjacent);
+        }
+        let development = dir.join("backend-binaries").join(CORE_EXE);
+        if development.is_file() {
+            return Some(development);
+        }
+    }
+    None
+}
+
+/// Resolve the core binary: explicit path → `JMCL_CORE` env → the app's
+/// executable directory and its ancestors. Each ancestor is checked both for
+/// a bundled sidecar and for the development `backend-binaries` directory.
+pub fn resolve_core_binary(explicit: Option<&str>) -> Result<PathBuf, String> {
+    let chosen = explicit
+        .map(str::to_owned)
+        .or_else(|| std::env::var("JMCL_CORE").ok())
+        .filter(|p| !p.is_empty());
+    if let Some(path) = chosen {
+        let path = PathBuf::from(path);
+        return if path.is_file() {
+            Ok(path)
+        } else {
+            Err(format!("core binary not found at {}", path.display()))
+        };
+    }
+    let exe =
+        std::env::current_exe().map_err(|e| format!("cannot locate current executable: {e}"))?;
+    if let Some(path) = find_core_near(&exe) {
+        return Ok(path);
+    }
+    Err(format!(
+        "{CORE_EXE} not found near the application or in backend-binaries; set JMCL_CORE or pass binary_path"
+    ))
+}
+
+/// Transport over a locally spawned `jmcl-core rpc` child process.
+pub struct LocalProcessTransport {
+    stdin: Option<ChildStdin>,
+    rx: mpsc::UnboundedReceiver<TransportEvent>,
+    child: Child,
+}
+
+impl LocalProcessTransport {
+    /// Spawn `program rpc` and start its stdout/stderr reader tasks.
+    pub async fn spawn(program: &Path, args: &[&str]) -> Result<Self, String> {
+        let mut child = Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to spawn {}: {e}", program.display()))?;
+
+        let stdin = child.stdin.take().expect("stdin is piped");
+        let stdout = child.stdout.take().expect("stdout is piped");
+        let stderr = child.stderr.take().expect("stderr is piped");
+
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        let stdout_tx = tx.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => {
+                        if stdout_tx.send(TransportEvent::Line(line)).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => {
+                        let _ = stdout_tx
+                            .send(TransportEvent::Closed("core closed its RPC stream".into()));
+                        break;
+                    }
+                    Err(e) => {
+                        let _ = stdout_tx
+                            .send(TransportEvent::Closed(format!("RPC stream read error: {e}")));
+                        break;
+                    }
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => {
+                        if tx.send(TransportEvent::Diagnostic(line)).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) | Err(_) => break,
+                }
+            }
+        });
+
+        Ok(Self {
+            stdin: Some(stdin),
+            rx,
+            child,
+        })
+    }
+}
+
+#[async_trait]
+impl LineTransport for LocalProcessTransport {
+    async fn write_line(&mut self, line: &str) -> Result<(), String> {
+        let stdin = self.stdin.as_mut().ok_or("session is closed")?;
+        stdin
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|e| format!("write to core failed: {e}"))?;
+        stdin
+            .write_all(b"\n")
+            .await
+            .map_err(|e| format!("write to core failed: {e}"))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|e| format!("flush to core failed: {e}"))
+    }
+
+    async fn next_event(&mut self) -> TransportEvent {
+        self.rx
+            .recv()
+            .await
+            .unwrap_or_else(|| TransportEvent::Closed("reader tasks stopped".into()))
+    }
+
+    async fn close(&mut self) -> Result<(), String> {
+        // Dropping stdin sends EOF; the core drains and exits.
+        self.stdin.take();
+        Ok(())
+    }
+}
+
+impl Drop for LocalProcessTransport {
+    fn drop(&mut self) {
+        // Best-effort: if the core is still alive (aborted op, hang), kill it.
+        let _ = self.child.start_kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_development_binary_directory() {
+        let root =
+            std::env::temp_dir().join(format!("jmcl-core-resolver-{}", std::process::id()));
+        let executable = root.join("src-tauri/target/debug/jmcl");
+        let core = root.join("backend-binaries").join(CORE_EXE);
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(core.parent().unwrap()).unwrap();
+        std::fs::write(&core, []).unwrap();
+
+        assert_eq!(find_core_near(&executable), Some(core));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
