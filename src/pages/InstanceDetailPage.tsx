@@ -47,7 +47,7 @@ export function InstanceDetailPage({
 }: InstanceDetailPageProps) {
   const { status, session, error: coreError } = useLauncher();
   const { settings, t } = useSettings();
-  const { taskFor, startInstall, startLaunch, clearTask } = useTasks();
+  const { taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
 
   const [manifest, setManifest] = useState<InstanceManifest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,8 +61,10 @@ export function InstanceDetailPage({
   const dirs = { instancesDir: settings.instancesDir, storeDir: settings.storeDir };
   const installTask = taskFor("install", instanceId);
   const launchTask = taskFor("launch", instanceId);
+  const validateTask = taskFor("validate", instanceId);
   const installing = installTask?.status === "running";
   const launching = launchTask?.status === "running";
+  const validating = validateTask?.status === "running";
 
   const refresh = useCallback(async () => {
     if (status !== "ready" || !session) return;
@@ -111,6 +113,13 @@ export function InstanceDetailPage({
     void startInstall(manifest, dirs);
   };
 
+  const retryValidate = () => {
+    if (!manifest) return;
+    void startValidate(manifest).then((ok) => {
+      if (ok) beginInstall();
+    });
+  };
+
   const beginLaunch = () => {
     if (!manifest) return;
     void startLaunch(manifest, dirs, makeOfflineSession(settings.playerName));
@@ -122,6 +131,7 @@ export function InstanceDetailPage({
     setDeleting(true);
     try {
       await session.instanceDelete(settings.instancesDir, manifest.id);
+      clearTask("validate", manifest.id);
       clearTask("install", manifest.id);
       clearTask("launch", manifest.id);
       setDeleteOpen(false);
@@ -252,7 +262,7 @@ export function InstanceDetailPage({
           {!manifest.installed ? (
             <Button
               onClick={beginInstall}
-              disabled={!coreReady || installing || deleting}
+              disabled={!coreReady || installing || validating || deleting}
             >
               {installing && <Loader2 className="animate-spin" />}
               {t("instances.install")}
@@ -260,7 +270,7 @@ export function InstanceDetailPage({
           ) : (
             <Button
               onClick={beginLaunch}
-              disabled={!coreReady || installing || launching || deleting}
+              disabled={!coreReady || installing || launching || validating || deleting}
             >
               {launching ? <Loader2 className="animate-spin" /> : <Play />}
               {t("instances.launch")}
@@ -279,7 +289,7 @@ export function InstanceDetailPage({
           <Button
             variant="outline"
             onClick={beginInstall}
-            disabled={!coreReady || installing || deleting}
+            disabled={!coreReady || installing || validating || deleting}
           >
             <RefreshCw />
             {t("instances.reinstall")}
@@ -351,6 +361,23 @@ export function InstanceDetailPage({
             <CardTitle>{t("detail.status")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {validating && (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                <span>{t("task.stage.validate")}</span>
+              </p>
+            )}
+            {validateTask?.status === "error" && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-destructive">
+                  {t("task.validate")} · {t("task.failed")}
+                </p>
+                <p className="text-xs text-destructive">{validateTask.message}</p>
+                <Button variant="outline" size="xs" onClick={retryValidate}>
+                  {t("task.retryValidate")}
+                </Button>
+              </div>
+            )}
             {installTask?.status === "running" && installTask && (
               <InstallTaskProgress task={installTask} />
             )}
@@ -389,7 +416,7 @@ export function InstanceDetailPage({
                 <p className="text-xs text-destructive">{launchTask.message}</p>
               </div>
             )}
-            {!installTask && !launchTask && (
+            {!installTask && !launchTask && !validateTask && (
               <p className="text-sm text-muted-foreground">
                 {manifest.installed
                   ? t("detail.readyDescription")
@@ -397,7 +424,7 @@ export function InstanceDetailPage({
               </p>
             )}
           </CardContent>
-          {(installTask || launchTask) && (
+          {(installTask || launchTask || validateTask?.status === "error") && (
             <CardFooter>
               <Button
                 variant="outline"

@@ -20,7 +20,7 @@ export interface InstancesPageProps {
 export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
   const { status, session } = useLauncher();
   const { settings, t } = useSettings();
-  const { tasks, taskFor, startInstall, startLaunch, clearTask } = useTasks();
+  const { tasks, taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
 
   const [instances, setInstances] = useState<InstanceManifest[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -32,6 +32,15 @@ export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
   const dirs = { instancesDir: settings.instancesDir, storeDir: settings.storeDir };
   const beginInstall = (instance: InstanceManifest) => {
     void startInstall(instance, dirs);
+  };
+
+  // Validate the version+loader online first, then auto-install. Validation
+  // failures keep the instance and offer retry/delete instead of hiding the
+  // error inside a download task.
+  const validateThenInstall = (instance: InstanceManifest) => {
+    void startValidate(instance).then((ok) => {
+      if (ok) beginInstall(instance);
+    });
   };
 
   const refresh = useCallback(async () => {
@@ -83,7 +92,7 @@ export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
       next.sort((left, right) => left.id.localeCompare(right.id));
       return next;
     });
-    beginInstall(instance);
+    validateThenInstall(instance);
     void refresh();
   };
 
@@ -98,6 +107,7 @@ export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
     setDeleting(true);
     try {
       await session.instanceDelete(settings.instancesDir, target.id);
+      clearTask("validate", target.id);
       clearTask("install", target.id);
       clearTask("launch", target.id);
       if (logInstanceId === target.id) setLogInstanceId(null);
@@ -156,8 +166,10 @@ export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
               installed={instance.installed}
               installTask={taskFor("install", instance.id)}
               launchTask={taskFor("launch", instance.id)}
+              validateTask={taskFor("validate", instance.id)}
               disabled={!coreReady}
               onInstall={() => beginInstall(instance)}
+              onRetryValidate={() => validateThenInstall(instance)}
               onLaunch={() => handleLaunch(instance)}
               onShowLog={() => setLogInstanceId(instance.id)}
               onDelete={() => setDeleteTarget(instance)}

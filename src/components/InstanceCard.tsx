@@ -25,9 +25,11 @@ export interface InstanceCardProps {
   installed: boolean;
   installTask?: Task;
   launchTask?: Task;
+  validateTask?: Task;
   /** Core not ready — disables install/launch actions. */
   disabled?: boolean;
   onInstall: () => void;
+  onRetryValidate: () => void;
   onLaunch: () => void;
   onShowLog: () => void;
   onDelete: () => void;
@@ -39,8 +41,10 @@ export function InstanceCard({
   installed,
   installTask,
   launchTask,
+  validateTask,
   disabled = false,
   onInstall,
+  onRetryValidate,
   onLaunch,
   onShowLog,
   onDelete,
@@ -50,6 +54,8 @@ export function InstanceCard({
 
   const installing = installTask?.status === "running";
   const launching = launchTask?.status === "running";
+  const validating = validateTask?.status === "running";
+  const validationFailed = validateTask?.status === "error";
 
   const loaderBadge = instance.fabric_loader
     ? "Fabric"
@@ -77,6 +83,25 @@ export function InstanceCard({
       </CardHeader>
 
       <CardContent className="min-h-12 space-y-3">
+        {validating && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            <span>{t("task.stage.validate")}</span>
+          </p>
+        )}
+        {validationFailed && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-destructive">{validateTask.message}</p>
+            <div className="flex gap-1.5">
+              <Button variant="outline" size="xs" onClick={onRetryValidate}>
+                {t("task.retryValidate")}
+              </Button>
+              <Button variant="destructive" size="xs" onClick={onDelete}>
+                {t("instances.delete")}
+              </Button>
+            </div>
+          </div>
+        )}
         {installTask?.status === "running" && installTask && (
           <InstallTaskProgress task={installTask} />
         )}
@@ -100,7 +125,7 @@ export function InstanceCard({
             size="sm"
             className="flex-1"
             onClick={onInstall}
-            disabled={disabled || installing}
+            disabled={disabled || installing || validating}
           >
             {t("instances.install")}
           </Button>
@@ -109,7 +134,7 @@ export function InstanceCard({
             size="sm"
             className="flex-1"
             onClick={onLaunch}
-            disabled={disabled || launching || installing}
+            disabled={disabled || launching || installing || validating}
           >
             <Play />
             {t("instances.launch")}

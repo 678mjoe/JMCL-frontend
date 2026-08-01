@@ -26,5 +26,8 @@ dist-ssr
 backend-binaries/*
 src-tauri/binaries/*
 
+# Core default artifact store when run from the repo root
+.jmclcore/
+
 # Local agent instructions
 AGENTS.md

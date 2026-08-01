@@ -95,6 +95,7 @@ Verify `protocol == 1` before anything else. `ping` checks liveness.
 |---|---|---|---|
 | `version.list` | — | `type`, `limit` (1–1000, default 20), `source` | `latest`, `versions[]` |
 | `version.get` | `id` | `source` | full normalized version metadata |
+| `version.resolve` | `id` | one loader field, `source` | merged `{kind, id, java_major_version}`; the standalone form of the `instance.create` validation step; `METADATA_TIMEOUT` on fetch expiry |
 | `install.plan` | `id` | `source`, `os`, `arch`, loader fields | deduped file list, classpath, natives, total size |
 | `install.execute` | `id` | `directory` (default `.minecraft`), `store_directory` (default `.jmclcore`), `source`, `os`, `arch`, loader fields, `workers` (1–32, default 8), `retries` (0–5, default 2) | started/file/retry/progress events, processor_started for NeoForge/Forge, final counters |
 | `install.prepare` | `id` | `directory`, `source`, `os`, `arch`, loader fields | `native_directory` (pass to `launch.plan`) |
@@ -139,7 +140,7 @@ instance is `instances/<id>/` with `instance.json` plus the game directory
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
-| `instance.create` | `directory`, `id`, `version_id` | `name` (defaults to id), one loader field, `source` | resolves the version+loader online first; returns `installed:false`; `INSTANCE_EXISTS` if taken |
+| `instance.create` | `directory`, `id`, `version_id` | `name` (defaults to id), one loader field, `source`, `validate` (default true) | resolves the version+loader online first; returns `installed:false`; `INSTANCE_EXISTS` if taken; `METADATA_TIMEOUT` when resolution stalls |
 | `instance.list` | `directory` | — | `{instances[]}` sorted by id; each includes `installed` |
 | `instance.get` | `directory`, `id` | — | one manifest with `installed`; `INSTANCE_NOT_FOUND` |
 | `instance.delete` | `directory`, `id` | — | removes the whole instance directory |
@@ -154,6 +155,13 @@ A manifest looks like:
 {"id":"my-instance","name":"My Instance","version_id":"1.21.4","fabric_loader":"0.16.10","neoforge_version":null,"forge_version":null,"source":"official","installed":false}
 ```
 
+For a responsive create flow, pass `"validate":false` to write the manifest
+immediately, then call `version.resolve` on a separate session to check the
+combination in the background and offer `instance.delete` when it fails.
+Metadata fetches are bounded by a 30-second timeout and served from the
+on-disk metadata cache when fresh (see `docs/protocol.md`), so repeated
+resolves of the same combination are cheap.
+
 `installed` becomes true only after `install.execute` fully succeeds for the
 manifest's exact Minecraft version and loader. Download source does not affect
 the status because artifacts are SHA-1 verified. A missing, corrupt, or
@@ -165,6 +173,56 @@ links.
 `id` rules: ≤64 chars, starts `[a-z0-9]`, then `[a-z0-9._-]`, no trailing dot,
 no Windows reserved stems. At most one loader field (`fabric_loader`,
 `neoforge_version`, `forge_version`).
+
+Server instances use a separate root and are Linux-only. A remote GUI starts
+`ssh user@host jmcl-core rpc` and uses the same JSON Lines protocol. Every
+`server.*` call returns `UNSUPPORTED_PLATFORM` when the core is not running
+on Linux:
+
+| Method | Required params | Optional params | Notes |
+|---|---|---|---|
+| `server.create` | `directory`, `id`, `version_id` | `name`, one loader field, `source`, `accept_eula` (default false), `java_path` | resolves version+loader online; writes `servers/<id>/server.json`; `SERVER_EXISTS` if taken |
+| `server.list` | `directory` | — | `{servers[]}` sorted by id |
+| `server.get` | `directory`, `id` | — | one server manifest; `SERVER_NOT_FOUND` |
+| `server.delete` | `directory`, `id` | — | removes the whole stopped server instance directory; `SERVER_ALREADY_RUNNING` while live |
+| `server.install` | `directory`, `id`, `accept_eula:true` | `store_directory`, `workers`, `retries`, `java_paths[]` | stopped servers only; installs vanilla, NeoForge, modern Forge, or Fabric with compatible Java selection; writes `server.jar`, loader launch files when needed, `eula.txt`, defaults, and completion state |
+| `server.start` | `directory`, `id` | `java_paths[]` | requires a matching completed install; returns detached Java/supervisor PIDs, start time, and selected Java |
+| `server.stop` | `directory`, `id` | `grace_ms` (default 10000, max 120000) | Minecraft `stop`, then bounded SIGTERM/SIGKILL escalation; returns `termination` |
+| `server.restart` | `directory`, `id` | `java_paths[]`, `grace_ms` | bounded stop followed by a fresh detached start |
+| `server.status` | `directory`, `id` | — | returns validated `running`, `stale_state`, PIDs, Java path, start time, and uptime |
+| `server.logs` | `directory`, `id` | `cursor`, `file_id`, `max_bytes` (default 65536, max 1048576) | merged console tail; resume with the preceding `next_cursor` + `file_id`; honor `reset` |
+| `server.command` | `directory`, `id`, one UTF-8 `command` line | — | writes to the console FIFO; returns `accepted:true` and the validated PID |
+| `server.properties.get` | `directory`, `id` | — | returns the full string-valued `properties` object |
+| `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
+
+`server.create`, `server.list`, and `server.get` include `installed`. Treat it
+as authoritative. The v3 completion marker must match the manifest and the
+recorded server jar plus launch file sizes; absent, malformed, older-schema,
+identity-mismatched, or incomplete state returns `false`. At create time use at
+most one loader field: `fabric_loader`, `neoforge_version`, or
+`forge_version`. Vanilla, Fabric, NeoForge, and modern Forge install on Linux.
+Legacy Forge server support remains deferred and returns
+`SERVER_LOADER_UNSUPPORTED`. `server.install` requires explicit
+`accept_eula:true`; the core never accepts Mojang's EULA implicitly. A
+manifest-level `java_path` wins over request `java_paths`. Properties are
+strings, including numeric and boolean-looking values.
+
+For server installs, the only progress events are the existing download
+events. NeoForge and modern Forge may spend time in a local processor-chain
+phase after downloads, but that phase is silent and does not emit
+`processor_started` or any server-specific event. Do not wait for a new event
+type; wait for the terminal `result` or `error` for the `server.install`
+request.
+
+Running servers are detached from `jmcl-core rpc`; ending or reconnecting SSH
+must not be treated as a stop. Keep the `next_cursor` and `file_id` from every
+`server.logs` result. If `reset:true`, discard any GUI-side partial stream and
+continue from the returned `start_cursor`; `truncated:true` means the initial
+tail omitted older bytes. `stale_state:true` means the core removed a dead or
+identity-mismatched PID file. Start/restart errors the GUI should surface
+distinctly include `SERVER_NOT_INSTALLED`, `SERVER_ALREADY_RUNNING`,
+`JAVA_NOT_FOUND`, and `JAVA_INCOMPATIBLE`; stop/command while stopped return
+`SERVER_NOT_RUNNING`.
 
 Content methods exist for three kinds with identical shapes:
 `mods.*`, `resourcepacks.*`, `shaderpacks.*`.

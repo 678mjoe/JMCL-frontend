@@ -19,7 +19,7 @@ import { useLauncher, errorText } from "./launcher";
 import type { CoreSession } from "./rpc";
 import type { AuthSession, InstanceManifest, LoaderFields } from "./types";
 
-export type TaskKind = "install" | "launch";
+export type TaskKind = "install" | "launch" | "validate";
 export type TaskStatus = "running" | "success" | "error";
 
 export interface TaskProgress {
@@ -41,6 +41,7 @@ export interface Task {
   status: TaskStatus;
   /** i18n key for the current stage. */
   stage:
+    | "task.stage.validate"
     | "task.stage.download"
     | "task.stage.processor"
     | "task.stage.prepare"
@@ -62,6 +63,8 @@ interface StartDirs {
 interface TasksContextValue {
   tasks: Record<string, Task>;
   taskFor: (kind: TaskKind, instanceId: string) => Task | undefined;
+  /** Resolves the version+loader online on a dedicated session; returns success. */
+  startValidate: (instance: InstanceManifest) => Promise<boolean>;
   startInstall: (instance: InstanceManifest, dirs: StartDirs) => Promise<void>;
   startLaunch: (instance: InstanceManifest, dirs: StartDirs, auth: AuthSession) => Promise<void>;
   clearTask: (kind: TaskKind, instanceId: string) => void;
@@ -128,6 +131,28 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       return key;
     },
     [],
+  );
+
+  const startValidate = useCallback(
+    async (instance: InstanceManifest): Promise<boolean> => {
+      const key = beginTask("validate", instance.id, "task.stage.validate");
+      let session: CoreSession | null = null;
+      try {
+        session = await openSession();
+        await session.versionResolve(instance.version_id, {
+          source: instance.source,
+          ...loaderFieldsOf(instance),
+        });
+        patch(key, { status: "success", message: null });
+        return true;
+      } catch (e) {
+        patch(key, { status: "error", message: errorText(e) });
+        return false;
+      } finally {
+        if (session) void session.close();
+      }
+    },
+    [beginTask, openSession, patch],
   );
 
   const startInstall = useCallback(
@@ -279,11 +304,12 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     () => ({
       tasks,
       taskFor: (kind, instanceId) => tasks[taskKey(kind, instanceId)],
+      startValidate,
       startInstall,
       startLaunch,
       clearTask,
     }),
-    [tasks, startInstall, startLaunch, clearTask],
+    [tasks, startValidate, startInstall, startLaunch, clearTask],
   );
 
   return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;

@@ -28,6 +28,7 @@ import type {
   SessionInfo,
   Source,
   VersionListResult,
+  VersionResolveResult,
 } from "./types";
 
 export interface CoreEvent {
@@ -200,6 +201,15 @@ export class CoreSession {
     return this.request<Record<string, unknown>>("version.get", { id, source });
   }
 
+  /**
+   * Standalone form of the instance.create validation step: resolves a
+   * Minecraft version plus at most one loader online. METADATA_TIMEOUT when
+   * the fetch stalls (contract §4).
+   */
+  versionResolve(id: string, opts: { source?: Source } & LoaderFields = {}) {
+    return this.request<VersionResolveResult>("version.resolve", { id, ...opts });
+  }
+
   installPlan(id: string, opts: Partial<{
     source: Source;
     os: string;
@@ -282,7 +292,7 @@ export class CoreSession {
     directory: string,
     id: string,
     versionId: string,
-    opts: { name?: string; source?: Source } & LoaderFields = {},
+    opts: { name?: string; source?: Source; validate?: boolean } & LoaderFields = {},
   ) {
     return this.request<InstanceManifest>("instance.create", {
       directory,

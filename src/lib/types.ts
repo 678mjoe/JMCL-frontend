@@ -72,6 +72,14 @@ export interface ContentListResult {
   unmanaged: string[];
 }
 
+export interface VersionResolveResult {
+  /** "vanilla" or the loader kind. */
+  kind: string;
+  id: string;
+  java_major_version?: number;
+  [field: string]: unknown;
+}
+
 export interface VersionSummary {
   id: string;
   type?: string;

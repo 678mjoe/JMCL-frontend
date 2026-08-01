@@ -51,6 +51,9 @@ const zh = {
 
   "task.install": "安装",
   "task.launch": "启动",
+  "task.validate": "验证",
+  "task.retryValidate": "重试验证",
+  "task.stage.validate": "正在验证版本与加载器组合…",
   "task.stage.download": "下载游戏文件",
   "task.stage.processor": "运行加载器安装处理器",
   "task.progress.files": "{completed} / {total} 个文件",
@@ -158,6 +161,9 @@ const en: Record<MessageKey, string> = {
 
   "task.install": "Install",
   "task.launch": "Launch",
+  "task.validate": "Validation",
+  "task.retryValidate": "Retry Validation",
+  "task.stage.validate": "Validating the version and loader combination…",
   "task.stage.download": "Downloading game files",
   "task.stage.processor": "Running loader installer processors",
   "task.progress.files": "{completed} / {total} files",

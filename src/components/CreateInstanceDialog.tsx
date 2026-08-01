@@ -162,6 +162,8 @@ export function CreateInstanceDialog({
             ? { forge_version: loaderVersion.trim() }
             : {};
     try {
+      // Write the manifest immediately; the caller validates the
+      // version+loader combination in the background (contract §4).
       const manifest = await session.instanceCreate(
         settings.instancesDir,
         id,
@@ -169,6 +171,7 @@ export function CreateInstanceDialog({
         {
           name: name.trim() || id,
           source: settings.source,
+          validate: false,
           ...loaderField,
         },
       );
