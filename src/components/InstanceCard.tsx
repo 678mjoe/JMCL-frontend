@@ -1,4 +1,5 @@
 import { Loader2, MoreVertical, Play, ScrollText } from "lucide-react";
+import { InstallTaskProgress } from "@/components/InstallTaskProgress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,23 +16,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Progress } from "@/components/ui/progress";
 import { useSettings } from "@/lib/settings";
 import type { Task } from "@/lib/tasks";
 import type { InstanceManifest } from "@/lib/types";
-
-const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB"] as const;
-
-function formatBytes(bytes: number): string {
-  let value = Math.max(0, bytes);
-  let unit = 0;
-  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const fractionDigits = unit === 0 || value >= 100 ? 0 : value >= 10 ? 1 : 2;
-  return `${value.toFixed(fractionDigits)} ${BYTE_UNITS[unit]}`;
-}
 
 export interface InstanceCardProps {
   instance: InstanceManifest;
@@ -44,6 +31,7 @@ export interface InstanceCardProps {
   onLaunch: () => void;
   onShowLog: () => void;
   onDelete: () => void;
+  onOpenDetail: () => void;
 }
 
 export function InstanceCard({
@@ -56,29 +44,12 @@ export function InstanceCard({
   onLaunch,
   onShowLog,
   onDelete,
+  onOpenDetail,
 }: InstanceCardProps) {
   const { t } = useSettings();
 
   const installing = installTask?.status === "running";
   const launching = launchTask?.status === "running";
-
-  const progress = installTask?.progress ?? null;
-  const hasByteProgress = progress != null && progress.bytesTotal > 0;
-  const hasFileProgress = progress != null && progress.filesTotal > 0;
-  const hasDeterminateProgress = hasByteProgress || hasFileProgress;
-  const completed = hasByteProgress
-    ? progress.bytesProcessed
-    : (progress?.filesCompleted ?? 0);
-  const total = hasByteProgress
-    ? progress.bytesTotal
-    : (progress?.filesTotal ?? 0);
-  const percent = hasDeterminateProgress
-    ? Math.min(100, Math.max(0, (completed / total) * 100))
-    : null;
-  const percentLabel =
-    percent == null
-      ? null
-      : `${percent.toFixed(percent < 1 ? 2 : percent < 10 ? 1 : 0)}%`;
 
   const loaderBadge = instance.fabric_loader
     ? "Fabric"
@@ -105,47 +76,9 @@ export function InstanceCard({
         </div>
       </CardHeader>
 
-      <CardContent className="min-h-12 space-y-1.5">
-        {installTask?.status === "running" && (
-          <>
-            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-              <span>{t(installTask.stage)}</span>
-              {percentLabel && (
-                <span className="shrink-0 tabular-nums">{percentLabel}</span>
-              )}
-            </div>
-            {hasDeterminateProgress ? (
-              <>
-                <Progress value={percent} />
-                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground tabular-nums">
-                  {hasByteProgress ? (
-                    <span>
-                      {formatBytes(progress.bytesProcessed)} /{" "}
-                      {formatBytes(progress.bytesTotal)}
-                    </span>
-                  ) : (
-                    <span />
-                  )}
-                  {hasFileProgress && (
-                    <span className="shrink-0">
-                      {t("task.progress.files", {
-                        completed: progress.filesCompleted.toLocaleString(),
-                        total: progress.filesTotal.toLocaleString(),
-                      })}
-                    </span>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div
-                role="progressbar"
-                aria-label={t(installTask.stage)}
-                className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
-              >
-                <div className="animate-progress-indeterminate h-full w-1/3 rounded-full bg-primary" />
-              </div>
-            )}
-          </>
+      <CardContent className="min-h-12 space-y-3">
+        {installTask?.status === "running" && installTask && (
+          <InstallTaskProgress task={installTask} />
         )}
         {installTask?.status === "error" && (
           <p className="text-xs text-destructive">{installTask.message}</p>
@@ -199,6 +132,9 @@ export function InstanceCard({
             <MoreVertical />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onOpenDetail}>
+              {t("instances.detail")}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onInstall} disabled={installing}>
               {t("instances.reinstall")}
             </DropdownMenuItem>

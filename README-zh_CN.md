@@ -13,6 +13,7 @@ JMCL 是一个面向 Minecraft: Java Edition 的桌面启动器。本仓库包�
 - 浏览正式版或测试版 Minecraft 版本
 - 创建原版、Fabric、NeoForge 和 Forge 实例
 - 展示文件数与字节级安装进度
+- 查看实例详情，包括版本、加载器、下载源、目录以及安装、启动和日志状态
 - 使用 core 返回的完成标记判断实例安装状态
 - 离线账户启动
 - 查看游戏 stdout、stderr 和 core 诊断日志

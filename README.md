@@ -13,6 +13,7 @@ The project is in early development. The UI, RPC contract, and release process m
 - Browse release or test Minecraft versions
 - Create vanilla, Fabric, NeoForge, and Forge instances
 - Display file-count and byte-level installation progress
+- Open an instance detail page with version, loader, source, directory, install, launch, and log status
 - Use completion markers reported by the core as the authoritative installation state
 - Launch with an offline account
 - View game stdout, stderr, and core diagnostics

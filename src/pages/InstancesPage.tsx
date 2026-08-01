@@ -2,17 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Gamepad2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { CreateInstanceDialog } from "@/components/CreateInstanceDialog";
+import { DeleteInstanceDialog } from "@/components/DeleteInstanceDialog";
 import { InstanceCard } from "@/components/InstanceCard";
 import { LogSheet } from "@/components/LogSheet";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorText, useLauncher } from "@/lib/launcher";
 import { makeOfflineSession } from "@/lib/offline";
@@ -20,8 +13,11 @@ import { useSettings } from "@/lib/settings";
 import { useTasks, type TaskStatus } from "@/lib/tasks";
 import type { InstanceManifest } from "@/lib/types";
 
+export interface InstancesPageProps {
+  onOpenDetail: (instanceId: string) => void;
+}
 
-export function InstancesPage() {
+export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
   const { status, session } = useLauncher();
   const { settings, t } = useSettings();
   const { tasks, taskFor, startInstall, startLaunch, clearTask } = useTasks();
@@ -37,7 +33,6 @@ export function InstancesPage() {
   const beginInstall = (instance: InstanceManifest) => {
     void startInstall(instance, dirs);
   };
-
 
   const refresh = useCallback(async () => {
     if (status !== "ready" || !session || !settings.instancesDir) return;
@@ -166,6 +161,7 @@ export function InstancesPage() {
               onLaunch={() => handleLaunch(instance)}
               onShowLog={() => setLogInstanceId(instance.id)}
               onDelete={() => setDeleteTarget(instance)}
+              onOpenDetail={() => onOpenDetail(instance.id)}
             />
           ))}
         </div>
@@ -182,39 +178,12 @@ export function InstancesPage() {
           if (!open) setLogInstanceId(null);
         }}
       />
-
-      <Dialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("instances.deleteTitle")}</DialogTitle>
-            <DialogDescription>
-              {deleteTarget &&
-                t("instances.deleteConfirm", { name: deleteTarget.name })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={deleting}
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void confirmDelete()}
-              disabled={deleting}
-            >
-              {t("common.confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteInstanceDialog
+        instance={deleteTarget}
+        deleting={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 }

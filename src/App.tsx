@@ -5,11 +5,14 @@ import { cn } from "@/lib/utils";
 import { LauncherProvider, useLauncher } from "@/lib/launcher";
 import { SettingsProvider, useSettings } from "@/lib/settings";
 import { TasksProvider } from "@/lib/tasks";
+import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
 import { InstancesPage } from "@/pages/InstancesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import "./App.css";
 
-type Page = "instances" | "settings";
+type TopLevelPage = "instances" | "settings";
+type Page = TopLevelPage | "instance";
+type Route = { page: Page; instanceId?: string };
 
 function CoreStatus() {
   const { status, core, error } = useLauncher();
@@ -39,10 +42,10 @@ function CoreStatus() {
 }
 
 function Shell() {
-  const [page, setPage] = useState<Page>("instances");
+  const [route, setRoute] = useState<Route>({ page: "instances" });
   const { t } = useSettings();
 
-  const nav: { id: Page; label: string; icon: typeof Gamepad2 }[] = [
+  const nav: { id: TopLevelPage; label: string; icon: typeof Gamepad2 }[] = [
     { id: "instances", label: t("nav.instances"), icon: Gamepad2 },
     { id: "settings", label: t("nav.settings"), icon: SettingsIcon },
   ];
@@ -57,10 +60,10 @@ function Shell() {
           {nav.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setPage(id)}
+              onClick={() => setRoute({ page: id })}
               className={cn(
                 "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                page === id
+                route.page === id || (route.page === "instance" && id === "instances")
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
               )}
@@ -75,7 +78,20 @@ function Shell() {
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">
-        {page === "instances" ? <InstancesPage /> : <SettingsPage />}
+        {route.page === "instance" && route.instanceId ? (
+          <InstanceDetailPage
+            instanceId={route.instanceId}
+            onBack={() => setRoute({ page: "instances" })}
+          />
+        ) : route.page === "settings" ? (
+          <SettingsPage />
+        ) : (
+          <InstancesPage
+            onOpenDetail={(instanceId) =>
+              setRoute({ page: "instance", instanceId })
+            }
+          />
+        )}
       </main>
       <Toaster richColors position="bottom-right" />
     </div>
