@@ -2,6 +2,7 @@
 name = "jmcl"
 version = "0.1.0"
 description = "A Tauri App"
+license = "MIT"
 authors = ["you"]
 edition = "2021"
 
