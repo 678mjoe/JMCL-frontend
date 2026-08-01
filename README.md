@@ -2,7 +2,7 @@
 
 English | [简体中文](./README-zh_CN.md)
 
-JMCL is a desktop launcher for Minecraft: Java Edition. This repository contains the JMCL graphical interface and its Tauri bridge. Game installation, file verification, Java launch preparation, and process supervision are handled by the separate `jmcl-core` component. See [https://github.com/678mjoe/JMCLCore] for more information.
+JMCL is a desktop launcher for Minecraft: Java Edition. This repository contains the JMCL graphical interface and its Tauri bridge. Game installation, file verification, Java launch preparation, and process supervision are handled by the separate `jmcl-core` component. See <https://github.com/678mjoe/JMCLCore> for more information.
 
 The project is in early development. The UI, RPC contract, and release process may still change.
 
