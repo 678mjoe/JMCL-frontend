@@ -120,13 +120,26 @@ Rust 与真实 core RPC 测试：
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-构建桌面安装包：
+构建不附带 core 的桌面安装包：
 
 ```bash
 bun run tauri build
 ```
 
-正式发布时，需要为每个目标平台准备匹配的 `jmcl-core` sidecar。当前仓库不会把 `backend-binaries/` 中的本地开发二进制提交到 Git。
+构建附带当前平台 `jmcl-core` sidecar 的安装包：
+
+```bash
+bun run tauri:build:sidecar
+```
+
+sidecar 构建会把 `backend-binaries/jmcl-core` 复制为 `src-tauri/binaries/` 中带目标三元组后缀的文件，并应用 `src-tauri/tauri.sidecar.json`。如需使用其他 core 二进制，先通过 staging 脚本传入显式路径：
+
+```bash
+./scripts/prepare-sidecar.sh /absolute/path/to/jmcl-core
+tauri build --config src-tauri/tauri.sidecar.json
+```
+
+`src-tauri/binaries/` 中的文件属于构建产物，不提交到 Git。正式发布需要为每个目标平台准备匹配的 `jmcl-core` sidecar；`backend-binaries/` 中的本地开发二进制同样不会提交。
 
 ## 项目结构
 

@@ -120,13 +120,26 @@ Run Rust and real-core RPC tests:
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Build desktop packages:
+Build desktop packages without a bundled core:
 
 ```bash
 bun run tauri build
 ```
 
-A release must provide a matching `jmcl-core` sidecar for every target platform. Local binaries under `backend-binaries/` are not committed to Git.
+Build packages with the current platform's `jmcl-core` sidecar:
+
+```bash
+bun run tauri:build:sidecar
+```
+
+The sidecar build stages `backend-binaries/jmcl-core` as a target-triple-specific file under `src-tauri/binaries/` and applies `src-tauri/tauri.sidecar.json`. To use another core binary, pass its path to the staging script first:
+
+```bash
+./scripts/prepare-sidecar.sh /absolute/path/to/jmcl-core
+tauri build --config src-tauri/tauri.sidecar.json
+```
+
+Staged files under `src-tauri/binaries/` are build artifacts and are not committed. A release must include a matching `jmcl-core` sidecar for every target platform. Local binaries under `backend-binaries/` are also not committed to Git.
 
 ## Project Structure
 

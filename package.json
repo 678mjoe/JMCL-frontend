@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "sidecar:prepare": "./scripts/prepare-sidecar.sh",
+    "tauri:build:sidecar": "./scripts/prepare-sidecar.sh && tauri build --config src-tauri/tauri.sidecar.json"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
