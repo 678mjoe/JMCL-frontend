@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorText, useLauncher } from "@/lib/launcher";
-import { makeOfflineSession } from "@/lib/offline";
+import { AuthTransientError, ReloginRequiredError, useLaunchAuth } from "@/lib/auth";
 import { RpcError } from "@/lib/rpc";
 import { useSettings } from "@/lib/settings";
 import { useTasks, type TaskStatus } from "@/lib/tasks";
@@ -48,6 +48,7 @@ export function InstanceDetailPage({
   const { status, session, error: coreError } = useLauncher();
   const { settings, t } = useSettings();
   const { taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
+  const resolveLaunchAuth = useLaunchAuth();
 
   const [manifest, setManifest] = useState<InstanceManifest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,8 +123,21 @@ export function InstanceDetailPage({
 
   const beginLaunch = () => {
     if (!manifest) return;
-    void startLaunch(manifest, dirs, makeOfflineSession(settings.playerName));
-    setLogOpen(true);
+    void (async () => {
+      try {
+        const auth = await resolveLaunchAuth();
+        void startLaunch(manifest, dirs, auth);
+        setLogOpen(true);
+      } catch (e) {
+        toast.error(
+          e instanceof ReloginRequiredError
+            ? t("account.reloginRequired")
+            : e instanceof AuthTransientError
+              ? t("account.networkRetry")
+              : errorText(e),
+        );
+      }
+    })();
   };
 
   const confirmDelete = async () => {

@@ -456,7 +456,7 @@ export class CoreSession {
   /**
    * Refresh + exchange in one step. The rotated `refresh_token` in the
    * result MUST be persisted atomically before the session is used — even
-   * when `exchange_failed` is set (contract §6).
+   * when `state` is "exchange_failed" (contract §6).
    */
   authMinecraftRefreshExchange(clientId: string, refreshToken: string) {
     return this.request<RefreshExchangeResult>("auth.minecraft.refresh_exchange", {
@@ -466,9 +466,14 @@ export class CoreSession {
   }
 
   // --- account metadata (no tokens; contract §6) -----------------------------------
+  // The account registry lives in the CWD-relative `accounts` directory
+  // (contract §6.5: single directory name, no separators); the middleware
+  // spawns core with the app-data dir as CWD, so the default resolves there.
 
   accountSave(profile: AccountProfile) {
-    return this.request<unknown>("account.microsoft.save", { ...profile });
+    return this.request<unknown>("account.microsoft.save", {
+      account: profile,
+    });
   }
 
   accountList() {

@@ -87,7 +87,7 @@ impl Drop for FixtureRoot {
 }
 
 async fn open() -> Session {
-    let transport = LocalProcessTransport::spawn(&core_path(), &["rpc"])
+    let transport = LocalProcessTransport::spawn(&core_path(), &["rpc"], None)
         .await
         .expect("spawn jmcl-core");
     Session::establish(Box::new(transport))

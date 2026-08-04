@@ -27,6 +27,8 @@ export interface Settings {
   storeDir: string;
   source: Source;
   hideTestVersions: boolean;
+  /** Selected Microsoft account id (public metadata; tokens stay in the keychain). */
+  activeAccountId: string | null;
 }
 
 const STORAGE_KEY = "jmcl.settings.v1";
@@ -39,6 +41,7 @@ const defaults: Settings = {
   storeDir: "",
   source: "official",
   hideTestVersions: true,
+  activeAccountId: null,
 };
 
 function loadStored(): Settings {

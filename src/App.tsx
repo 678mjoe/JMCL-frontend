@@ -3,8 +3,10 @@ import { Gamepad2, Settings as SettingsIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { LauncherProvider, useLauncher } from "@/lib/launcher";
+import { MicrosoftAccountsProvider } from "@/lib/auth";
 import { SettingsProvider, useSettings } from "@/lib/settings";
 import { TasksProvider } from "@/lib/tasks";
+import { MicrosoftLoginDialog } from "@/components/MicrosoftLoginDialog";
 import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
 import { InstancesPage } from "@/pages/InstancesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
@@ -94,6 +96,7 @@ function Shell() {
         )}
       </main>
       <Toaster richColors position="bottom-right" />
+      <MicrosoftLoginDialog />
     </div>
   );
 }
@@ -102,9 +105,11 @@ export default function App() {
   return (
     <SettingsProvider>
       <LauncherProvider>
-        <TasksProvider>
-          <Shell />
-        </TasksProvider>
+        <MicrosoftAccountsProvider>
+          <TasksProvider>
+            <Shell />
+          </TasksProvider>
+        </MicrosoftAccountsProvider>
       </LauncherProvider>
     </SettingsProvider>
   );

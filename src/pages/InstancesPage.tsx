@@ -8,7 +8,7 @@ import { LogSheet } from "@/components/LogSheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorText, useLauncher } from "@/lib/launcher";
-import { makeOfflineSession } from "@/lib/offline";
+import { AuthTransientError, ReloginRequiredError, useLaunchAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings";
 import { useTasks, type TaskStatus } from "@/lib/tasks";
 import type { InstanceManifest } from "@/lib/types";
@@ -21,6 +21,7 @@ export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
   const { status, session } = useLauncher();
   const { settings, t } = useSettings();
   const { tasks, taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
+  const resolveLaunchAuth = useLaunchAuth();
 
   const [instances, setInstances] = useState<InstanceManifest[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -97,8 +98,21 @@ export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
   };
 
   const handleLaunch = (instance: InstanceManifest) => {
-    void startLaunch(instance, dirs, makeOfflineSession(settings.playerName));
-    setLogInstanceId(instance.id);
+    void (async () => {
+      try {
+        const auth = await resolveLaunchAuth();
+        void startLaunch(instance, dirs, auth);
+        setLogInstanceId(instance.id);
+      } catch (e) {
+        toast.error(
+          e instanceof ReloginRequiredError
+            ? t("account.reloginRequired")
+            : e instanceof AuthTransientError
+              ? t("account.networkRetry")
+              : errorText(e),
+        );
+      }
+    })();
   };
 
   const confirmDelete = async () => {

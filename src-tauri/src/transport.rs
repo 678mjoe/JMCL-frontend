@@ -91,12 +91,24 @@ pub struct LocalProcessTransport {
 
 impl LocalProcessTransport {
     /// Spawn `program rpc` and start its stdout/stderr reader tasks.
-    pub async fn spawn(program: &Path, args: &[&str]) -> Result<Self, String> {
-        let mut child = Command::new(program)
+    ///
+    /// `working_dir` becomes the child's CWD; the core's CWD-relative
+    /// defaults (e.g. the `accounts` registry, contract §6) resolve there.
+    pub async fn spawn(
+        program: &Path,
+        args: &[&str],
+        working_dir: Option<&Path>,
+    ) -> Result<Self, String> {
+        let mut command = Command::new(program);
+        command
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Some(dir) = working_dir {
+            command.current_dir(dir);
+        }
+        let mut child = command
             .spawn()
             .map_err(|e| format!("failed to spawn {}: {e}", program.display()))?;
 

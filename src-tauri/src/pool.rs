@@ -3,6 +3,7 @@
 //! independent; never mutate the same instance from two sessions at once).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -23,17 +24,22 @@ pub struct SessionInfo {
 pub struct SessionPool {
     sessions: Mutex<HashMap<u64, Arc<Session>>>,
     next_id: AtomicU64,
+    /// CWD for spawned core children; `None` inherits the app's CWD.
+    working_dir: Option<PathBuf>,
 }
 
 impl SessionPool {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(working_dir: Option<PathBuf>) -> Self {
+        Self {
+            working_dir,
+            ..Self::default()
+        }
     }
 
     /// Spawn a core process and open a session on it.
     pub async fn open(&self, binary_path: Option<&str>) -> Result<SessionInfo, SessionError> {
         let binary = resolve_core_binary(binary_path).map_err(SessionError::transport)?;
-        let transport = LocalProcessTransport::spawn(&binary, &["rpc"])
+        let transport = LocalProcessTransport::spawn(&binary, &["rpc"], self.working_dir.as_deref())
             .await
             .map_err(SessionError::transport)?;
         let session = Session::establish(Box::new(transport)).await?;

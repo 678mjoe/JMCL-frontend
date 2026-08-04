@@ -1,5 +1,6 @@
 //! JMCL GUI: Tauri bridge to `jmcl-core` JSON Lines RPC sessions.
 
+pub mod credentials;
 pub mod pool;
 pub mod session;
 pub mod transport;
@@ -147,8 +148,28 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
-        .manage(SessionPool::new())
-        .invoke_handler(tauri::generate_handler![core_open, core_close, core_request])
+        .setup(|app| {
+            // Core children run with the app-data dir as CWD so the core's
+            // CWD-relative defaults (e.g. the `accounts` registry, contract
+            // §6) live under app data instead of polluting the repo in dev
+            // or failing from Finder's "/" CWD in production.
+            let dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("app data dir unavailable: {e}"))?;
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("cannot create app data dir: {e}"))?;
+            app.manage(SessionPool::new(Some(dir)));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            core_open,
+            core_close,
+            core_request,
+            credentials::credential_set,
+            credentials::credential_get,
+            credentials::credential_delete
+        ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

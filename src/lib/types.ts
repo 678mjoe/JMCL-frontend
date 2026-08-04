@@ -129,13 +129,19 @@ export interface DeviceBeginResult {
   [field: string]: unknown;
 }
 
+export interface OAuthCredential {
+  access_token: string;
+  /** Keep private; persist to the keychain, never log. */
+  refresh_token: string;
+  [field: string]: unknown;
+}
+
 export type DevicePollResult =
   | { state: "authorization_pending" }
   | { state: "slow_down" }
   | {
       state: "authenticated";
-      access_token: string;
-      refresh_token: string;
+      credential: OAuthCredential;
       [field: string]: unknown;
     };
 
@@ -144,13 +150,21 @@ export interface MinecraftExchangeResult {
   [field: string]: unknown;
 }
 
-export interface RefreshExchangeResult {
-  /** Rotated token — persist atomically BEFORE using the session. */
-  refresh_token: string;
-  session?: AuthSession;
-  exchange_failed?: boolean;
-  [field: string]: unknown;
-}
+export type RefreshExchangeResult =
+  | {
+      state: "authenticated";
+      /** Rotated token — persist atomically BEFORE using the session. */
+      refresh_token: string;
+      session: AuthSession;
+      [field: string]: unknown;
+    }
+  | {
+      state: "exchange_failed";
+      /** Rotated token — persist even though the exchange failed (§6.4). */
+      refresh_token: string;
+      exchange_error?: { code?: string; [field: string]: unknown };
+      [field: string]: unknown;
+    };
 
 export interface AccountProfile {
   id: string;

@@ -1,4 +1,7 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -9,7 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { useMicrosoftAccounts } from "@/lib/auth";
 import type { Language } from "@/lib/i18n";
+import { errorText, useLauncher } from "@/lib/launcher";
 import { useSettings, type Theme } from "@/lib/settings";
 import type { Source } from "@/lib/types";
 
@@ -18,6 +23,135 @@ function SectionHeading({ children }: { children: string }) {
     <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
       {children}
     </h2>
+  );
+}
+
+/** Microsoft account list and picker; tokens never leave the keychain. */
+function AccountsSection() {
+  const {
+    accounts,
+    loading,
+    error,
+    refresh,
+    activeAccount,
+    setActiveAccount,
+    removeAccount,
+    startLogin,
+  } = useMicrosoftAccounts();
+  const { status } = useLauncher();
+  const { t } = useSettings();
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  const confirmRemove = async (id: string) => {
+    setRemoving(true);
+    try {
+      await removeAccount(id);
+      setConfirmId(null);
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <SectionHeading>{t("settings.accounts")}</SectionHeading>
+        <p className="text-xs text-muted-foreground">
+          {t("settings.accountsHint")}
+        </p>
+      </div>
+
+      {error ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button variant="outline" size="sm" onClick={() => void refresh()}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      ) : loading ? (
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      ) : accounts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("account.empty")}</p>
+      ) : (
+        <div className="divide-y rounded-md border">
+          {accounts.map((account) => (
+            <div
+              key={account.id}
+              className="flex items-center justify-between gap-2 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {account.player_name}
+                </p>
+                {account.xuid && (
+                  <p className="truncate font-mono text-xs text-muted-foreground">
+                    XUID {account.xuid}
+                  </p>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {activeAccount?.id === account.id ? (
+                  <Badge>{t("account.active")}</Badge>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setActiveAccount(account.id)}
+                  >
+                    {t("account.setActive")}
+                  </Button>
+                )}
+                {confirmId === account.id ? (
+                  <>
+                    <span className="text-xs text-destructive">
+                      {t("account.removeConfirm")}
+                    </span>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={removing}
+                      onClick={() => void confirmRemove(account.id)}
+                    >
+                      {t("common.confirm")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={removing}
+                      onClick={() => setConfirmId(null)}
+                    >
+                      {t("account.removeCancel")}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setConfirmId(account.id)}
+                  >
+                    {t("account.remove")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div>
+        <Button
+          variant="outline"
+          disabled={status !== "ready"}
+          onClick={startLogin}
+        >
+          {t("account.add")}
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -83,6 +217,10 @@ export function SettingsPage() {
             </Select>
           </div>
         </section>
+
+        <Separator />
+
+        <AccountsSection />
 
         <Separator />
 
