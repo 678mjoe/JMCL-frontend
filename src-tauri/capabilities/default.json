@@ -11,7 +11,8 @@
       "allow": [
         { "url": "https://meta.fabricmc.net/**" },
         { "url": "https://maven.neoforged.net/**" },
-        { "url": "https://files.minecraftforge.net/**" }
+        { "url": "https://files.minecraftforge.net/**" },
+        { "url": "https://api.modrinth.com/**" }
       ]
     }
   ]
