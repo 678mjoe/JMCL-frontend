@@ -34,6 +34,7 @@ export interface InstanceCardProps {
   onShowLog: () => void;
   onDelete: () => void;
   onOpenDetail: () => void;
+  onOpenContent: () => void;
 }
 
 export function InstanceCard({
@@ -49,6 +50,7 @@ export function InstanceCard({
   onShowLog,
   onDelete,
   onOpenDetail,
+  onOpenContent,
 }: InstanceCardProps) {
   const { t } = useSettings();
 
@@ -159,6 +161,9 @@ export function InstanceCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onOpenDetail}>
               {t("instances.detail")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onOpenContent}>
+              {t("instances.content")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onInstall} disabled={installing}>
               {t("instances.reinstall")}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Gamepad2, Settings as SettingsIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import { AccountWidget } from "@/components/AccountWidget";
 import { cn } from "@/lib/utils";
 import { LauncherProvider, useLauncher } from "@/lib/launcher";
 import { MicrosoftAccountsProvider } from "@/lib/auth";
@@ -8,12 +9,13 @@ import { SettingsProvider, useSettings } from "@/lib/settings";
 import { TasksProvider } from "@/lib/tasks";
 import { MicrosoftLoginDialog } from "@/components/MicrosoftLoginDialog";
 import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
+import { InstanceContentPage } from "@/pages/InstanceContentPage";
 import { InstancesPage } from "@/pages/InstancesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import "./App.css";
 
 type TopLevelPage = "instances" | "settings";
-type Page = TopLevelPage | "instance";
+type Page = TopLevelPage | "instance" | "instance-content";
 type Route = { page: Page; instanceId?: string };
 
 function CoreStatus() {
@@ -65,7 +67,9 @@ function Shell() {
               onClick={() => setRoute({ page: id })}
               className={cn(
                 "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                route.page === id || (route.page === "instance" && id === "instances")
+                route.page === id ||
+                ((route.page === "instance" || route.page === "instance-content") &&
+                  id === "instances")
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
               )}
@@ -75,6 +79,9 @@ function Shell() {
             </button>
           ))}
         </nav>
+        <div className="border-t">
+          <AccountWidget onManage={() => setRoute({ page: "settings" })} />
+        </div>
         <div className="border-t py-3">
           <CoreStatus />
         </div>
@@ -84,6 +91,16 @@ function Shell() {
           <InstanceDetailPage
             instanceId={route.instanceId}
             onBack={() => setRoute({ page: "instances" })}
+            onOpenContent={() =>
+              setRoute({ page: "instance-content", instanceId: route.instanceId })
+            }
+          />
+        ) : route.page === "instance-content" && route.instanceId ? (
+          <InstanceContentPage
+            instanceId={route.instanceId}
+            onBack={() =>
+              setRoute({ page: "instance", instanceId: route.instanceId })
+            }
           />
         ) : route.page === "settings" ? (
           <SettingsPage />
@@ -91,6 +108,9 @@ function Shell() {
           <InstancesPage
             onOpenDetail={(instanceId) =>
               setRoute({ page: "instance", instanceId })
+            }
+            onOpenContent={(instanceId) =>
+              setRoute({ page: "instance-content", instanceId })
             }
           />
         )}

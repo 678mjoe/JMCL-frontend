@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Gamepad2,
   Loader2,
+  Package,
   Play,
   RefreshCw,
   ScrollText,
@@ -32,9 +33,10 @@ import type { InstanceManifest } from "@/lib/types";
 export interface InstanceDetailPageProps {
   instanceId: string;
   onBack: () => void;
+  onOpenContent: () => void;
 }
 
-function loaderLabel(instance: InstanceManifest): string {
+export function loaderLabel(instance: InstanceManifest): string {
   if (instance.fabric_loader) return `Fabric ${instance.fabric_loader}`;
   if (instance.neoforge_version) return `NeoForge ${instance.neoforge_version}`;
   if (instance.forge_version) return `Forge ${instance.forge_version}`;
@@ -44,6 +46,7 @@ function loaderLabel(instance: InstanceManifest): string {
 export function InstanceDetailPage({
   instanceId,
   onBack,
+  onOpenContent,
 }: InstanceDetailPageProps) {
   const { status, session, error: coreError } = useLauncher();
   const { settings, t } = useSettings();
@@ -264,6 +267,10 @@ export function InstanceDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          <Button variant="outline" onClick={onOpenContent} disabled={deleting}>
+            <Package />
+            {t("instances.content")}
+          </Button>
           <Button
             variant="ghost"
             size="icon"

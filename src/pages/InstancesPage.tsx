@@ -15,9 +15,10 @@ import type { InstanceManifest } from "@/lib/types";
 
 export interface InstancesPageProps {
   onOpenDetail: (instanceId: string) => void;
+  onOpenContent: (instanceId: string) => void;
 }
 
-export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
+export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProps) {
   const { status, session } = useLauncher();
   const { settings, t } = useSettings();
   const { tasks, taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
@@ -188,6 +189,7 @@ export function InstancesPage({ onOpenDetail }: InstancesPageProps) {
               onShowLog={() => setLogInstanceId(instance.id)}
               onDelete={() => setDeleteTarget(instance)}
               onOpenDetail={() => onOpenDetail(instance.id)}
+              onOpenContent={() => onOpenContent(instance.id)}
             />
           ))}
         </div>
