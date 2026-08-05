@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderInput, RefreshCw, Trash2 } from "lucide-react";
+import { FolderInput, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ContentSearchDialog, loaderNameOf } from "@/components/ContentSearchDialog";
 import { formatBytes } from "@/components/InstallTaskProgress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,10 +41,12 @@ type PanelState =
 
 function ContentPanel({
   kind,
+  instance,
   directory,
   storeDir,
 }: {
   kind: ContentKind;
+  instance: InstanceManifest;
   directory: string;
   storeDir: string;
 }) {
@@ -53,6 +56,8 @@ function ContentPanel({
   const [pendingFile, setPendingFile] = useState<string | null>(null);
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const needsLoader = kind === "mods" && loaderNameOf(instance) == null;
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -138,6 +143,21 @@ function ContentPanel({
 
   return (
     <div className="space-y-3 pt-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">
+          {needsLoader ? t("content.needsLoader") : ""}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={needsLoader}
+          title={needsLoader ? t("content.needsLoader") : undefined}
+          onClick={() => setSearchOpen(true)}
+        >
+          <Plus className="size-4" />
+          {t("content.add")}
+        </Button>
+      </div>
       {entries.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted-foreground">
           {t("content.empty")}
@@ -249,6 +269,14 @@ function ContentPanel({
           </ul>
         </div>
       )}
+      <ContentSearchDialog
+        kind={kind}
+        instance={instance}
+        entries={entries}
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        onChanged={() => void load()}
+      />
     </div>
   );
 }
@@ -277,6 +305,7 @@ export function ContentManager({ instance }: { instance: InstanceManifest }) {
             <TabsContent key={kind} value={kind}>
               <ContentPanel
                 kind={kind}
+                instance={instance}
                 directory={directory}
                 storeDir={settings.storeDir}
               />
