@@ -29,6 +29,8 @@ export interface Settings {
   hideTestVersions: boolean;
   /** Selected Microsoft account id (public metadata; tokens stay in the keychain). */
   activeAccountId: string | null;
+  /** Per-instance java_override executable paths; absent = auto policy (docs/java.md §Forced Override). */
+  javaOverrides: Record<string, string>;
 }
 
 const STORAGE_KEY = "jmcl.settings.v1";
@@ -42,6 +44,7 @@ const defaults: Settings = {
   source: "official",
   hideTestVersions: true,
   activeAccountId: null,
+  javaOverrides: {},
 };
 
 function loadStored(): Settings {

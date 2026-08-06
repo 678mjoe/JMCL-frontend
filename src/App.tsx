@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Gamepad2, Settings as SettingsIcon } from "lucide-react";
+import { Gamepad2, Coffee, Settings as SettingsIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { AccountWidget } from "@/components/AccountWidget";
 import { cn } from "@/lib/utils";
@@ -9,12 +9,13 @@ import { SettingsProvider, useSettings } from "@/lib/settings";
 import { TasksProvider } from "@/lib/tasks";
 import { MicrosoftLoginDialog } from "@/components/MicrosoftLoginDialog";
 import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
+import { JavaPage } from "@/pages/JavaPage";
 import { InstanceContentPage } from "@/pages/InstanceContentPage";
 import { InstancesPage } from "@/pages/InstancesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import "./App.css";
 
-type TopLevelPage = "instances" | "settings";
+type TopLevelPage = "instances" | "java" | "settings";
 type Page = TopLevelPage | "instance" | "instance-content";
 type Route = { page: Page; instanceId?: string };
 
@@ -51,6 +52,7 @@ function Shell() {
 
   const nav: { id: TopLevelPage; label: string; icon: typeof Gamepad2 }[] = [
     { id: "instances", label: t("nav.instances"), icon: Gamepad2 },
+    { id: "java", label: t("nav.java"), icon: Coffee },
     { id: "settings", label: t("nav.settings"), icon: SettingsIcon },
   ];
 
@@ -104,6 +106,8 @@ function Shell() {
           />
         ) : route.page === "settings" ? (
           <SettingsPage />
+        ) : route.page === "java" ? (
+          <JavaPage />
         ) : (
           <InstancesPage
             onOpenDetail={(instanceId) =>

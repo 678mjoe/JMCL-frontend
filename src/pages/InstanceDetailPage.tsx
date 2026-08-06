@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DeleteInstanceDialog } from "@/components/DeleteInstanceDialog";
+import { InstanceJavaCard } from "@/components/InstanceJavaCard";
 import { InstallTaskProgress } from "@/components/InstallTaskProgress";
 import { LogSheet } from "@/components/LogSheet";
 import { Badge } from "@/components/ui/badge";
@@ -129,7 +130,7 @@ export function InstanceDetailPage({
     void (async () => {
       try {
         const auth = await resolveLaunchAuth();
-        void startLaunch(manifest, dirs, auth);
+        void startLaunch(manifest, dirs, auth, settings.javaOverrides[manifest.id]);
         setLogOpen(true);
       } catch (e) {
         toast.error(
@@ -419,7 +420,7 @@ export function InstanceDetailPage({
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 <span>
-                  {t("task.stage.launch")}
+                  {t(launchTask.stage)}
                   {launchTask.pid != null && ` · pid ${launchTask.pid}`}
                 </span>
               </p>
@@ -460,6 +461,8 @@ export function InstanceDetailPage({
           )}
         </Card>
       </div>
+
+      <InstanceJavaCard instance={manifest} />
 
       <LogSheet
         instanceId={logOpen ? instanceId : null}

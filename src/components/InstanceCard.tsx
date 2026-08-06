@@ -114,7 +114,7 @@ export function InstanceCard({
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
             <span>
-              {t("task.stage.launch")}
+              {t(launchTask.stage)}
               {launchTask.pid != null && ` · ${launchTask.pid}`}
             </span>
           </p>

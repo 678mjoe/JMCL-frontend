@@ -45,6 +45,7 @@ export interface Task {
     | "task.stage.download"
     | "task.stage.processor"
     | "task.stage.prepare"
+    | "task.stage.java"
     | "task.stage.launch";
   progress: TaskProgress | null;
   pid: number | null;
@@ -66,7 +67,7 @@ interface TasksContextValue {
   /** Resolves the version+loader online on a dedicated session; returns success. */
   startValidate: (instance: InstanceManifest) => Promise<boolean>;
   startInstall: (instance: InstanceManifest, dirs: StartDirs) => Promise<void>;
-  startLaunch: (instance: InstanceManifest, dirs: StartDirs, auth: AuthSession) => Promise<void>;
+  startLaunch: (instance: InstanceManifest, dirs: StartDirs, auth: AuthSession, javaOverride?: string | null) => Promise<void>;
   clearTask: (kind: TaskKind, instanceId: string) => void;
 }
 
@@ -224,7 +225,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   );
 
   const startLaunch = useCallback(
-    async (instance: InstanceManifest, dirs: StartDirs, auth: AuthSession) => {
+    async (instance: InstanceManifest, dirs: StartDirs, auth: AuthSession, javaOverride?: string | null) => {
       const key = beginTask("launch", instance.id, "task.stage.launch");
       pendingRef.current[key] = "";
       const session = await openSession();
@@ -236,7 +237,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
             directory: `${dirs.instancesDir}/${instance.id}/.minecraft`,
             auth,
             source: instance.source,
+            store_directory: dirs.storeDir,
             ...loaderFieldsOf(instance),
+            ...(javaOverride ? { java_override: javaOverride } : {}),
           },
           (event) => {
             if (event.kind === "diagnostic") {
@@ -246,7 +249,29 @@ export function TasksProvider({ children }: { children: ReactNode }) {
             const e = event.data;
             if (e.event === "started") {
               const started = e.started as Record<string, unknown> | undefined;
-              patch(key, { pid: (started?.pid as number) ?? null });
+              patch(key, { pid: (started?.pid as number) ?? null, progress: null });
+              return;
+            }
+            // Managed-runtime download phase before spawn (docs/java.md §RPC).
+            if (e.event === "stage") {
+              patch(key, { stage: "task.stage.java" });
+              return;
+            }
+            if (e.event === "progress") {
+              const p = e.progress as {
+                files_completed?: number;
+                files_total?: number;
+                bytes_processed?: number;
+                bytes_total?: number;
+              };
+              patch(key, {
+                progress: {
+                  filesCompleted: p.files_completed ?? 0,
+                  filesTotal: p.files_total ?? 0,
+                  bytesProcessed: p.bytes_processed ?? 0,
+                  bytesTotal: p.bytes_total ?? 0,
+                },
+              });
               return;
             }
             if (e.event === "stdout" || e.event === "stderr") {

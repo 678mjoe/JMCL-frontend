@@ -102,7 +102,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
     void (async () => {
       try {
         const auth = await resolveLaunchAuth();
-        void startLaunch(instance, dirs, auth);
+        void startLaunch(instance, dirs, auth, settings.javaOverrides[instance.id]);
         setLogInstanceId(instance.id);
       } catch (e) {
         toast.error(
