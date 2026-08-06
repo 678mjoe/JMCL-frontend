@@ -91,16 +91,70 @@ export interface VersionListResult {
   versions: VersionSummary[];
 }
 
+/** Probed local Java runtime from java.detect (docs/java.md §Probe). */
 export interface JavaRuntime {
-  path: string;
+  executable: string;
+  /** Discovery channel: explicit | java_home | platform | path. */
+  source?: string;
   major_version?: number;
-  arch?: string;
+  specification_version?: string;
+  version?: string;
+  runtime_version?: string;
+  vendor?: string;
+  java_home?: string;
+  vm_name?: string;
+  os_arch?: string;
+  /** Normalized architecture: x86_64 | arm64. */
+  architecture?: string;
+  data_model?: number;
   [field: string]: unknown;
 }
 
 export interface JavaDetectResult {
   runtimes?: JavaRuntime[];
-  failures?: unknown[];
+  probe_failures?: unknown[];
+  [field: string]: unknown;
+}
+
+/** java.select result: exact major + architecture match (docs/java.md §RPC). */
+export interface JavaSelectResult {
+  version_id: string;
+  required_major: number;
+  required_arch: string;
+  runtime: JavaRuntime;
+  probe_failures?: unknown[];
+  [field: string]: unknown;
+}
+
+export type JavaProvider = "auto" | "mojang" | "zulu";
+
+/** java_policy on launch.plan/launch.execute/install.execute. */
+export type JavaPolicy = "auto" | "local" | "managed";
+
+/** Managed runtime receipt entry from java.runtime.list (docs/java.md). */
+export interface ManagedJavaRuntime {
+  /** Directory name under <store>/runtimes; the `runtime` key for java.runtime.remove. */
+  name: string;
+  provider: "mojang" | "zulu" | string;
+  /** Mojang component name or Zulu major id (e.g. "zulu-8"). */
+  id: string;
+  platform: string;
+  major_version: number;
+  java_home: string;
+  executable: string;
+  version?: string | null;
+  vendor?: string | null;
+  component?: string | null;
+  package_uuid?: string | null;
+  source_url?: string;
+  files_total?: number;
+  bytes_total?: number;
+  installed_at_ms?: number;
+  [field: string]: unknown;
+}
+
+export interface JavaRuntimeListResult {
+  runtimes: ManagedJavaRuntime[];
   [field: string]: unknown;
 }
 

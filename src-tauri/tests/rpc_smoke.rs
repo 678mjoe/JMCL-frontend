@@ -28,9 +28,10 @@ fn runtime() -> tokio::runtime::Runtime {
 struct FixtureRoot(PathBuf);
 
 impl FixtureRoot {
-    fn new() -> Self {
+    fn new(label: &str) -> Self {
         let path = std::env::temp_dir().join(format!(
-            "jmcl-installed-status-{}",
+            "jmcl-{}-{}",
+            label,
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&path);
@@ -140,9 +141,30 @@ fn java_detect_returns_object() {
 }
 
 #[test]
+fn java_runtime_list_on_empty_store() {
+    runtime().block_on(async {
+        let fixture = FixtureRoot::new("runtime-list");
+        let session = open().await;
+        let result = session
+            .request(
+                "java.runtime.list",
+                json!({"store_directory": fixture.0}),
+                |_| {},
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            result["runtimes"],
+            json!([]),
+            "expected no managed runtimes in a fresh store: {result}"
+        );
+    });
+}
+
+#[test]
 fn instance_status_matches_version_and_loader_but_not_source() {
     runtime().block_on(async {
-        let fixture = FixtureRoot::new();
+        let fixture = FixtureRoot::new("installed-status");
         fixture.add_instance("source-mismatch", "bmclapi", "1.21.4", "official");
         fixture.add_instance("version-mismatch", "official", "1.21.3", "official");
 

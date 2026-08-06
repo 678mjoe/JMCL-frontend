@@ -20,6 +20,10 @@ import type {
   InstallPrepareResult,
   InstanceManifest,
   JavaDetectResult,
+  JavaPolicy,
+  JavaProvider,
+  JavaRuntimeListResult,
+  JavaSelectResult,
   LoaderFields,
   LoaderName,
   MinecraftExchangeResult,
@@ -228,6 +232,7 @@ export class CoreSession {
       arch: string;
       workers: number;
       retries: number;
+      java_policy: JavaPolicy;
     }> & LoaderFields = {},
     onEvent?: EventHandler<InstallEvent>,
   ) {
@@ -254,7 +259,40 @@ export class CoreSession {
   }
 
   javaSelect(id: string, opts: { source?: Source; arch?: string; paths?: string[] } = {}) {
-    return this.request<Record<string, unknown>>("java.select", { id, ...opts });
+    return this.request<JavaSelectResult>("java.select", { id, ...opts });
+  }
+
+  javaRuntimeList(storeDirectory?: string) {
+    return this.request<JavaRuntimeListResult>("java.runtime.list", {
+      store_directory: storeDirectory,
+    });
+  }
+
+  /** Exactly one of component/major (contract §4). Emits install-style progress events. */
+  javaRuntimeInstall(
+    target: { component: string } | { major: number },
+    opts: Partial<{
+      provider: JavaProvider;
+      platform: string;
+      store_directory: string;
+      workers: number;
+      retries: number;
+    }> = {},
+    onEvent?: EventHandler,
+  ) {
+    return this.request<Record<string, unknown>>(
+      "java.runtime.install",
+      { ...target, ...opts },
+      onEvent,
+    );
+  }
+
+  /** `runtime` is the receipt `name` from javaRuntimeList. */
+  javaRuntimeRemove(runtime: string, storeDirectory?: string) {
+    return this.request<Record<string, unknown>>("java.runtime.remove", {
+      runtime,
+      store_directory: storeDirectory,
+    });
   }
 
   // --- launch -----------------------------------------------------------------
@@ -264,12 +302,18 @@ export class CoreSession {
     nativesDirectory: string,
     auth: AuthSession,
     options: Record<string, unknown> = {},
+    java: Partial<{
+      java_policy: JavaPolicy;
+      java_override: string;
+      store_directory: string;
+    }> = {},
   ) {
     return this.request<Record<string, unknown>>("launch.plan", {
       id,
       natives_directory: nativesDirectory,
       auth,
       options,
+      ...java,
     });
   }
 
@@ -278,10 +322,15 @@ export class CoreSession {
     auth: AuthSession,
     options: Record<string, unknown> = {},
     onEvent?: EventHandler,
+    java: Partial<{
+      java_policy: JavaPolicy;
+      java_override: string;
+      store_directory: string;
+    }> = {},
   ) {
     return this.request<Record<string, unknown>>(
       "launch.execute",
-      { id, auth, options },
+      { id, auth, options, ...java },
       onEvent,
     );
   }
