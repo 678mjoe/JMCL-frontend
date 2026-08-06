@@ -24,6 +24,10 @@ const zh = {
   "java.auto": "自动（推荐）",
   "java.managedBadge": "托管",
   "java.overrideWarning": "指定后将跳过 Java 版本与架构检查，配置不当时游戏可能无法启动。",
+  "java.recommended": "推荐 Java",
+  "java.missing": "未安装",
+  "java.recommendedFailed": "推荐版本获取失败，点击重试",
+  "java.overrideMismatch": "所选 Java 与推荐版本 Java {major} 不一致。",
 
   "core.starting": "正在连接核心…",
   "core.ready": "核心已连接",
@@ -213,6 +217,10 @@ const en: Record<MessageKey, string> = {
   "java.auto": "Automatic (recommended)",
   "java.managedBadge": "Managed",
   "java.overrideWarning": "An explicit choice skips Java version and architecture checks; the game may fail to start if misconfigured.",
+  "java.recommended": "Recommended Java",
+  "java.missing": "Not installed",
+  "java.recommendedFailed": "Couldn't fetch the recommended version - click to retry",
+  "java.overrideMismatch": "Selected Java doesn't match the recommended Java {major}.",
 
   "core.starting": "Connecting to core…",
   "core.ready": "Core connected",

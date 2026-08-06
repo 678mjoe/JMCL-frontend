@@ -77,7 +77,7 @@ function taskKey(kind: TaskKind, instanceId: string): string {
   return `${kind}:${instanceId}`;
 }
 
-function loaderFieldsOf(m: InstanceManifest): LoaderFields {
+export function loaderFieldsOf(m: InstanceManifest): LoaderFields {
   if (m.fabric_loader) return { fabric_loader: m.fabric_loader };
   if (m.neoforge_version) return { neoforge_version: m.neoforge_version };
   if (m.forge_version) return { forge_version: m.forge_version };
