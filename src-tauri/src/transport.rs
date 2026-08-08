@@ -44,9 +44,14 @@ const CORE_EXE: &str = "jmcl-core";
 
 fn find_core_near(executable: &Path) -> Option<PathBuf> {
     for dir in executable.ancestors().skip(1).take(8) {
-        let adjacent = dir.join(CORE_EXE);
-        if adjacent.is_file() {
-            return Some(adjacent);
+        // The adjacent binary only exists in packaged builds (Tauri externalBin
+        // places the sidecar next to the executable). Debug builds skip it so a
+        // stray copy in target/ can never shadow the canonical dev binary below.
+        if !cfg!(debug_assertions) {
+            let adjacent = dir.join(CORE_EXE);
+            if adjacent.is_file() {
+                return Some(adjacent);
+            }
         }
         let development = dir.join("backend-binaries").join(CORE_EXE);
         if development.is_file() {
@@ -57,8 +62,9 @@ fn find_core_near(executable: &Path) -> Option<PathBuf> {
 }
 
 /// Resolve the core binary: explicit path → `JMCL_CORE` env → the app's
-/// executable directory and its ancestors. Each ancestor is checked both for
-/// a bundled sidecar and for the development `backend-binaries` directory.
+/// executable directory and its ancestors. Release builds check each ancestor
+/// for a bundled sidecar; every build then falls back to the development
+/// `backend-binaries` directory.
 pub fn resolve_core_binary(explicit: Option<&str>) -> Result<PathBuf, String> {
     let chosen = explicit
         .map(str::to_owned)
@@ -219,6 +225,32 @@ mod tests {
         std::fs::write(&core, []).unwrap();
 
         assert_eq!(find_core_near(&executable), Some(core));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Debug builds never pick up an adjacent `jmcl-core` — only packaged
+    /// (release) sidecars may. A stale copy next to a dev executable must not
+    /// shadow the development `backend-binaries` binary.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_builds_ignore_adjacent_binary() {
+        let root =
+            std::env::temp_dir().join(format!("jmcl-core-adjacent-{}", std::process::id()));
+        let executable = root.join("src-tauri/target/debug/jmcl");
+        let adjacent = executable.parent().unwrap().join(CORE_EXE);
+        let development = root.join("backend-binaries").join(CORE_EXE);
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(development.parent().unwrap()).unwrap();
+        std::fs::write(&adjacent, []).unwrap();
+        std::fs::write(&development, []).unwrap();
+
+        assert_eq!(find_core_near(&executable), Some(development));
+
+        // With no backend-binaries anywhere, the adjacent copy alone is not enough.
+        std::fs::remove_dir_all(root.join("backend-binaries")).unwrap();
+        assert_eq!(find_core_near(&executable), None);
 
         std::fs::remove_dir_all(root).unwrap();
     }
