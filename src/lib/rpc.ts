@@ -33,6 +33,8 @@ import type {
   Source,
   VersionListResult,
   VersionResolveResult,
+  WorldBackupEntry,
+  WorldEntry,
 } from "./types";
 
 export interface CoreEvent {
@@ -445,6 +447,96 @@ export class CoreSession {
     return this.request<Record<string, unknown>>(`${kind}.adopt`, {
       directory,
       store_directory: storeDirectory,
+    });
+  }
+
+  // --- worlds (saves; same game `directory` as content methods, contract §4) ----
+  // Worlds are mutable instance-private state; mutations are crash-safe staging
+  // operations and refuse worlds whose session.lock flock is held by a running
+  // game (WORLD_LOCKED); stale lock files are tolerated. All are single
+  // request/result calls with no progress events.
+
+  worldsList(directory: string, minecraftVersion?: string) {
+    return this.request<{ worlds: WorldEntry[] }>("worlds.list", {
+      directory,
+      minecraft_version: minecraftVersion,
+    });
+  }
+
+  /** `icon_png_base64` is null when the world has no icon (capped at 64 KiB). */
+  worldsGet(directory: string, world: string, minecraftVersion?: string) {
+    return this.request<{ world: WorldEntry; icon_png_base64: string | null }>(
+      "worlds.get",
+      { directory, world, minecraft_version: minecraftVersion },
+    );
+  }
+
+  /** Renames the directory AND rewrites LevelName inside level.dat atomically. */
+  worldsRename(directory: string, world: string, newName: string) {
+    return this.request<{ world: WorldEntry }>("worlds.rename", {
+      directory,
+      world,
+      new_name: newName,
+    });
+  }
+
+  /** Plain recursive copy (no links); LevelName is NOT rewritten. */
+  worldsDuplicate(directory: string, world: string, newName: string) {
+    return this.request<{ world: WorldEntry }>("worlds.duplicate", {
+      directory,
+      world,
+      new_name: newName,
+    });
+  }
+
+  /** Permanent; the GUI must confirm first — the core never asks. */
+  worldsDelete(directory: string, world: string) {
+    return this.request<{ deleted: string }>("worlds.delete", { directory, world });
+  }
+
+  /** Writes a standard zip to `file`; returns {file, size_bytes, files}. */
+  worldsExport(directory: string, world: string, file: string) {
+    return this.request<{ file: string; size_bytes: number; files: number }>(
+      "worlds.export",
+      { directory, world, file },
+    );
+  }
+
+  /** Extracts a world zip; WORLD_EXISTS unless replace:true (full swap). */
+  worldsImport(directory: string, file: string, opts: { name?: string; replace?: boolean } = {}) {
+    return this.request<{ world: WorldEntry }>("worlds.import", {
+      directory,
+      file,
+      ...opts,
+    });
+  }
+
+  /** Timestamped zip into `<game dir>/backups/`; label sanitized to [A-Za-z0-9._-]. */
+  worldsBackup(directory: string, world: string, label?: string) {
+    return this.request<{ backup: string }>("worlds.backup", {
+      directory,
+      world,
+      label,
+    });
+  }
+
+  worldsBackups(directory: string) {
+    return this.request<{ backups: WorldBackupEntry[] }>("worlds.backups", { directory });
+  }
+
+  /** Import from the backups directory; WORLD_EXISTS unless replace:true. */
+  worldsRestore(directory: string, backup: string, opts: { name?: string; replace?: boolean } = {}) {
+    return this.request<{ world: WorldEntry }>("worlds.restore", {
+      directory,
+      backup,
+      ...opts,
+    });
+  }
+
+  worldsBackupsDelete(directory: string, backup: string) {
+    return this.request<{ deleted: string }>("worlds.backups.delete", {
+      directory,
+      backup,
     });
   }
 

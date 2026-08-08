@@ -28,6 +28,7 @@ tokio = { version = "1", features = ["process", "io-util", "sync", "rt", "time",
 async-trait = "0.1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 thiserror = "2"
+tauri-plugin-dialog = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

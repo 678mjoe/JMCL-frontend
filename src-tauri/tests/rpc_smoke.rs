@@ -207,3 +207,128 @@ fn concurrent_callers_on_one_session_are_serialized() {
         assert_eq!(b.unwrap()["protocol"], 1);
     });
 }
+
+/// Save/world lifecycle against the real core (contract §4, docs/worlds.md):
+/// list shape, locked gating, duplicate/backup/restore/delete round trips,
+/// and the WORLD_EXISTS / BACKUP_NOT_FOUND error codes the GUI surfaces.
+#[test]
+fn worlds_lifecycle_round_trip() {
+    runtime().block_on(async {
+        let fixture = FixtureRoot::new("worlds");
+        let game = fixture.0.join("inst").join(".minecraft");
+        let alpha = game.join("saves").join("Alpha");
+        std::fs::create_dir_all(alpha.join("region")).unwrap();
+        std::fs::write(alpha.join("region").join("r.0.0.mca"), [0u8; 128]).unwrap();
+        let directory = game.to_str().unwrap().to_owned();
+
+        let session = open().await;
+        let call = |method: &str, params: serde_json::Value| {
+            let session = &session;
+            let method = method.to_owned();
+            async move { session.request(&method, params, |_| {}).await }
+        };
+
+        // A world without level.dat still lists, with null metadata.
+        let result = call(
+            "worlds.list",
+            json!({"directory": directory, "minecraft_version": "1.21.4"}),
+        )
+        .await
+        .unwrap();
+        let worlds = result["worlds"].as_array().unwrap();
+        assert_eq!(worlds.len(), 1, "unexpected worlds.list: {result}");
+        assert_eq!(worlds[0]["name"], "Alpha");
+        assert_eq!(worlds[0]["level_name"], serde_json::Value::Null);
+        assert_eq!(worlds[0]["locked"], false);
+        assert_eq!(worlds[0]["version_relation"], "unknown");
+        assert!(worlds[0]["size_bytes"].as_u64().unwrap() >= 128);
+
+        // A stale session.lock (no flock held, e.g. crash leftover) is
+        // tolerated: the world reports locked:false and mutations proceed
+        // (contract §4: only a flock held by a running game locks a world).
+        std::fs::write(alpha.join("session.lock"), b"lock").unwrap();
+        let result = call("worlds.list", json!({"directory": directory}))
+            .await
+            .unwrap();
+        assert_eq!(result["worlds"][0]["locked"], false);
+
+        // Duplicate returns the new world entry; session.lock is excluded.
+        let result = call(
+            "worlds.duplicate",
+            json!({"directory": directory, "world": "Alpha", "new_name": "Beta"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["world"]["name"], "Beta");
+        assert!(!game.join("saves").join("Beta").join("session.lock").exists());
+        std::fs::remove_file(alpha.join("session.lock")).unwrap();
+
+        // Backup lands in <game dir>/backups/ and lists newest first.
+        let result = call("worlds.backup", json!({"directory": directory, "world": "Alpha"}))
+            .await
+            .unwrap();
+        let backup = result["backup"].as_str().unwrap().to_owned();
+        assert!(backup.starts_with("Alpha-"), "unexpected backup name: {backup}");
+        let result = call("worlds.backups", json!({"directory": directory}))
+            .await
+            .unwrap();
+        let backups = result["backups"].as_array().unwrap();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(backups[0]["file"], backup);
+        assert_eq!(backups[0]["world"], "Alpha");
+
+        // Restore refuses an existing target, succeeds under a fresh name.
+        let err = call(
+            "worlds.restore",
+            json!({"directory": directory, "backup": backup}),
+        )
+        .await
+        .unwrap_err();
+        match err {
+            SessionError::Rpc { code, .. } => assert_eq!(code, "WORLD_EXISTS"),
+            other => panic!("expected Rpc error, got {other}"),
+        }
+        let result = call(
+            "worlds.restore",
+            json!({"directory": directory, "backup": backup, "name": "Gamma"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["world"]["name"], "Gamma");
+
+        // Deleting a backup twice reports BACKUP_NOT_FOUND.
+        let result = call(
+            "worlds.backups.delete",
+            json!({"directory": directory, "backup": backup}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["deleted"], backup);
+        let err = call(
+            "worlds.backups.delete",
+            json!({"directory": directory, "backup": backup}),
+        )
+        .await
+        .unwrap_err();
+        match err {
+            SessionError::Rpc { code, .. } => assert_eq!(code, "BACKUP_NOT_FOUND"),
+            other => panic!("expected Rpc error, got {other}"),
+        }
+
+        // Delete returns the removed name; the list reflects every mutation.
+        let result = call("worlds.delete", json!({"directory": directory, "world": "Beta"}))
+            .await
+            .unwrap();
+        assert_eq!(result["deleted"], "Beta");
+        let result = call("worlds.list", json!({"directory": directory}))
+            .await
+            .unwrap();
+        let names: Vec<&str> = result["worlds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["Alpha", "Gamma"]);
+    });
+}

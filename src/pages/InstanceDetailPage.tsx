@@ -14,6 +14,7 @@ import { DeleteInstanceDialog } from "@/components/DeleteInstanceDialog";
 import { InstanceJavaCard } from "@/components/InstanceJavaCard";
 import { InstallTaskProgress } from "@/components/InstallTaskProgress";
 import { LogSheet } from "@/components/LogSheet";
+import { WorldsManager } from "@/components/WorldsManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -463,6 +464,8 @@ export function InstanceDetailPage({
       </div>
 
       <InstanceJavaCard instance={manifest} />
+
+      <WorldsManager instance={manifest} />
 
       <LogSheet
         instanceId={logOpen ? instanceId : null}

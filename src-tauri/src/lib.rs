@@ -148,6 +148,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Core children run with the app-data dir as CWD so the core's
             // CWD-relative defaults (e.g. the `accounts` registry, contract

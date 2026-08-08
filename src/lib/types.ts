@@ -72,6 +72,38 @@ export interface ContentListResult {
   unmanaged: string[];
 }
 
+/**
+ * One save directory under `<game dir>/saves/` (contract §4, docs/worlds.md).
+ * All level.dat metadata fields are null for missing/corrupt level.dat.
+ */
+export interface WorldEntry {
+  /** Directory name; also the world identity for every worlds.* call. */
+  name: string;
+  level_name: string | null;
+  version_name: string | null;
+  version_id: number | null;
+  game_mode: string | null;
+  hardcore: boolean | null;
+  cheats: boolean | null;
+  difficulty: number | null;
+  last_played_ms: number | null;
+  size_bytes: number;
+  has_icon: boolean;
+  /** session.lock flock held by a running game; mutations are refused (WORLD_LOCKED). Stale lock files report false. */
+  locked: boolean;
+  /** Advisory comparison against the requested minecraft_version; the core never blocks on it. */
+  version_relation: "same" | "different" | "unknown";
+}
+
+/** One timestamped zip under `<game dir>/backups/` (contract §4). */
+export interface WorldBackupEntry {
+  file: string;
+  /** Parsed from the file name; null for foreign zips. */
+  world: string | null;
+  created_ms: number;
+  size_bytes: number;
+}
+
 export interface VersionResolveResult {
   /** "vanilla" or the loader kind. */
   kind: string;

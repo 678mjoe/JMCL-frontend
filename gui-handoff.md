@@ -4,7 +4,7 @@ Audience: the agent/developer building the JMCL GUI in a separate repository.
 This document is self-contained; reading the core's source is not required.
 Details beyond the contract live in `docs/*.md` of the core repository
 (`protocol.md`, `content.md`, `modpack.md`, `authentication.md`, `accounts.md`,
-`java.md`, `launch.md`).
+`java.md`, `launch.md`, `worlds.md`).
 
 JMCL Core is a Minecraft: Java Edition launcher core distributed as a single
 native binary (`jmcl-core`). The GUI drives it through a JSON Lines RPC
@@ -190,6 +190,33 @@ links.
 no Windows reserved stems. At most one loader field (`fabric_loader`,
 `neoforge_version`, `forge_version`).
 
+World (save) management operates on the same game `directory` as content
+methods. Worlds are mutable instance-private state: never content-addressed,
+never hard-linked. Mutations are crash-safe staging operations and refuse
+worlds in use by a running game (`session.lock` flock-held -> `WORLD_LOCKED`; stale lock files are tolerated):
+
+| Method | Required params | Optional params | Notes |
+|---|---|---|---|
+| `worlds.list` | `directory` | `minecraft_version` | `{worlds[]}` sorted by name; corrupt worlds list with `null` metadata |
+| `worlds.get` | `directory`, `world` | `minecraft_version` | one `world` entry plus `icon_png_base64` (null when absent) |
+| `worlds.rename` | `directory`, `world`, `new_name` | `minecraft_version` | renames the directory AND rewrites `LevelName` inside `level.dat` atomically; returns the renamed entry |
+| `worlds.duplicate` | `directory`, `world`, `new_name` | `minecraft_version` | plain recursive copy (no links, `session.lock` excluded); returns the new entry |
+| `worlds.delete` | `directory`, `world` | — | permanent; confirm in the GUI first |
+| `worlds.export` | `directory`, `world`, `file` | — | writes a standard zip; returns `{file, size_bytes, files}`; refuses locked worlds |
+| `worlds.import` | `directory`, `file` | `name`, `replace` | extracts a world zip; default name from the zip prefix or file stem; returns the world entry |
+| `worlds.backup` | `directory`, `world` | `label` | timestamped zip into `<game dir>/backups/`; returns `{backup}` |
+| `worlds.backups` | `directory` | — | `{backups[]}` newest first: `file`, `world` (nullable), `created_ms`, `size_bytes` |
+| `worlds.restore` | `directory`, `backup` | `name`, `replace` | import from the backups directory; `WORLD_EXISTS` unless `replace:true` (full swap) |
+| `worlds.backups.delete` | `directory`, `backup` | — | `BACKUP_NOT_FOUND` for missing files |
+
+World entries: `name` (directory), parsed `level.dat` metadata
+(`level_name`, `version_name`, `version_id`, `game_mode`, `hardcore`,
+`cheats`, `difficulty`, `last_played_ms` — all nullable), `size_bytes`,
+`has_icon`, `locked`, and `version_relation` (`same`/`different`/`unknown`
+against your `minecraft_version`; advisory only — surface a downgrade warning
+yourself, the core never blocks). `world` names: 1-255 bytes, no separators,
+no leading dot, no trailing space/dot. See `docs/worlds.md`.
+
 Server instances use a separate root and are Linux-only. A remote GUI starts
 `ssh user@host jmcl-core rpc` and uses the same JSON Lines protocol. Every
 `server.*` call returns `UNSUPPORTED_PLATFORM` when the core is not running
@@ -210,6 +237,14 @@ on Linux:
 | `server.command` | `directory`, `id`, one UTF-8 `command` line | — | writes to the console FIFO; returns `accepted:true` and the validated PID |
 | `server.properties.get` | `directory`, `id` | — | returns the full string-valued `properties` object |
 | `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
+| `server.worlds.list` | `directory`, `id` | `minecraft_version` | read-only; base world from `level-name` plus existing `_nether`/`_the_end` siblings |
+| `server.worlds.get` | `directory`, `id`, `world` | `minecraft_version` | read-only; one entry plus `icon_png_base64` |
+| `server.worlds.rename` | `directory`, `id`, `world`, `new_name` | — | stopped server only; renaming the `level-name` world also renames existing dimension siblings and rewrites `level-name` in `server.properties` |
+| `server.worlds.delete` | `directory`, `id`, `world` | — | stopped server only; deleting the base world cascades to `_nether`/`_the_end` siblings |
+| `server.worlds.backup` | `directory`, `id` | `world`, `label` | stopped server only; without `world` packs base + existing siblings into one zip under `servers/<id>/backups/`; returns `{backup}` |
+| `server.worlds.backups` | `directory`, `id` | — | `{backups[]}` newest first |
+| `server.worlds.restore` | `directory`, `id`, `backup` | `replace` | stopped server only; restores every top-level world directory in the zip; `WORLD_EXISTS` unless `replace:true` |
+| `server.worlds.backups.delete` | `directory`, `id`, `backup` | — | `BACKUP_NOT_FOUND` for missing files |
 
 `server.create`, `server.list`, and `server.get` include `installed`. Treat it
 as authoritative. The v3 completion marker must match the manifest and the
@@ -358,6 +393,10 @@ Common codes:
   `UNSUPPORTED_MODPACK_FORMAT`, `UNSUPPORTED_LOADER`, `LOADER_CONFLICT`,
   `MODPACK_NOT_FOUND`, `MODPACK_INSTALL_FAILED`, `UNSAFE_MODPACK`.
 - Store: `STORE_GC_PARTIAL` (result contains per-error counts).
+- Worlds: `WORLD_NOT_FOUND`, `WORLD_EXISTS`, `WORLD_LOCKED`,
+  `WORLD_INVALID_LEVEL_DATA`, `WORLD_ICON_TOO_LARGE`, `WORLD_LIST_FAILED`,
+  `WORLD_GET_FAILED`, `WORLD_RENAME_FAILED`, `WORLD_COPY_FAILED`,
+  `WORLD_DELETE_FAILED`.
 - Auth: see §6.
 
 Retry guidance: network-flavored codes (`HTTP_STATUS_ERROR`, TLS failures)
@@ -402,6 +441,8 @@ jmcl-core instance mods install my-id --project sodium
 jmcl-core instance mods set-version my-id --project sodium --version FRXt5xaI
 jmcl-core instance mods disable my-id --project sodium
 jmcl-core instance modpack install my-pack --file pack.mrpack
+jmcl-core instance worlds list my-id
+jmcl-core instance worlds duplicate my-id "My World" Backup
 jmcl-core instance launch my-id
 jmcl-core store gc                 # dry-run by default; add --execute to reclaim
 ```
