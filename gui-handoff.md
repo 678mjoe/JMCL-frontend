@@ -220,7 +220,24 @@ no leading dot, no trailing space/dot. See `docs/worlds.md`.
 Server instances use a separate root and are Linux-only. A remote GUI starts
 `ssh user@host jmcl-core rpc` and uses the same JSON Lines protocol. Every
 `server.*` call returns `UNSUPPORTED_PLATFORM` when the core is not running
-on Linux:
+on Linux.
+
+#### Server request convention
+
+`directory` is the servers root and `id` identifies one directory below it.
+The GUI passes both values to the core and must not construct internal
+`.jmcl`, world, log, mod, or backup paths itself:
+
+```json
+{"protocol":1,"id":"srv-1","method":"server.status","params":{"directory":"/srv/jmcl/servers","id":"demo"}}
+```
+
+Server calls use the normal terminal-event contract. A success is one
+`event:"result"`; a failure is one `event:"error"`. Messages are for display;
+branch on the stable error `code`. Unknown request fields are ignored for
+forward compatibility, but the GUI should send only documented fields.
+
+#### Server method inventory
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
@@ -235,8 +252,10 @@ on Linux:
 | `server.status` | `directory`, `id` | — | returns validated `running`, `stale_state`, PIDs, Java path, start time, and uptime |
 | `server.logs` | `directory`, `id` | `cursor`, `file_id`, `max_bytes` (default 65536, max 1048576) | merged console tail; resume with the preceding `next_cursor` + `file_id`; honor `reset` |
 | `server.command` | `directory`, `id`, one UTF-8 `command` line | — | writes to the console FIFO; returns `accepted:true` and the validated PID |
-| `server.properties.get` | `directory`, `id` | — | returns the full string-valued `properties` object |
-| `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
+| `server.rcon.command` | `directory`, `id`, masked `password`, `command` | `max_bytes` | enabled running server only; result is bounded `text` plus `truncated` |
+| `server.query` | `directory`, `id` | `mode` (`basic`/`full`) | enabled running server only; normalized GameSpy4 status |
+| `server.properties.get` | `directory`, `id` | — | returns the string-valued `properties` object; `rcon.password` is redacted |
+| `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | stopped server only; lifecycle-locked merge and atomic rewrite; returns all resulting keys, with `rcon.password` redacted |
 | `server.worlds.list` | `directory`, `id` | `minecraft_version` | read-only; base world from `level-name` plus existing `_nether`/`_the_end` siblings |
 | `server.worlds.get` | `directory`, `id`, `world` | `minecraft_version` | read-only; one entry plus `icon_png_base64` |
 | `server.worlds.rename` | `directory`, `id`, `world`, `new_name` | — | stopped server only; renaming the `level-name` world also renames existing dimension siblings and rewrites `level-name` in `server.properties` |
@@ -245,6 +264,113 @@ on Linux:
 | `server.worlds.backups` | `directory`, `id` | — | `{backups[]}` newest first |
 | `server.worlds.restore` | `directory`, `id`, `backup` | `replace` | stopped server only; restores every top-level world directory in the zip; `WORLD_EXISTS` unless `replace:true` |
 | `server.worlds.backups.delete` | `directory`, `id`, `backup` | — | `BACKUP_NOT_FOUND` for missing files |
+| `server.mods.list` | `directory`, `id` | — | read-only; `{entries[], unmanaged[]}` from `servers/<id>/.jmcl/content.json` |
+| `server.mods.install` | `directory`, `id`, `project` | `provider`, `api_key`, `version_id`, `with_dependencies`, `store_directory`, `workers`, `retries` | stopped server only; version+loader come from `server.json` (no `minecraft_version`/`loader` params); vanilla fails `SERVER_LOADER_REQUIRED` |
+| `server.mods.set-version` | `directory`, `id`, `project`, `version_id` | `api_key`, `store_directory`, `workers`, `retries` | stopped server only; same result shape as `mods.set-version` |
+| `server.mods.enable` / `server.mods.disable` | `directory`, `id`, one of `project`/`file` | — | stopped server only; renames to/from `<file>.disabled` |
+| `server.mods.remove` | `directory`, `id`, one of `project`/`file` | — | stopped server only; deletes the server link, store object awaits GC |
+| `server.mods.adopt` | `directory`, `id` | `store_directory` | stopped server only; registers unmanaged `mods/*.jar` as `manual` |
+| `server.datapacks.list` | `directory`, `id` | — | read-only; `{entries[], unmanaged[]}` from `<level-name>/.jmcl/content.json`; empty until the world exists |
+| `server.datapacks.install` | `directory`, `id`, `project` | `provider`, `api_key`, `version_id`, `with_dependencies`, `store_directory`, `workers`, `retries` | stopped server only; targets `<level-name>/datapacks/`; version from `server.json`; vanilla OK; world dir created on demand; requires an installed server (`SERVER_PROPERTIES_INVALID` without a usable `level-name`) |
+| `server.datapacks.set-version` | `directory`, `id`, `project`, `version_id` | `api_key`, `store_directory`, `workers`, `retries` | stopped server only; same result shape as `datapacks.set-version` |
+| `server.datapacks.enable` / `server.datapacks.disable` | `directory`, `id`, one of `project`/`file` | — | stopped server only; renames to/from `<file>.disabled` |
+| `server.datapacks.remove` | `directory`, `id`, one of `project`/`file` | — | stopped server only; deletes the world link, store object awaits GC |
+| `server.datapacks.adopt` | `directory`, `id` | `store_directory` | stopped server only; registers unmanaged `<level-name>/datapacks/*.zip` as `manual` |
+
+#### State and concurrency matrix
+
+Treat the server as one of three GUI states. `installed` comes from
+`server.create|list|get`; `running` comes from `server.status`:
+
+| Operation family | Created, not installed | Installed, stopped | Running |
+|---|---:|---:|---:|
+| `server.get/list/status` | yes | yes | yes |
+| `server.install` | yes | yes (repair/reinstall) | no |
+| `server.start` | no | yes | no |
+| `server.stop/restart` | no | no | yes |
+| `server.logs` | no | after a prior start created the log | yes |
+| `server.command`, RCON, Query | no | no | yes |
+| `server.properties.get` | after properties exist | yes | yes |
+| `server.properties.set` | after properties exist | yes | no |
+| world mutations and backups | no | yes | no |
+| server mod mutations | yes (loader manifest required) | yes | no |
+| server data-pack mutations | no (properties required) | yes | no |
+| `server.delete` | yes | yes | no |
+
+The core re-checks every transition; this table is for enabling controls, not
+for replacing RPC validation. Refresh `server.status` after reconnecting or
+after any lifecycle error. Multiple RPC sessions may inspect different
+servers concurrently, but never issue concurrent mutations for the same
+`directory` + `id`.
+
+#### High-frequency result contracts
+
+`server.status` is the authoritative live-state snapshot:
+
+```json
+{"protocol":1,"id":"status-1","event":"result","result":{"stage":"server.status","id":"demo","running":true,"stale_state":false,"pid":12345,"supervisor_pid":12344,"java_path":"/usr/bin/java","started_at_ms":1789740000000,"uptime_ms":3600000}}
+```
+
+When `running:false`, `pid`, `supervisor_pid`, `java_path`, `started_at_ms`,
+and `uptime_ms` may be `null`. `stale_state:true` means the core removed a dead,
+malformed, or identity-mismatched PID state during this request; discard any
+GUI assumption that the previous process still exists.
+
+`server.logs` returns a bounded, resumable byte range:
+
+```json
+{"protocol":1,"id":"logs-1","event":"result","result":{"stage":"server.logs","id":"demo","text":"[Server thread/INFO]: Done\n","file_id":123456,"start_cursor":0,"next_cursor":33,"eof":true,"reset":false,"truncated":false}}
+```
+
+For every next read, send both the preceding `next_cursor` and `file_id`.
+`reset:true` means the file rotated, was replaced, or the cursor became
+invalid: discard the GUI's partial stream and continue from the returned
+`start_cursor`. `truncated:true` means an initial tail omitted older bytes; it
+does not mean `text` is invalid UTF-8.
+
+`server.command` only acknowledges FIFO delivery; it does not return command
+output:
+
+```json
+{"protocol":1,"id":"cmd-1","event":"result","result":{"stage":"server.command","id":"demo","accepted":true,"pid":12345}}
+```
+
+Use RCON when the GUI needs a direct textual reply:
+
+```json
+{"protocol":1,"id":"rcon-1","method":"server.rcon.command","params":{"directory":"/srv/jmcl/servers","id":"demo","password":"…","command":"list","max_bytes":262144}}
+{"protocol":1,"id":"rcon-1","event":"result","result":{"stage":"server.rcon.command","text":"There are 2 of a max of 20 players online","truncated":false}}
+```
+
+Query defaults to `mode:"full"`; `version` and `plugins` may be `null`, while
+`player_names` is always an array:
+
+```json
+{"protocol":1,"id":"query-1","method":"server.query","params":{"directory":"/srv/jmcl/servers","id":"demo","mode":"full"}}
+{"protocol":1,"id":"query-1","event":"result","result":{"stage":"server.query","mode":"full","hostname":"A Minecraft Server","game_type":"SMP","map":"world","version":"1.21.4","players":2,"max_players":20,"host_port":25565,"host_ip":"127.0.0.1","plugins":"","player_names":["Alex","Steve"]}}
+```
+
+`server.properties.get` and `.set` return string-valued properties. Numeric and
+boolean-looking values remain strings. Both methods serialize
+`rcon.password` as `"<redacted>"`; a returned redaction marker is never a value
+to write back automatically.
+
+#### RCON and Query security
+
+For `server.rcon.command`, the GUI must mask the password input and must never
+log, cache, place it in telemetry, or include it in task diagnostics. The core
+uses it only for the immediate loopback RCON exchange. RCON is plaintext and
+Query may expose player metadata, so the GUI should continue to reach the core
+over SSH and should not encourage public exposure of either server port.
+
+The GUI cannot choose a network target. The core always connects to IPv4
+`127.0.0.1`; ports are resolved strictly from `server.properties`. RCON
+requires `enable-rcon=true`, Query requires `enable-query=true`, and neither
+method changes those properties. Do not offer an "expose RCON/Query publicly"
+shortcut. RCON and Query are command/status facilities only and do not make a
+live-world backup safe.
+
+#### Installation and loader semantics
 
 `server.create`, `server.list`, and `server.get` include `installed`. Treat it
 as authoritative. The v3 completion marker must match the manifest and the
@@ -265,6 +391,8 @@ phase after downloads, but that phase is silent and does not emit
 type; wait for the terminal `result` or `error` for the `server.install`
 request.
 
+#### Detached lifecycle and log streaming
+
 Running servers are detached from `jmcl-core rpc`; ending or reconnecting SSH
 must not be treated as a stop. Keep the `next_cursor` and `file_id` from every
 `server.logs` result. If `reset:true`, discard any GUI-side partial stream and
@@ -275,8 +403,36 @@ distinctly include `SERVER_NOT_INSTALLED`, `SERVER_ALREADY_RUNNING`,
 `JAVA_NOT_FOUND`, and `JAVA_INCOMPATIBLE`; stop/command while stopped return
 `SERVER_NOT_RUNNING`.
 
+#### Server error routing
+
+At minimum, give these stable codes distinct GUI handling:
+
+| Codes | GUI action |
+|---|---|
+| `INVALID_PARAMS` | local validation error; do not retry unchanged input |
+| `UNSUPPORTED_PLATFORM` | disable server management on this host |
+| `SERVER_NOT_FOUND`, `SERVER_EXISTS` | refresh the server list |
+| `SERVER_NOT_INSTALLED` | offer install/repair |
+| `SERVER_ALREADY_RUNNING` | refresh status; disable stopped-only action |
+| `SERVER_NOT_RUNNING` | refresh status; disable running-only action |
+| `SERVER_STATUS_FAILED` | show host/filesystem failure; status is unknown |
+| `EULA_NOT_ACCEPTED` | require an explicit user EULA decision |
+| `SERVER_LOADER_UNSUPPORTED`, `SERVER_LOADER_REQUIRED` | change loader/server choice |
+| `JAVA_NOT_FOUND`, `JAVA_INCOMPATIBLE` | open Java selection or managed-runtime flow |
+| `SERVER_PROPERTIES_NOT_FOUND`, `SERVER_PROPERTIES_INVALID` | offer install/repair or manual property correction |
+| `SERVER_LOGS_NOT_FOUND` | show an empty/not-yet-created log state |
+| `SERVER_RCON_DISABLED`, `SERVER_QUERY_DISABLED` | explain that the operator must enable and restart the server |
+| `SERVER_RCON_AUTH_FAILED` | request the password again; never include it in diagnostics |
+| `SERVER_RCON_UNAVAILABLE`, `SERVER_QUERY_UNAVAILABLE` | one manual retry is reasonable after checking live status |
+| `SERVER_RCON_PROTOCOL_ERROR`, `SERVER_QUERY_PROTOCOL_ERROR` | report an incompatible/malformed server response; do not loop-retry |
+| `WORLD_NOT_FOUND`, `WORLD_EXISTS`, `BACKUP_NOT_FOUND` | refresh the relevant world/backup list |
+
+Messages remain display-only and may change. Validation, disabled-feature,
+authentication, and protocol errors are not automatic-retry candidates.
+
 Content methods exist for three kinds with identical shapes:
-`mods.*`, `resourcepacks.*`, `shaderpacks.*`.
+`mods.*`, `resourcepacks.*`, `shaderpacks.*`. Data packs are the fourth kind
+but world-scoped and covered separately below the table.
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
@@ -306,6 +462,19 @@ Semantics the GUI must respect:
   GUI — use `<kind>.enable`/`.remove`.
 - `as_dependency:true` marks entries pulled in as required dependencies.
 
+Data packs (`datapacks.list|install|set-version|enable|disable|remove|adopt`)
+attach to one world instead of the instance: every method takes the game
+`directory` plus a required `world` name and `minecraft_version` (no
+`loader`), manages `saves/<world>/datapacks/*.zip`, and keeps its registry at
+`saves/<world>/.jmcl/content.json` — the entry shape is identical but
+relative to the world. Results echo `world`. Mutations refuse a live-game
+world (`WORLD_LOCKED`, same `session.lock` probe as world mutations) and a
+missing world (`WORLD_NOT_FOUND`); `list` never locks. The registry rides
+with the world directory (rename/duplicate carry it; export/backup archives
+exclude `.jmcl`, so restored datapacks come back unmanaged — offer
+`datapacks.adopt` after a restore). Directory-shaped data packs are not
+managed content; surface them read-only at most.
+
 `modpack.install` creates a whole instance from an archive:
 
 ```json
@@ -327,8 +496,9 @@ Afterwards run `install.execute` + `install.prepare` for the new instance
 
 The following are **provided by you, the GUI — the core's direct caller**.
 The core has none of them built in and never embeds, persists, or echoes
-them; you supply them per request and store them (OS keychain recommended).
-This applies equally to the CurseForge API key: it is your application's
+them. Persist reusable OAuth/API credentials in the OS keychain. The RCON
+password is the deliberate exception: collect it for the immediate command
+and do not cache or persist it. The CurseForge API key is your application's
 credential, passed to the core on each call that needs it, exactly like the
 Entra client ID.
 
@@ -337,6 +507,7 @@ Entra client ID.
 | Microsoft Entra public client ID | all `auth.microsoft.*` / `auth.minecraft.*` methods as `client_id` | UUID `00001111-aaaa-2222-bbbb-3333cccc4444` |
 | CurseForge API key | `provider:"curseforge"` installs, CF modpacks, CF `set-version`, as `api_key` | opaque token from <https://console.curseforge.com/> |
 | OAuth refresh tokens | `auth.microsoft.refresh`, `auth.minecraft.refresh_exchange` | owned by GUI keychain, rotated on every refresh |
+| RCON password | `server.rcon.command` as `password` | transient opaque string; masked input, never persisted/logged/cached/telemetried |
 
 Error events never contain tokens, keys, device codes, or response bodies.
 Apply the same discipline in the GUI: never log raw request/result lines of
