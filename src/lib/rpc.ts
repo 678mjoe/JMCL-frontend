@@ -38,6 +38,36 @@ import type {
   ModpackInstallResult,
   RefreshExchangeResult,
   SessionInfo,
+  ServerBackupListResult,
+  ServerCommandResult,
+  ServerContentAdoptResult,
+  ServerContentEntry,
+  ServerContentInstallResult,
+  ServerContentListResult,
+  ServerContentRemoveResult,
+  ServerContentSetVersionResult,
+  ServerContentToggleResult,
+  ServerDatapackEntry,
+  ServerInstallResult,
+  ServerLifecycleStartResult,
+  ServerLogResult,
+  ServerListResult,
+  ServerManifestResult,
+  ServerModEntry,
+  ServerProperties,
+  ServerPropertiesResult,
+  ServerQueryMode,
+  ServerQueryResult,
+  ServerRconResult,
+  ServerStatus,
+  ServerStopResult,
+  ServerWorldBackupDeleteResult,
+  ServerWorldBackupResult,
+  ServerWorldDeleteResult,
+  ServerWorldGetResult,
+  ServerWorldListResult,
+  ServerWorldRenameResult,
+  ServerWorldRestoreResult,
   Source,
   VersionListResult,
   VersionResolveResult,
@@ -165,6 +195,44 @@ export interface RequestOptions {
   mutation?: InstanceMutation;
 }
 
+type RequestExecutor = <T = unknown, E extends CoreEvent = LooseCoreEvent>(
+  method: string,
+  params: Record<string, unknown>,
+  onEvent?: EventHandler<E>,
+  options?: RequestOptions,
+) => Promise<T>;
+
+function omitUndefined<T extends Record<string, unknown>>(params: T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined));
+}
+
+/** Exact server request seam used by wrappers and wire-shape tests. */
+export function serverRequest(
+  method: string,
+  params: Record<string, unknown>,
+): { method: string; params: Record<string, unknown> } {
+  return { method, params: omitUndefined(params) };
+}
+
+export type ServerContentTarget = { project: string } | { file: string };
+
+export type ServerContentInstallOptions = Partial<{
+  provider: "modrinth" | "curseforge";
+  api_key: string;
+  version_id: string;
+  with_dependencies: boolean;
+  store_directory: string;
+  workers: number;
+  retries: number;
+}>;
+
+export type ServerContentSetVersionOptions = Partial<{
+  api_key: string;
+  store_directory: string;
+  workers: number;
+  retries: number;
+}>;
+
 export type LaunchExecuteOptions = {
   source?: Source;
   store_directory?: string;
@@ -200,7 +268,16 @@ export class CoreSession {
     readonly id: number,
     readonly core: CoreIdentity,
     private readonly mock = false,
+    private readonly requestExecutor?: RequestExecutor,
   ) {}
+
+  /**
+   * Test-only request seam. It is dependency-injected per session and has no
+   * process-wide recording or logging state.
+   */
+  static createForTesting(requestExecutor: RequestExecutor): CoreSession {
+    return new CoreSession(0, { name: "test-core", version: "test", protocol: 1 }, false, requestExecutor);
+  }
 
   /**
    * Spawn `jmcl-core rpc` and run the protocol handshake.
@@ -239,6 +316,9 @@ export class CoreSession {
     options: RequestOptions = {},
   ): Promise<T> {
     const execute = async () => {
+      if (this.requestExecutor) {
+        return this.requestExecutor<T, E>(method, params, onEvent, options);
+      }
       if (this.mock) {
         try {
           return await mockRequest<T>(method, params, onEvent as never);
@@ -443,6 +523,280 @@ export class CoreSession {
 
   instanceDelete(directory: string, id: string) {
     return this.request<unknown>("instance.delete", { directory, id }, undefined, { instanceId: instanceMutationKey(directory, id), mutation: "delete" });
+  }
+
+  // --- servers ---------------------------------------------------------------
+  // Server calls intentionally do not use the client instance coordinator:
+  // `directory` + `id` is a remote/core-owned identity, not a local game path.
+
+  private serverCall<T, E extends CoreEvent = LooseCoreEvent>(
+    method: string,
+    params: Record<string, unknown>,
+    onEvent?: EventHandler<E>,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    const request = serverRequest(method, params);
+    return this.request<T, E>(request.method, request.params, onEvent, options);
+  }
+
+  /** Read/write server manifest operations. */
+  serverCreate(
+    directory: string,
+    id: string,
+    versionId: string,
+    opts: { name?: string; source?: Source; accept_eula?: boolean; java_path?: string } & LoaderFields = {},
+  ) {
+    return this.serverCall<ServerManifestResult>("server.create", {
+      directory,
+      id,
+      version_id: versionId,
+      ...opts,
+    });
+  }
+
+  serverList(directory: string) {
+    return this.serverCall<ServerListResult>("server.list", { directory });
+  }
+
+  serverGet(directory: string, id: string) {
+    return this.serverCall<ServerManifestResult>("server.get", { directory, id });
+  }
+
+  serverDelete(directory: string, id: string) {
+    return this.serverCall<{ stage: "server.delete"; id: string; deleted: true }>("server.delete", { directory, id });
+  }
+
+  /** Explicit EULA acceptance is required by the core for every install call. */
+  serverInstall(
+    directory: string,
+    id: string,
+    opts: {
+      accept_eula: true;
+      store_directory?: string;
+      workers?: number;
+      retries?: number;
+      java_paths?: string[];
+    },
+    onEvent?: EventHandler<InstallEvent>,
+  ) {
+    return this.serverCall<ServerInstallResult, InstallEvent>(
+      "server.install",
+      { directory, id, ...opts },
+      onEvent,
+      { compactEvents: true },
+    );
+  }
+
+  serverStart(directory: string, id: string, opts: { java_paths?: string[] } = {}) {
+    return this.serverCall<ServerLifecycleStartResult>("server.start", { directory, id, ...opts });
+  }
+
+  serverStop(directory: string, id: string, graceMs?: number) {
+    return this.serverCall<ServerStopResult>("server.stop", {
+      directory,
+      id,
+      grace_ms: graceMs,
+    });
+  }
+
+  serverRestart(directory: string, id: string, opts: { java_paths?: string[]; grace_ms?: number } = {}) {
+    return this.serverCall<ServerLifecycleStartResult>("server.restart", { directory, id, ...opts });
+  }
+
+  serverStatus(directory: string, id: string) {
+    return this.serverCall<ServerStatus>("server.status", { directory, id });
+  }
+
+  serverLogs(
+    directory: string,
+    id: string,
+    opts: { cursor?: number; file_id?: number; max_bytes?: number } = {},
+  ) {
+    return this.serverCall<ServerLogResult>("server.logs", { directory, id, ...opts });
+  }
+
+  serverCommand(directory: string, id: string, command: string) {
+    return this.serverCall<ServerCommandResult>("server.command", { directory, id, command });
+  }
+
+  /** Password is passed only to this request and is never retained by CoreSession. */
+  serverRconCommand(
+    directory: string,
+    id: string,
+    password: string,
+    command: string,
+    maxBytes?: number,
+  ) {
+    return this.serverCall<ServerRconResult>("server.rcon.command", {
+      directory,
+      id,
+      password,
+      command,
+      max_bytes: maxBytes,
+    });
+  }
+
+  serverQuery(directory: string, id: string, mode: ServerQueryMode = "full") {
+    return this.serverCall<ServerQueryResult>("server.query", { directory, id, mode });
+  }
+
+  serverPropertiesGet(directory: string, id: string) {
+    return this.serverCall<ServerPropertiesResult>("server.properties.get", { directory, id });
+  }
+
+  serverPropertiesSet(directory: string, id: string, properties: ServerProperties) {
+    return this.serverCall<ServerPropertiesResult>("server.properties.set", { directory, id, properties });
+  }
+
+  // Server world reads and mutations deliberately pass world/backup ids only;
+  // the core owns the server root and all internal dimension/backup paths.
+  serverWorldsList(directory: string, id: string, minecraftVersion?: string) {
+    return this.serverCall<ServerWorldListResult>("server.worlds.list", {
+      directory,
+      id,
+      minecraft_version: minecraftVersion,
+    });
+  }
+
+  serverWorldsGet(directory: string, id: string, world: string, minecraftVersion?: string) {
+    return this.serverCall<ServerWorldGetResult>("server.worlds.get", {
+      directory,
+      id,
+      world,
+      minecraft_version: minecraftVersion,
+    });
+  }
+
+  serverWorldsRename(directory: string, id: string, world: string, newName: string) {
+    return this.serverCall<ServerWorldRenameResult>("server.worlds.rename", {
+      directory,
+      id,
+      world,
+      new_name: newName,
+    });
+  }
+
+  serverWorldsDelete(directory: string, id: string, world: string) {
+    return this.serverCall<ServerWorldDeleteResult>("server.worlds.delete", { directory, id, world });
+  }
+
+  serverWorldsBackup(
+    directory: string,
+    id: string,
+    opts: { world?: string; label?: string } = {},
+  ) {
+    return this.serverCall<ServerWorldBackupResult>("server.worlds.backup", { directory, id, ...opts });
+  }
+
+  serverWorldsBackups(directory: string, id: string) {
+    return this.serverCall<ServerBackupListResult>("server.worlds.backups", { directory, id });
+  }
+
+  serverWorldsRestore(directory: string, id: string, backup: string, replace = false) {
+    return this.serverCall<ServerWorldRestoreResult>("server.worlds.restore", {
+      directory,
+      id,
+      backup,
+      replace,
+    });
+  }
+
+  serverWorldsBackupsDelete(directory: string, id: string, backup: string) {
+    return this.serverCall<ServerWorldBackupDeleteResult>("server.worlds.backups.delete", {
+      directory,
+      id,
+      backup,
+    });
+  }
+
+  private serverContentList<T extends ServerContentEntry>(method: "server.mods.list" | "server.datapacks.list", directory: string, id: string) {
+    return this.serverCall<ServerContentListResult & { entries: T[] }>(method, { directory, id });
+  }
+
+  serverModsList(directory: string, id: string) {
+    return this.serverContentList<ServerModEntry>("server.mods.list", directory, id);
+  }
+
+  serverModsInstall(directory: string, id: string, project: string, opts: ServerContentInstallOptions = {}, onEvent?: EventHandler<InstallEvent>) {
+    return this.serverCall<ServerContentInstallResult, InstallEvent>("server.mods.install", {
+      directory,
+      id,
+      project,
+      ...opts,
+    }, onEvent, { compactEvents: true });
+  }
+
+  serverModsSetVersion(directory: string, id: string, project: string, versionId: string, opts: ServerContentSetVersionOptions = {}, onEvent?: EventHandler<InstallEvent>) {
+    return this.serverCall<ServerContentSetVersionResult, InstallEvent>("server.mods.set-version", {
+      directory,
+      id,
+      project,
+      version_id: versionId,
+      ...opts,
+    }, onEvent, { compactEvents: true });
+  }
+
+  serverModsEnable(directory: string, id: string, target: ServerContentTarget) {
+    return this.serverCall<ServerContentToggleResult>("server.mods.enable", { directory, id, ...target });
+  }
+
+  serverModsDisable(directory: string, id: string, target: ServerContentTarget) {
+    return this.serverCall<ServerContentToggleResult>("server.mods.disable", { directory, id, ...target });
+  }
+
+  serverModsRemove(directory: string, id: string, target: ServerContentTarget) {
+    return this.serverCall<ServerContentRemoveResult>("server.mods.remove", { directory, id, ...target });
+  }
+
+  serverModsAdopt(directory: string, id: string, storeDirectory?: string) {
+    return this.serverCall<ServerContentAdoptResult>("server.mods.adopt", {
+      directory,
+      id,
+      store_directory: storeDirectory,
+    });
+  }
+
+  serverDatapacksList(directory: string, id: string) {
+    return this.serverContentList<ServerDatapackEntry>("server.datapacks.list", directory, id);
+  }
+
+  serverDatapacksInstall(directory: string, id: string, project: string, opts: ServerContentInstallOptions = {}, onEvent?: EventHandler<InstallEvent>) {
+    return this.serverCall<ServerContentInstallResult, InstallEvent>("server.datapacks.install", {
+      directory,
+      id,
+      project,
+      ...opts,
+    }, onEvent, { compactEvents: true });
+  }
+
+  serverDatapacksSetVersion(directory: string, id: string, project: string, versionId: string, opts: ServerContentSetVersionOptions = {}, onEvent?: EventHandler<InstallEvent>) {
+    return this.serverCall<ServerContentSetVersionResult, InstallEvent>("server.datapacks.set-version", {
+      directory,
+      id,
+      project,
+      version_id: versionId,
+      ...opts,
+    }, onEvent, { compactEvents: true });
+  }
+
+  serverDatapacksEnable(directory: string, id: string, target: ServerContentTarget) {
+    return this.serverCall<ServerContentToggleResult>("server.datapacks.enable", { directory, id, ...target });
+  }
+
+  serverDatapacksDisable(directory: string, id: string, target: ServerContentTarget) {
+    return this.serverCall<ServerContentToggleResult>("server.datapacks.disable", { directory, id, ...target });
+  }
+
+  serverDatapacksRemove(directory: string, id: string, target: ServerContentTarget) {
+    return this.serverCall<ServerContentRemoveResult>("server.datapacks.remove", { directory, id, ...target });
+  }
+
+  serverDatapacksAdopt(directory: string, id: string, storeDirectory?: string) {
+    return this.serverCall<ServerContentAdoptResult>("server.datapacks.adopt", {
+      directory,
+      id,
+      store_directory: storeDirectory,
+    });
   }
 
   // --- content (mods / resourcepacks / shaderpacks) -----------------------------

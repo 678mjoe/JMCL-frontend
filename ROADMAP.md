@@ -142,10 +142,10 @@ Pi 上的 Vite build 不能被描述为完整桌面验收。
 
 ### 服务器 GUI
 
+阶段 1A 已完成：服务器领域类型和完整 `server.*` RPC 层已完成；服务器 UI、状态机、Mock 生命周期和 SSH transport 尚未完成。
+
 JMCLCore 已实现主要 `server.*` 能力，但 JMCL-frontend 尚未实现：
 
-- 服务器领域类型；
-- `server.*` TypeScript RPC 封装；
 - SSH transport；
 - 连接配置；
 - 服务器页面；
