@@ -9,6 +9,14 @@
  */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import {
+  instanceCoordinator,
+  instanceMutationKey,
+  instanceMutationKeyFromGameDirectory,
+  type InstanceMutation,
+} from "./instanceCoordinator";
+import { mockRequest } from "./mockTransport";
+import { isMockTransport } from "./transportMode";
 import type {
   AccountProfile,
   AuthSession,
@@ -139,6 +147,43 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   }
 }
 
+const mutationOptions = (directory: string, mutation: InstanceMutation): RequestOptions => ({
+  instanceId: instanceMutationKeyFromGameDirectory(directory),
+  mutation,
+});
+
+const optionalGameDirectoryMutationOptions = (
+  directory: string | undefined,
+  mutation: InstanceMutation,
+): RequestOptions =>
+  directory ? mutationOptions(directory, mutation) : {};
+
+export interface RequestOptions {
+  compactEvents?: boolean;
+  coordinate?: boolean;
+  instanceId?: string;
+  mutation?: InstanceMutation;
+}
+
+export type LaunchExecuteOptions = {
+  source?: Source;
+  store_directory?: string;
+  options?: Record<string, unknown>;
+  java_policy?: JavaPolicy;
+  java_override?: string;
+} & LoaderFields;
+
+/** Build the exact top-level `launch.execute` wire params (contract §4). */
+export function launchExecuteParams(
+  id: string,
+  directory: string,
+  auth: AuthSession,
+  launch: LaunchExecuteOptions = {},
+): Record<string, unknown> {
+  const { options = {}, ...topLevel } = launch;
+  return { id, directory, auth, options, ...topLevel };
+}
+
 export type EventHandler<E extends CoreEvent = LooseCoreEvent> = (
   event: SessionEvent<E>,
 ) => void;
@@ -154,6 +199,7 @@ export class CoreSession {
   private constructor(
     readonly id: number,
     readonly core: CoreIdentity,
+    private readonly mock = false,
   ) {}
 
   /**
@@ -162,6 +208,17 @@ export class CoreSession {
    * auto-detection next to/above the app executable.
    */
   static async open(binaryPath?: string): Promise<CoreSession> {
+    if (isMockTransport()) {
+      // Keep mock startup semantically equivalent to the real RPC handshake.
+      let core: CoreIdentity;
+      try {
+        core = await mockRequest<CoreIdentity>("core.version", {});
+      } catch (e) {
+        throw normalizeError(e);
+      }
+      if (core.protocol !== 1) throw new RpcError({ kind: "transport", message: "Unsupported core protocol" });
+      return new CoreSession(1, core, true);
+    }
     const info = await call<SessionInfo>("core_open", {
       binaryPath: binaryPath ?? null,
     });
@@ -170,6 +227,7 @@ export class CoreSession {
 
   /** Half-close the session; an in-flight request finishes first. */
   async close(): Promise<void> {
+    if (this.mock) return;
     await call("core_close", { sessionId: this.id });
   }
 
@@ -178,17 +236,30 @@ export class CoreSession {
     method: string,
     params: Record<string, unknown> = {},
     onEvent?: EventHandler<E>,
-    options: { compactEvents?: boolean } = {},
+    options: RequestOptions = {},
   ): Promise<T> {
-    const events = new Channel<SessionEvent<E>>();
-    events.onmessage = onEvent ?? (() => {});
-    return call<T>("core_request", {
-      sessionId: this.id,
-      method,
-      params,
-      events,
-      compactEvents: options.compactEvents ?? false,
-    });
+    const execute = async () => {
+      if (this.mock) {
+        try {
+          return await mockRequest<T>(method, params, onEvent as never);
+        } catch (e) {
+          throw normalizeError(e);
+        }
+      }
+      const events = new Channel<SessionEvent<E>>();
+      events.onmessage = onEvent ?? (() => {});
+      return call<T>("core_request", {
+        sessionId: this.id,
+        method,
+        params,
+        events,
+        compactEvents: options.compactEvents ?? false,
+      });
+    };
+    if (options.coordinate !== false && options.instanceId && options.mutation) {
+      return instanceCoordinator.run(options.instanceId, options.mutation, execute);
+    }
+    return execute();
   }
 
   // --- handshake / liveness ------------------------------------------------
@@ -237,12 +308,17 @@ export class CoreSession {
       java_policy: JavaPolicy;
     }> & LoaderFields = {},
     onEvent?: EventHandler<InstallEvent>,
+    requestOptions: RequestOptions = {},
   ) {
     return this.request<Record<string, unknown>, InstallEvent>(
       "install.execute",
       { id, ...opts },
       onEvent,
-      { compactEvents: true },
+      {
+        compactEvents: true,
+        ...optionalGameDirectoryMutationOptions(opts.directory, "install"),
+        ...requestOptions,
+      },
     );
   }
 
@@ -250,8 +326,14 @@ export class CoreSession {
     id: string,
     opts: Partial<{ directory: string; source: Source; os: string; arch: string }> &
       LoaderFields = {},
+    requestOptions: RequestOptions = {},
   ) {
-    return this.request<InstallPrepareResult>("install.prepare", { id, ...opts });
+    return this.request<InstallPrepareResult>(
+      "install.prepare",
+      { id, ...opts },
+      undefined,
+      { ...optionalGameDirectoryMutationOptions(opts.directory, "install"), ...requestOptions },
+    );
   }
 
   // --- java -------------------------------------------------------------------
@@ -321,19 +403,17 @@ export class CoreSession {
 
   launchExecute(
     id: string,
+    directory: string,
     auth: AuthSession,
-    options: Record<string, unknown> = {},
+    launch: LaunchExecuteOptions = {},
     onEvent?: EventHandler,
-    java: Partial<{
-      java_policy: JavaPolicy;
-      java_override: string;
-      store_directory: string;
-    }> = {},
+    requestOptions: RequestOptions = {},
   ) {
     return this.request<Record<string, unknown>>(
       "launch.execute",
-      { id, auth, options, ...java },
+      launchExecuteParams(id, directory, auth, launch),
       onEvent,
+      { ...mutationOptions(directory, "launch"), ...requestOptions },
     );
   }
 
@@ -350,7 +430,7 @@ export class CoreSession {
       id,
       version_id: versionId,
       ...opts,
-    });
+    }, undefined, { instanceId: instanceMutationKey(directory, id), mutation: "create" });
   }
 
   instanceList(directory: string) {
@@ -362,7 +442,7 @@ export class CoreSession {
   }
 
   instanceDelete(directory: string, id: string) {
-    return this.request<unknown>("instance.delete", { directory, id });
+    return this.request<unknown>("instance.delete", { directory, id }, undefined, { instanceId: instanceMutationKey(directory, id), mutation: "delete" });
   }
 
   // --- content (mods / resourcepacks / shaderpacks) -----------------------------
@@ -393,6 +473,7 @@ export class CoreSession {
       `${kind}.install`,
       { directory, minecraft_version: minecraftVersion, project, ...opts },
       onEvent,
+      mutationOptions(directory, "content-install"),
     );
   }
 
@@ -421,6 +502,7 @@ export class CoreSession {
         ...opts,
       },
       onEvent,
+      mutationOptions(directory, "content-set-version"),
     );
   }
 
@@ -429,25 +511,25 @@ export class CoreSession {
     return this.request<{ changed: boolean; entry: unknown }>(`${kind}.enable`, {
       directory,
       ...target,
-    });
+    }, undefined, mutationOptions(directory, "content-enable"));
   }
 
   contentDisable(kind: ContentKind, directory: string, target: { project: string } | { file: string }) {
     return this.request<{ changed: boolean; entry: unknown }>(`${kind}.disable`, {
       directory,
       ...target,
-    });
+    }, undefined, mutationOptions(directory, "content-disable"));
   }
 
   contentRemove(kind: ContentKind, directory: string, target: { project: string } | { file: string }) {
-    return this.request<unknown>(`${kind}.remove`, { directory, ...target });
+    return this.request<unknown>(`${kind}.remove`, { directory, ...target }, undefined, mutationOptions(directory, "content-remove"));
   }
 
   contentAdopt(kind: ContentKind, directory: string, storeDirectory?: string) {
     return this.request<Record<string, unknown>>(`${kind}.adopt`, {
       directory,
       store_directory: storeDirectory,
-    });
+    }, undefined, mutationOptions(directory, "content-adopt"));
   }
 
   // --- worlds (saves; same game `directory` as content methods, contract §4) ----
@@ -477,7 +559,7 @@ export class CoreSession {
       directory,
       world,
       new_name: newName,
-    });
+    }, undefined, mutationOptions(directory, "world-rename"));
   }
 
   /** Plain recursive copy (no links); LevelName is NOT rewritten. */
@@ -486,12 +568,12 @@ export class CoreSession {
       directory,
       world,
       new_name: newName,
-    });
+    }, undefined, mutationOptions(directory, "world-duplicate"));
   }
 
   /** Permanent; the GUI must confirm first — the core never asks. */
   worldsDelete(directory: string, world: string) {
-    return this.request<{ deleted: string }>("worlds.delete", { directory, world });
+    return this.request<{ deleted: string }>("worlds.delete", { directory, world }, undefined, mutationOptions(directory, "world-delete"));
   }
 
   /** Writes a standard zip to `file`; returns {file, size_bytes, files}. */
@@ -499,6 +581,8 @@ export class CoreSession {
     return this.request<{ file: string; size_bytes: number; files: number }>(
       "worlds.export",
       { directory, world, file },
+      undefined,
+      mutationOptions(directory, "world-export"),
     );
   }
 
@@ -508,7 +592,7 @@ export class CoreSession {
       directory,
       file,
       ...opts,
-    });
+    }, undefined, mutationOptions(directory, "world-import"));
   }
 
   /** Timestamped zip into `<game dir>/backups/`; label sanitized to [A-Za-z0-9._-]. */
@@ -517,7 +601,7 @@ export class CoreSession {
       directory,
       world,
       label,
-    });
+    }, undefined, mutationOptions(directory, "world-backup"));
   }
 
   worldsBackups(directory: string) {
@@ -530,14 +614,14 @@ export class CoreSession {
       directory,
       backup,
       ...opts,
-    });
+    }, undefined, mutationOptions(directory, "world-restore"));
   }
 
   worldsBackupsDelete(directory: string, backup: string) {
     return this.request<{ deleted: string }>("worlds.backups.delete", {
       directory,
       backup,
-    });
+    }, undefined, mutationOptions(directory, "world-backup-delete"));
   }
 
   // --- modpacks & store ----------------------------------------------------------
@@ -558,6 +642,7 @@ export class CoreSession {
       "modpack.install",
       { directory, id, file, ...opts },
       onEvent,
+      { instanceId: instanceMutationKey(directory, id), mutation: "install" },
     );
   }
 
@@ -613,7 +698,7 @@ export class CoreSession {
 
   accountSave(profile: AccountProfile) {
     return this.request<unknown>("account.microsoft.save", {
-      account: profile,
+      ...profile,
     });
   }
 

@@ -15,6 +15,7 @@ import {
 } from "react";
 import { translate, type Language, type MessageKey } from "./i18n";
 import type { Source } from "./types";
+import { appDataDirectories } from "./native";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -78,13 +79,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (settings.instancesDir && settings.storeDir) return;
     let cancelled = false;
-    void import("@tauri-apps/api/path")
-      .then(async ({ appDataDir, join }) => {
-        const base = await appDataDir();
-        const [instancesDir, storeDir] = await Promise.all([
-          join(base, "instances"),
-          join(base, "store"),
-        ]);
+    void appDataDirectories()
+      .then(({ instancesDir, storeDir }) => {
         if (!cancelled) {
           setSettings((s) => ({
             ...s,

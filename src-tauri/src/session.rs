@@ -89,9 +89,8 @@ impl Session {
             },
         };
         let result = session.request("core.version", json!({}), |_| {}).await?;
-        let identity: CoreIdentity = serde_json::from_value(result).map_err(|e| {
-            SessionError::transport(format!("malformed core.version result: {e}"))
-        })?;
+        let identity: CoreIdentity = serde_json::from_value(result)
+            .map_err(|e| SessionError::transport(format!("malformed core.version result: {e}")))?;
         if identity.protocol != u64::from(PROTOCOL_VERSION) {
             return Err(SessionError::transport(format!(
                 "core speaks protocol {}, GUI requires {} — core/GUI version mismatch",
@@ -142,12 +141,14 @@ impl Session {
         loop {
             match transport.next_event().await {
                 TransportEvent::Line(line) => {
-                    let event: Value =
-                        serde_json::from_str(&line).map_err(|e| {
-                            SessionError::transport(format!("core emitted invalid JSON: {e}"))
-                        })?;
+                    let event: Value = serde_json::from_str(&line).map_err(|e| {
+                        SessionError::transport(format!("core emitted invalid JSON: {e}"))
+                    })?;
                     let event_id = event.get("id").and_then(Value::as_str);
-                    let kind = event.get("event").and_then(Value::as_str).unwrap_or_default();
+                    let kind = event
+                        .get("event")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
                     if event_id != Some(id.as_str()) {
                         // `id: null` errors flag malformed requests; our
                         // serializer never produces them, so seeing one means
@@ -163,9 +164,7 @@ impl Session {
                         continue;
                     }
                     match kind {
-                        "result" => {
-                            return Ok(event.get("result").cloned().unwrap_or(Value::Null))
-                        }
+                        "result" => return Ok(event.get("result").cloned().unwrap_or(Value::Null)),
                         "error" => {
                             let code = event
                                 .pointer("/error/code")

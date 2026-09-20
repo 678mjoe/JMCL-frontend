@@ -1,4 +1,5 @@
 import { fetch } from "@tauri-apps/plugin-http";
+import { isMockTransport } from "./native";
 
 export type CatalogLoader = "fabric" | "neoforge" | "forge";
 
@@ -12,6 +13,9 @@ export async function listLoaderVersions(
   loader: CatalogLoader,
   minecraftVersion: string,
 ): Promise<string[]> {
+  if (isMockTransport()) {
+    return loader === "fabric" ? ["0.16.10", "0.16.9"] : loader === "neoforge" ? ["21.1.173", "21.1.172"] : ["47.3.0", "47.2.0"];
+  }
   if (loader === "fabric") {
     const response = await fetch(
       `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(minecraftVersion)}`,

@@ -52,7 +52,10 @@ fn delete_blocking(account_id: String) -> Result<(), CredentialError> {
 /// Store (or overwrite) the refresh token for an account. Callers MUST
 /// persist rotated tokens before using a refreshed session (contract §6.4).
 #[tauri::command]
-pub async fn credential_set(account_id: String, refresh_token: String) -> Result<(), CredentialError> {
+pub async fn credential_set(
+    account_id: String,
+    refresh_token: String,
+) -> Result<(), CredentialError> {
     tauri::async_runtime::spawn_blocking(move || set_blocking(account_id, refresh_token))
         .await
         .map_err(|error| CredentialError::Keychain(error.to_string()))?

@@ -12,7 +12,6 @@
  *   verification URI reach the UI.
  */
 
-import { invoke } from "@tauri-apps/api/core";
 import {
   createContext,
   useCallback,
@@ -28,6 +27,8 @@ import { errorText, useLauncher } from "./launcher";
 import { makeOfflineSession } from "./offline";
 import { RpcError, type CoreSession } from "./rpc";
 import { useSettings } from "./settings";
+import { credentialDelete, credentialGet, credentialSet } from "./native";
+import { withCancellableOpenedSession } from "./sessionLifecycle";
 import type {
   AccountProfile,
   AuthSession,
@@ -49,13 +50,6 @@ const sleep = (ms: number) => {
   setTimeout(resolve, ms);
   return promise;
 };
-
-const credentialSet = (accountId: string, refreshToken: string) =>
-  invoke("credential_set", { accountId, refreshToken });
-const credentialGet = (accountId: string) =>
-  invoke<string | null>("credential_get", { accountId });
-const credentialDelete = (accountId: string) =>
-  invoke("credential_delete", { accountId });
 
 export type LoginStatus = "starting" | "pending" | "finishing" | "error";
 
@@ -178,10 +172,11 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
     setLogin({ status: "starting" });
 
     void (async () => {
-      let loginSession: CoreSession | null = null;
       try {
-        loginSession = await openSession();
-        if (cancelledRef.current) return;
+        await withCancellableOpenedSession(
+          openSession,
+          () => cancelledRef.current,
+          async (loginSession) => {
         loginSessionRef.current = loginSession;
 
         const begin = await loginSession.authDeviceBegin(
@@ -250,6 +245,7 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
             );
           }
         })();
+        if (cancelledRef.current) return;
         const xuid = exchange.session.xuid;
         const profile: AccountProfile = {
           id: exchange.session.uuid,
@@ -268,6 +264,8 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
           setLogin(null);
           toast.success(t("account.login.success", { name: profile.player_name }));
         }
+          },
+        );
       } catch (e) {
         if (!cancelledRef.current) {
           setLogin((current) => ({
@@ -282,7 +280,6 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
         }
       } finally {
         loginSessionRef.current = null;
-        void loginSession?.close();
       }
     })();
   }, [openSession, settings.language, session, refresh, update, t]);

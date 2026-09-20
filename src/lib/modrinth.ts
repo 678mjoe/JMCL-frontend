@@ -7,6 +7,7 @@
  */
 import { fetch } from "@tauri-apps/plugin-http";
 import type { ContentKind, LoaderName } from "./types";
+import { isMockTransport } from "./native";
 
 const API_BASE = "https://api.modrinth.com/v2";
 /** Modrinth API rules ask for an identifying User-Agent. */
@@ -59,6 +60,10 @@ export async function searchProjects(
   gameVersion: string,
   loader: LoaderName | null,
 ): Promise<ModrinthProject[]> {
+  if (isMockTransport()) {
+    const title = query.trim() || "Sodium";
+    return [{ project_id: "AANobbMI", slug: "sodium", title, description: "Mock Modrinth project for browser development", author: "JMCL fixture", downloads: 123456, icon_url: null }];
+  }
   const facets: string[][] = [[`project_type:${PROJECT_TYPE[kind]}`]];
   if (gameVersion) facets.push([`versions:${gameVersion}`]);
   if (kind === "mods" && loader) facets.push([`categories:${loader}`]);
@@ -85,6 +90,9 @@ export async function projectVersions(
   gameVersion: string,
   loader: LoaderName | null,
 ): Promise<ModrinthVersion[]> {
+  if (isMockTransport()) {
+    return [{ id: "mock-sodium", name: "Sodium mock", version_number: "0.6.0-mock", game_versions: [gameVersion], loaders: loader ? [loader] : [], date_published: "2026-01-01T00:00:00Z" }];
+  }
   const params = new URLSearchParams();
   if (gameVersion) params.set("game_versions", JSON.stringify([gameVersion]));
   if (kind === "mods" && loader) {

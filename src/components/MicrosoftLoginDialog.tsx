@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { useMicrosoftAccounts } from "@/lib/auth";
 import { useSettings } from "@/lib/settings";
+import { openUrl } from "@/lib/native";
 
 /**
  * Device-code login dialog (contract §6). Only the user code and the

@@ -140,8 +140,9 @@ impl LocalProcessTransport {
                         break;
                     }
                     Err(e) => {
-                        let _ = stdout_tx
-                            .send(TransportEvent::Closed(format!("RPC stream read error: {e}")));
+                        let _ = stdout_tx.send(TransportEvent::Closed(format!(
+                            "RPC stream read error: {e}"
+                        )));
                         break;
                     }
                 }
@@ -215,8 +216,7 @@ mod tests {
 
     #[test]
     fn finds_development_binary_directory() {
-        let root =
-            std::env::temp_dir().join(format!("jmcl-core-resolver-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("jmcl-core-resolver-{}", std::process::id()));
         let executable = root.join("src-tauri/target/debug/jmcl");
         let core = root.join("backend-binaries").join(CORE_EXE);
         let _ = std::fs::remove_dir_all(&root);
@@ -235,8 +235,7 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn debug_builds_ignore_adjacent_binary() {
-        let root =
-            std::env::temp_dir().join(format!("jmcl-core-adjacent-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("jmcl-core-adjacent-{}", std::process::id()));
         let executable = root.join("src-tauri/target/debug/jmcl");
         let adjacent = executable.parent().unwrap().join(CORE_EXE);
         let development = root.join("backend-binaries").join(CORE_EXE);

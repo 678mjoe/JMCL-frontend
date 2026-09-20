@@ -11,13 +11,17 @@ import {
   useCallback,
   useContext,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useLauncher, errorText } from "./launcher";
-import type { CoreSession } from "./rpc";
 import type { AuthSession, InstanceManifest, LoaderFields } from "./types";
+import {
+  appendLaunchOutput,
+  runLaunchRequest,
+  runtimeInstallEvent,
+} from "./launchRunner";
+import { withOpenedSession } from "./sessionLifecycle";
 
 export type TaskKind = "install" | "launch" | "validate";
 export type TaskStatus = "running" | "success" | "error";
@@ -67,7 +71,12 @@ interface TasksContextValue {
   /** Resolves the version+loader online on a dedicated session; returns success. */
   startValidate: (instance: InstanceManifest) => Promise<boolean>;
   startInstall: (instance: InstanceManifest, dirs: StartDirs) => Promise<void>;
-  startLaunch: (instance: InstanceManifest, dirs: StartDirs, auth: AuthSession, javaOverride?: string | null) => Promise<void>;
+  startLaunch: (
+    instance: InstanceManifest,
+    dirs: StartDirs,
+    auth: AuthSession,
+    javaOverride?: string | null,
+  ) => Promise<void>;
   clearTask: (kind: TaskKind, instanceId: string) => void;
 }
 
@@ -84,20 +93,13 @@ export function loaderFieldsOf(m: InstanceManifest): LoaderFields {
   return {};
 }
 
-function decodeBase64(data: string): string {
-  const binary = atob(data);
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { openSession } = useLauncher();
   const [tasks, setTasks] = useState<Record<string, Task>>({});
-  // Per-task partial line buffer for stdout/stderr reassembly.
-  const pendingRef = useRef<Record<string, string>>({});
-
   const patch = useCallback((key: string, p: Partial<Task>) => {
-    setTasks((prev) => (prev[key] ? { ...prev, [key]: { ...prev[key], ...p } } : prev));
+    setTasks((prev) =>
+      prev[key] ? { ...prev, [key]: { ...prev[key], ...p } } : prev,
+    );
   }, []);
 
   const appendLine = useCallback((key: string, line: LogLine) => {
@@ -137,20 +139,18 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const startValidate = useCallback(
     async (instance: InstanceManifest): Promise<boolean> => {
       const key = beginTask("validate", instance.id, "task.stage.validate");
-      let session: CoreSession | null = null;
       try {
-        session = await openSession();
-        await session.versionResolve(instance.version_id, {
-          source: instance.source,
-          ...loaderFieldsOf(instance),
-        });
+        await withOpenedSession(openSession, (session) =>
+          session.versionResolve(instance.version_id, {
+            source: instance.source,
+            ...loaderFieldsOf(instance),
+          }),
+        );
         patch(key, { status: "success", message: null });
         return true;
       } catch (e) {
         patch(key, { status: "error", message: errorText(e) });
         return false;
-      } finally {
-        if (session) void session.close();
       }
     },
     [beginTask, openSession, patch],
@@ -159,145 +159,148 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const startInstall = useCallback(
     async (instance: InstanceManifest, dirs: StartDirs) => {
       const key = beginTask("install", instance.id, "task.stage.download");
-      let session: CoreSession | null = null;
       const directory = `${dirs.instancesDir}/${instance.id}/.minecraft`;
       const loaders = loaderFieldsOf(instance);
       try {
-        session = await openSession();
-        await session.installExecute(
-          instance.version_id,
-          {
-            directory,
-            store_directory: dirs.storeDir,
-            source: instance.source,
-            ...loaders,
-          },
-          (event) => {
-            if (event.kind !== "event") return;
-            const e = event.data;
-            if (e.event === "progress") {
-              patch(key, {
-                progress: {
-                  filesCompleted: e.progress.files_completed,
-                  filesTotal: e.progress.files_total,
-                  bytesProcessed: e.progress.bytes_processed,
-                  bytesTotal: e.progress.bytes_total,
-                },
-              });
-            } else if (e.event === "started") {
-              patch(key, {
-                stage: "task.stage.download",
-                progress: {
-                  filesCompleted: 0,
-                  filesTotal: e.started.files_total,
-                  bytesProcessed: 0,
-                  bytesTotal: e.started.bytes_total,
-                },
-              });
-            } else if (e.event === "processor_started") {
-              patch(key, {
-                stage: "task.stage.processor",
-                progress: {
-                  filesCompleted: e.processor_started.index,
-                  filesTotal: e.processor_started.total,
-                  bytesProcessed: 0,
-                  bytesTotal: 0,
-                },
-              });
-            }
-          },
-        );
-        patch(key, { stage: "task.stage.prepare", progress: null });
-        await session.request("install.prepare", {
-          id: instance.version_id,
-          directory,
-          source: instance.source,
-          ...loaders,
+        await withOpenedSession(openSession, async (activeSession) => {
+            await activeSession.installExecute(
+              instance.version_id,
+              {
+                directory,
+                store_directory: dirs.storeDir,
+                source: instance.source,
+                ...loaders,
+              },
+              (event) => {
+                if (event.kind !== "event") return;
+                const e = event.data;
+                if (e.event === "progress") {
+                  patch(key, {
+                    progress: {
+                      filesCompleted: e.progress.files_completed,
+                      filesTotal: e.progress.files_total,
+                      bytesProcessed: e.progress.bytes_processed,
+                      bytesTotal: e.progress.bytes_total,
+                    },
+                  });
+                } else if (e.event === "started") {
+                  patch(key, {
+                    stage: "task.stage.download",
+                    progress: {
+                      filesCompleted: 0,
+                      filesTotal: e.started.files_total,
+                      bytesProcessed: 0,
+                      bytesTotal: e.started.bytes_total,
+                    },
+                  });
+                } else if (e.event === "processor_started") {
+                  patch(key, {
+                    stage: "task.stage.processor",
+                    progress: {
+                      filesCompleted: e.processor_started.index,
+                      filesTotal: e.processor_started.total,
+                      bytesProcessed: 0,
+                      bytesTotal: 0,
+                    },
+                  });
+                }
+              },
+            );
+            patch(key, { stage: "task.stage.prepare", progress: null });
+            await activeSession.installPrepare(
+              instance.version_id,
+              {
+                directory,
+                source: instance.source,
+                ...loaders,
+              },
+            );
         });
         patch(key, { status: "success", message: null });
       } catch (e) {
         patch(key, { status: "error", message: errorText(e) });
-      } finally {
-        if (session) void session.close();
       }
     },
     [beginTask, openSession, patch],
   );
 
   const startLaunch = useCallback(
-    async (instance: InstanceManifest, dirs: StartDirs, auth: AuthSession, javaOverride?: string | null) => {
+    async (
+      instance: InstanceManifest,
+      dirs: StartDirs,
+      auth: AuthSession,
+      javaOverride?: string | null,
+    ) => {
       const key = beginTask("launch", instance.id, "task.stage.launch");
-      pendingRef.current[key] = "";
-      const session = await openSession();
       try {
-        const result = await session.request<Record<string, unknown>>(
-          "launch.execute",
-          {
-            id: instance.version_id,
-            directory: `${dirs.instancesDir}/${instance.id}/.minecraft`,
-            auth,
-            source: instance.source,
-            store_directory: dirs.storeDir,
-            ...loaderFieldsOf(instance),
-            ...(javaOverride ? { java_override: javaOverride } : {}),
-          },
-          (event) => {
-            if (event.kind === "diagnostic") {
-              appendLine(key, { stream: "core", text: event.data });
-              return;
-            }
-            const e = event.data;
-            if (e.event === "started") {
-              const started = e.started as Record<string, unknown> | undefined;
-              patch(key, { pid: (started?.pid as number) ?? null, progress: null });
-              return;
-            }
-            // Managed-runtime download phase before spawn (docs/java.md §RPC).
-            if (e.event === "stage") {
-              patch(key, { stage: "task.stage.java" });
-              return;
-            }
-            if (e.event === "progress") {
-              const p = e.progress as {
-                files_completed?: number;
-                files_total?: number;
-                bytes_processed?: number;
-                bytes_total?: number;
-              };
-              patch(key, {
-                progress: {
-                  filesCompleted: p.files_completed ?? 0,
-                  filesTotal: p.files_total ?? 0,
-                  bytesProcessed: p.bytes_processed ?? 0,
-                  bytesTotal: p.bytes_total ?? 0,
+        const result = await withOpenedSession(openSession, async (activeSession) => {
+          return runLaunchRequest(
+                (onEvent) =>
+                  activeSession.launchExecute(
+                    instance.version_id,
+                    `${dirs.instancesDir}/${instance.id}/.minecraft`,
+                    auth,
+                    {
+                      source: instance.source,
+                      store_directory: dirs.storeDir,
+                      ...loaderFieldsOf(instance),
+                      ...(javaOverride ? { java_override: javaOverride } : {}),
+                    },
+                    onEvent,
+                  ),
+                (event, buffer) => {
+                  if (event.kind === "diagnostic") {
+                    appendLine(key, { stream: "core", text: event.data });
+                    return;
+                  }
+
+                  const e = event.data;
+                  if (e.event === "started") {
+                    const started = e.started as
+                      | Record<string, unknown>
+                      | undefined;
+                    patch(key, {
+                      pid: (started?.pid as number) ?? null,
+                      progress: null,
+                    });
+                    return;
+                  }
+                  const runtime = runtimeInstallEvent(event);
+                  if (runtime?.event === "stage") {
+                    patch(key, { stage: "task.stage.java" });
+                    return;
+                  }
+                  if (runtime?.event === "progress") {
+                    const progress = runtime.data.progress as {
+                      files_completed?: number;
+                      files_total?: number;
+                      bytes_processed?: number;
+                      bytes_total?: number;
+                    };
+                    patch(key, {
+                      stage: "task.stage.java",
+                      progress: {
+                        filesCompleted: progress.files_completed ?? 0,
+                        filesTotal: progress.files_total ?? 0,
+                        bytesProcessed: progress.bytes_processed ?? 0,
+                        bytesTotal: progress.bytes_total ?? 0,
+                      },
+                    });
+                    return;
+                  }
+                  appendLaunchOutput(event, buffer, (line) =>
+                    appendLine(key, line),
+                  );
                 },
-              });
-              return;
-            }
-            if (e.event === "stdout" || e.event === "stderr") {
-              const record = e[e.event] as {
-                encoding: string;
-                end: string;
-                data: string;
-              };
-              if (record.encoding !== "base64") return;
-              pendingRef.current[key] =
-                (pendingRef.current[key] ?? "") + decodeBase64(record.data);
-              if (record.end === "newline") {
-                appendLine(key, {
-                  stream: e.event,
-                  text: pendingRef.current[key].replace(/\r?\n$/, ""),
-                });
-                pendingRef.current[key] = "";
-              }
-            }
-          },
-        );
-        // Flush any unterminated trailing output.
-        const rest = pendingRef.current[key];
-        if (rest) appendLine(key, { stream: "stdout", text: rest });
+                (line) => appendLine(key, line),
+              );
+        });
         const process = result.process as
-          | { termination?: string; exit_code?: number | null; signal?: number | null }
+          | {
+              termination?: string;
+              exit_code?: number | null;
+              signal?: number | null;
+            }
           | undefined;
         const code = process?.exit_code;
         patch(key, {
@@ -309,9 +312,6 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         });
       } catch (e) {
         patch(key, { status: "error", message: errorText(e) });
-      } finally {
-        delete pendingRef.current[key];
-        void session.close();
       }
     },
     [appendLine, beginTask, openSession, patch],
@@ -337,7 +337,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     [tasks, startValidate, startInstall, startLaunch, clearTask],
   );
 
-  return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
+  return (
+    <TasksContext.Provider value={value}>{children}</TasksContext.Provider>
+  );
 }
 
 export function useTasks(): TasksContextValue {

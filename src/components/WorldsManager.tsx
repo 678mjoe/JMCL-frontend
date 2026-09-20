@@ -12,7 +12,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { formatBytes } from "@/components/InstallTaskProgress";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +40,7 @@ import { errorText, useLauncher } from "@/lib/launcher";
 import type { MessageKey } from "@/lib/i18n";
 import { useSettings } from "@/lib/settings";
 import type { InstanceManifest, WorldBackupEntry, WorldEntry } from "@/lib/types";
+import { openDialog, saveDialog } from "@/lib/native";
 
 const GAME_MODES: Record<string, MessageKey> = {
   survival: "worlds.gamemode.survival",

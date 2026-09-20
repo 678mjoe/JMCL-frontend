@@ -29,11 +29,7 @@ struct FixtureRoot(PathBuf);
 
 impl FixtureRoot {
     fn new(label: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "jmcl-{}-{}",
-            label,
-            std::process::id()
-        ));
+        let path = std::env::temp_dir().join(format!("jmcl-{}-{}", label, std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -136,7 +132,10 @@ fn java_detect_returns_object() {
             .request("java.detect", json!({}), |_| {})
             .await
             .unwrap();
-        assert!(result.is_object(), "unexpected java.detect result: {result}");
+        assert!(
+            result.is_object(),
+            "unexpected java.detect result: {result}"
+        );
     });
 }
 
@@ -260,15 +259,25 @@ fn worlds_lifecycle_round_trip() {
         .await
         .unwrap();
         assert_eq!(result["world"]["name"], "Beta");
-        assert!(!game.join("saves").join("Beta").join("session.lock").exists());
+        assert!(!game
+            .join("saves")
+            .join("Beta")
+            .join("session.lock")
+            .exists());
         std::fs::remove_file(alpha.join("session.lock")).unwrap();
 
         // Backup lands in <game dir>/backups/ and lists newest first.
-        let result = call("worlds.backup", json!({"directory": directory, "world": "Alpha"}))
-            .await
-            .unwrap();
+        let result = call(
+            "worlds.backup",
+            json!({"directory": directory, "world": "Alpha"}),
+        )
+        .await
+        .unwrap();
         let backup = result["backup"].as_str().unwrap().to_owned();
-        assert!(backup.starts_with("Alpha-"), "unexpected backup name: {backup}");
+        assert!(
+            backup.starts_with("Alpha-"),
+            "unexpected backup name: {backup}"
+        );
         let result = call("worlds.backups", json!({"directory": directory}))
             .await
             .unwrap();
@@ -316,9 +325,12 @@ fn worlds_lifecycle_round_trip() {
         }
 
         // Delete returns the removed name; the list reflects every mutation.
-        let result = call("worlds.delete", json!({"directory": directory, "world": "Beta"}))
-            .await
-            .unwrap();
+        let result = call(
+            "worlds.delete",
+            json!({"directory": directory, "world": "Beta"}),
+        )
+        .await
+        .unwrap();
         assert_eq!(result["deleted"], "Beta");
         let result = call("worlds.list", json!({"directory": directory}))
             .await
