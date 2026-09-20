@@ -265,6 +265,8 @@ server.datapacks.*
 
 core 始终进行最终校验；GUI 状态机只负责正确启用控件和提供恢复操作。
 
+状态：1B 服务器状态机已完成；1C Mock 与基础 UI 尚未完成。
+
 ### 1C. Mock 与基础 UI
 
 Mock 场景至少包含：
