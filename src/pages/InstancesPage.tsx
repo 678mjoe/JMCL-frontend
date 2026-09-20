@@ -19,7 +19,7 @@ export interface InstancesPageProps {
 }
 
 export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProps) {
-  const { status, session } = useLauncher();
+  const { status, session, error: coreError } = useLauncher();
   const { settings, t } = useSettings();
   const { tasks, taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
   const resolveLaunchAuth = useLaunchAuth();
@@ -156,7 +156,15 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
         </div>
       </div>
 
-      {status === "starting" ? (
+      {status === "error" ? (
+        <div className="flex flex-col items-center gap-2 py-24 text-center">
+          <Gamepad2 className="size-10 text-destructive" />
+          <p className="text-sm font-medium">{t("core.error")}</p>
+          {coreError && (
+            <p className="max-w-xl text-sm text-muted-foreground">{coreError}</p>
+          )}
+        </div>
+      ) : status === "starting" ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="space-y-3 rounded-xl border p-6">

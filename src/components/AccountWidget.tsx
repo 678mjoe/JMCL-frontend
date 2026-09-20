@@ -83,7 +83,7 @@ export function AccountWidget({ onManage }: { onManage: () => void }) {
   const { t } = useSettings();
   const ready = status === "ready";
 
-  if (loading && accounts.length === 0) {
+  if (loading && accounts.length === 0 && status === "starting") {
     return (
       <div className="px-4 py-2.5">
         <Skeleton className="h-12 w-full" />
