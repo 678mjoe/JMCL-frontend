@@ -2,6 +2,7 @@
 
 pub mod credentials;
 pub mod pool;
+pub mod server_status_cache;
 pub mod session;
 pub mod transport;
 
@@ -169,7 +170,9 @@ pub fn run() {
             core_request,
             credentials::credential_set,
             credentials::credential_get,
-            credentials::credential_delete
+            credentials::credential_delete,
+            server_status_cache::server_status_cache_read,
+            server_status_cache::server_status_cache_write
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

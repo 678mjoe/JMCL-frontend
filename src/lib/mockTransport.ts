@@ -6,6 +6,11 @@ import type {
   WorldBackupEntry,
   WorldEntry,
 } from "./types";
+import {
+  createEmptyServerStatusCache,
+  type ServerStatusCacheV1,
+} from "./serverStatusCache";
+import { isMockTransport } from "./transportMode";
 
 type MockEventHandler = (event: {
   kind: "event" | "diagnostic";
@@ -265,6 +270,7 @@ export function initializeMockFixture(
 const initialState = initializeMockFixture();
 let activeScenario: MockScenario = initialState.scenario;
 let fixture: MockFixture = initialState.fixture;
+let mockServerStatusCache = createEmptyServerStatusCache();
 
 export function resetMockFixture(
   scenario: MockScenario = readScenario(),
@@ -272,6 +278,7 @@ export function resetMockFixture(
   const nextState = initializeMockFixture(scenario);
   activeScenario = nextState.scenario;
   fixture = nextState.fixture;
+  mockServerStatusCache = createEmptyServerStatusCache();
 }
 
 export function mockScenario(): MockScenario {
@@ -810,6 +817,24 @@ export function mockCredentialGet(accountId: string): string | null {
 }
 export function mockCredentialDelete(accountId: string): void {
   fixture.credentials.delete(accountId);
+}
+
+function cloneServerStatusCache(cache: ServerStatusCacheV1): ServerStatusCacheV1 {
+  return structuredClone(cache);
+}
+
+export function mockServerStatusCacheRead(): ServerStatusCacheV1 {
+  return cloneServerStatusCache(mockServerStatusCache);
+}
+
+export function mockServerStatusCacheWrite(cache: ServerStatusCacheV1): void {
+  mockServerStatusCache = cloneServerStatusCache(cache);
+}
+
+/** Mock-only reset hook; real native persistence has no mutable browser state. */
+export function resetMockServerStatusCache(): void {
+  if (!isMockTransport()) return;
+  mockServerStatusCache = createEmptyServerStatusCache();
 }
 
 export const mockFixtureSummary = {
