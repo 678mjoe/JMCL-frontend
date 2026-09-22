@@ -10,6 +10,15 @@ import {
   createEmptyServerStatusCache,
   type ServerStatusCacheV1,
 } from "./serverStatusCache";
+import {
+  createServerMockState,
+  dispatchServerMockRequest,
+  replaceServerMockLog,
+  rotateServerMockLog,
+  type ServerMockEventHandler,
+  type ServerMockScenario,
+  type ServerMockState,
+} from "./serverMock";
 import { isMockTransport } from "./transportMode";
 
 type MockEventHandler = (event: {
@@ -27,7 +36,7 @@ type MockContentEntry = {
   enabled: boolean;
   [field: string]: unknown;
 };
-export type MockScenario = "default" | "empty" | "errors";
+export type MockScenario = ServerMockScenario;
 
 export interface MockFixture {
   instances: InstanceManifest[];
@@ -270,6 +279,7 @@ export function initializeMockFixture(
 const initialState = initializeMockFixture();
 let activeScenario: MockScenario = initialState.scenario;
 let fixture: MockFixture = initialState.fixture;
+let serverMockState: ServerMockState = createServerMockState(activeScenario);
 let mockServerStatusCache = createEmptyServerStatusCache();
 
 export function resetMockFixture(
@@ -278,6 +288,7 @@ export function resetMockFixture(
   const nextState = initializeMockFixture(scenario);
   activeScenario = nextState.scenario;
   fixture = nextState.fixture;
+  serverMockState = createServerMockState(activeScenario);
   mockServerStatusCache = createEmptyServerStatusCache();
 }
 
@@ -377,6 +388,15 @@ export async function mockRequest<T>(
     (method === "core.version" || method === "instance.list")
   )
     scenarioError();
+
+  if (method.startsWith("server.")) {
+    return dispatchServerMockRequest<T>(
+      serverMockState,
+      method,
+      params,
+      handler as ServerMockEventHandler | undefined,
+    );
+  }
 
   const id = typeof params.id === "string" ? params.id : "";
   const instance = instanceId(String(params.directory ?? ""));
@@ -817,6 +837,23 @@ export function mockCredentialGet(accountId: string): string | null {
 }
 export function mockCredentialDelete(accountId: string): void {
   fixture.credentials.delete(accountId);
+}
+
+/** Test seam for exercising log rotation without inventing a console command. */
+export function rotateMockServerLog(
+  directory: string,
+  id: string,
+  text?: string,
+): void {
+  rotateServerMockLog(serverMockState, directory, id, text);
+}
+
+export function replaceMockServerLog(
+  directory: string,
+  id: string,
+  text: string,
+): void {
+  replaceServerMockLog(serverMockState, directory, id, text);
 }
 
 function cloneServerStatusCache(cache: ServerStatusCacheV1): ServerStatusCacheV1 {
