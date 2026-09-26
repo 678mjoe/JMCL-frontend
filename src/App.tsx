@@ -8,6 +8,7 @@ import { MicrosoftAccountsProvider } from "@/lib/auth";
 import { SettingsProvider, useSettings } from "@/lib/settings";
 import { ServersProvider } from "@/lib/servers";
 import { TasksProvider } from "@/lib/tasks";
+import { ServerOperationsProvider } from "@/lib/serverOperations";
 import { MicrosoftLoginDialog } from "@/components/MicrosoftLoginDialog";
 import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
 import { JavaPage } from "@/pages/JavaPage";
@@ -143,9 +144,11 @@ export default function App() {
       <LauncherProvider>
         <ServersProvider>
           <MicrosoftAccountsProvider>
-            <TasksProvider>
-              <Shell />
-            </TasksProvider>
+            <ServerOperationsProvider>
+              <TasksProvider>
+                <Shell />
+              </TasksProvider>
+            </ServerOperationsProvider>
           </MicrosoftAccountsProvider>
         </ServersProvider>
       </LauncherProvider>

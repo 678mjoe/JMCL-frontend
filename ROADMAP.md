@@ -142,13 +142,12 @@ Pi 上的 Vite build 不能被描述为完整桌面验收。
 
 ### 服务器 GUI
 
-阶段 1A 已完成；阶段 1C Batch 2 已完成：Vite Mock 已具备可变服务器状态、完整 `server.*` dispatcher、生命周期、日志游标、properties、世界和服务端内容 fixtures。Batch 3 已完成服务器导航、目录设置、无轮询列表、状态缓存展示和创建→详情路由；服务器生命周期 UI、SSH transport 尚未完成。
+阶段 1A 已完成；阶段 1C Batch 2 已完成：Vite Mock 已具备可变服务器状态、完整 `server.*` dispatcher、生命周期、日志游标、properties、世界和服务端内容 fixtures。Batch 3 已完成服务器导航、目录设置、无轮询列表、状态缓存展示和创建→详情路由；Batch 4 已完成详情生命周期操作、EULA 安装/修复和删除；日志与命令仍由 Batch 5 负责，SSH transport 尚未完成。
 
-JMCLCore 已实现主要 `server.*` 能力，但 JMCL-frontend 尚未实现：
+JMCLCore 已实现主要 `server.*` 能力，JMCL-frontend 仍未实现：
 
 - SSH transport；
 - 连接配置；
-- 服务器页面；
 - 状态轮询和日志游标；
 - 控制台、RCON 和 Query；
 - properties；
