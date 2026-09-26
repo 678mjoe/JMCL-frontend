@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Gamepad2, Coffee, Settings as SettingsIcon } from "lucide-react";
+import { Gamepad2, Coffee, Server as ServerIcon, Settings as SettingsIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { AccountWidget } from "@/components/AccountWidget";
 import { cn } from "@/lib/utils";
 import { LauncherProvider, useLauncher } from "@/lib/launcher";
 import { MicrosoftAccountsProvider } from "@/lib/auth";
 import { SettingsProvider, useSettings } from "@/lib/settings";
+import { ServersProvider } from "@/lib/servers";
 import { TasksProvider } from "@/lib/tasks";
 import { MicrosoftLoginDialog } from "@/components/MicrosoftLoginDialog";
 import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
@@ -13,11 +14,13 @@ import { JavaPage } from "@/pages/JavaPage";
 import { InstanceContentPage } from "@/pages/InstanceContentPage";
 import { InstancesPage } from "@/pages/InstancesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { ServersPage } from "@/pages/ServersPage";
+import { ServerDetailPage } from "@/pages/ServerDetailPage";
 import "./App.css";
 
-type TopLevelPage = "instances" | "java" | "settings";
-type Page = TopLevelPage | "instance" | "instance-content";
-type Route = { page: Page; instanceId?: string };
+type TopLevelPage = "instances" | "servers" | "java" | "settings";
+type Page = TopLevelPage | "instance" | "instance-content" | "server";
+type Route = { page: Page; instanceId?: string; serverId?: string };
 
 function CoreStatus() {
   const { status, core, error } = useLauncher();
@@ -52,6 +55,7 @@ function Shell() {
 
   const nav: { id: TopLevelPage; label: string; icon: typeof Gamepad2 }[] = [
     { id: "instances", label: t("nav.instances"), icon: Gamepad2 },
+    { id: "servers", label: t("nav.servers"), icon: ServerIcon },
     { id: "java", label: t("nav.java"), icon: Coffee },
     { id: "settings", label: t("nav.settings"), icon: SettingsIcon },
   ];
@@ -72,6 +76,7 @@ function Shell() {
                 route.page === id ||
                 ((route.page === "instance" || route.page === "instance-content") &&
                   id === "instances")
+                || (route.page === "server" && id === "servers")
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
               )}
@@ -89,7 +94,12 @@ function Shell() {
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">
-        {route.page === "instance" && route.instanceId ? (
+        {route.page === "server" && route.serverId ? (
+          <ServerDetailPage
+            serverId={route.serverId}
+            onBack={() => setRoute({ page: "servers" })}
+          />
+        ) : route.page === "instance" && route.instanceId ? (
           <InstanceDetailPage
             instanceId={route.instanceId}
             onBack={() => setRoute({ page: "instances" })}
@@ -108,6 +118,8 @@ function Shell() {
           <SettingsPage />
         ) : route.page === "java" ? (
           <JavaPage />
+        ) : route.page === "servers" ? (
+          <ServersPage onOpenDetail={(serverId) => setRoute({ page: "server", serverId })} />
         ) : (
           <InstancesPage
             onOpenDetail={(instanceId) =>
@@ -129,11 +141,13 @@ export default function App() {
   return (
     <SettingsProvider>
       <LauncherProvider>
-        <MicrosoftAccountsProvider>
-          <TasksProvider>
-            <Shell />
-          </TasksProvider>
-        </MicrosoftAccountsProvider>
+        <ServersProvider>
+          <MicrosoftAccountsProvider>
+            <TasksProvider>
+              <Shell />
+            </TasksProvider>
+          </MicrosoftAccountsProvider>
+        </ServersProvider>
       </LauncherProvider>
     </SettingsProvider>
   );

@@ -19,6 +19,29 @@ function captureSession(calls: CapturedRequest[]) {
 }
 
 describe("server RPC wire shapes", () => {
+  test("keeps create EULA rejection explicit and top-level", async () => {
+    const calls: CapturedRequest[] = [];
+    const session = captureSession(calls);
+
+    await session.serverCreate("/srv/servers", "created", "1.21.4", {
+      name: "Created",
+      source: "official",
+      accept_eula: false,
+    });
+
+    expect(calls).toEqual([{
+      method: "server.create",
+      params: {
+        directory: "/srv/servers",
+        id: "created",
+        version_id: "1.21.4",
+        name: "Created",
+        source: "official",
+        accept_eula: false,
+      },
+    }]);
+  });
+
   test("constructs manifest, lifecycle, logs, command, remote, and properties requests", async () => {
     const calls: CapturedRequest[] = [];
     const session = captureSession(calls);

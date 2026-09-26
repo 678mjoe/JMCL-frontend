@@ -306,6 +306,15 @@ export function SettingsPage() {
               onChange={(e) => update({ storeDir: e.target.value })}
             />
           </div>
+
+          <div className="space-y-2">
+            <Label>{t("settings.serversDir")}</Label>
+            <Input
+              className="font-mono text-xs"
+              value={settings.serversDir}
+              onChange={(e) => update({ serversDir: e.target.value })}
+            />
+          </div>
         </section>
       </div>
     </div>

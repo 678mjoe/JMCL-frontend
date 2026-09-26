@@ -26,6 +26,7 @@ export interface Settings {
   /** Absolute paths; empty until resolved from app-data on first run. */
   instancesDir: string;
   storeDir: string;
+  serversDir: string;
   source: Source;
   hideTestVersions: boolean;
   /** Selected Microsoft account id (public metadata; tokens stay in the keychain). */
@@ -42,6 +43,7 @@ const defaults: Settings = {
   playerName: "Player",
   instancesDir: "",
   storeDir: "",
+  serversDir: "",
   source: "official",
   hideTestVersions: true,
   activeAccountId: null,
@@ -77,15 +79,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   // Resolve default directories once (Tauri app-data dir).
   useEffect(() => {
-    if (settings.instancesDir && settings.storeDir) return;
+    if (settings.instancesDir && settings.storeDir && settings.serversDir) return;
     let cancelled = false;
     void appDataDirectories()
-      .then(({ instancesDir, storeDir }) => {
+      .then(({ instancesDir, storeDir, serversDir }) => {
         if (!cancelled) {
           setSettings((s) => ({
             ...s,
             instancesDir: s.instancesDir || instancesDir,
             storeDir: s.storeDir || storeDir,
+            serversDir: s.serversDir || serversDir,
           }));
         }
       })

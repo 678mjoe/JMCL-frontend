@@ -13,12 +13,26 @@ import { isMockTransport } from "./transportMode";
 
 export { isMockTransport };
 
-export async function appDataDirectories(): Promise<{ instancesDir: string; storeDir: string }> {
-  if (isMockTransport()) return { instancesDir: "/mock/jmcl/instances", storeDir: "/mock/jmcl/store" };
+export async function appDataDirectories(): Promise<{
+  instancesDir: string;
+  storeDir: string;
+  serversDir: string;
+}> {
+  if (isMockTransport()) {
+    return {
+      instancesDir: "/mock/jmcl/instances",
+      storeDir: "/mock/jmcl/store",
+      serversDir: "/mock/jmcl/servers",
+    };
+  }
   const { appDataDir, join } = await import("@tauri-apps/api/path");
   const base = await appDataDir();
-  const [instancesDir, storeDir] = await Promise.all([join(base, "instances"), join(base, "store")]);
-  return { instancesDir, storeDir };
+  const [instancesDir, storeDir, serversDir] = await Promise.all([
+    join(base, "instances"),
+    join(base, "store"),
+    join(base, "servers"),
+  ]);
+  return { instancesDir, storeDir, serversDir };
 }
 
 export const credentialSet = async (accountId: string, refreshToken: string): Promise<void> => {
