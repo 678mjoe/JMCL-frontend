@@ -27,7 +27,7 @@ interface LauncherContextValue {
   openSession: () => Promise<CoreSession>;
 }
 
-const LauncherContext = createContext<LauncherContextValue | null>(null);
+export const LauncherContext = createContext<LauncherContextValue | null>(null);
 
 // Module-level singleton: survives StrictMode double-mount and remounts.
 let sharedSessionPromise: Promise<CoreSession> | null = null;

@@ -8,6 +8,7 @@ import { ServersContext, type ServersContextValue } from "@/lib/servers";
 import { SettingsProvider } from "@/lib/settings";
 import { createEmptyServerStatusCache } from "@/lib/serverStatusCache";
 import { OperationsContext, type OperationsContextValue } from "@/lib/serverOperations";
+import { LauncherContext } from "@/lib/launcher";
 import type { ServerManifest } from "@/lib/types";
 
 const server: ServerManifest = {
@@ -28,6 +29,7 @@ function detailMarkup(overrides: Partial<ServersContextValue> = {}) {
     coreStatus: "ready", coreError: null, ...overrides,
   };
   return renderToStaticMarkup(
+    <LauncherContext.Provider value={{ status: "ready", core: null, error: null, session: null, openSession: async () => { throw new Error("not expected in static test"); } }}>
     <SettingsProvider>
       <ServersContext.Provider value={value}>
         <OperationsContext.Provider value={operations}>
@@ -35,6 +37,7 @@ function detailMarkup(overrides: Partial<ServersContextValue> = {}) {
         </OperationsContext.Provider>
       </ServersContext.Provider>
     </SettingsProvider>,
+    </LauncherContext.Provider>,
   );
 }
 
@@ -51,10 +54,12 @@ describe("ServerDetailPage", () => {
     const created = detailMarkup();
     expect(created).toContain(">安装</button>");
     expect(created).toContain("删除服务器");
+    expect(created).not.toContain("打开控制台");
     const unknown = detailMarkup({ manifests: [{ ...server, installed: true }] });
     expect(unknown).toContain("刷新状态");
     expect(unknown).not.toContain("启动</button>");
     expect(unknown).not.toContain("删除服务器</button>");
+    expect(unknown).not.toContain("打开控制台");
   });
 
   test("stopped and running states expose only matrix lifecycle actions and stale cleanup copy", () => {
@@ -62,11 +67,14 @@ describe("ServerDetailPage", () => {
     const stopped = { state: "stopped" as const, pid: null, supervisor_pid: null, java_path: null, started_at_ms: null, checked_at_ms: 100, last_stale_cleanup_at_ms: 90 };
     const stoppedMarkup = detailMarkup({ manifests: [{ ...server, installed: true }], cache: { ...base, scopes: { local: { directory: "/mock/servers", servers: { demo: stopped } } } } });
     expect(stoppedMarkup).toContain("启动</button>");
+    expect(stoppedMarkup).toContain("打开控制台");
     expect(stoppedMarkup).toContain("删除服务器</button>");
     expect(stoppedMarkup).toContain("检测到过期运行状态");
     const running = { ...stopped, state: "running" as const, pid: 42, supervisor_pid: 41, java_path: "/java", started_at_ms: 50, last_stale_cleanup_at_ms: null };
     const runningMarkup = detailMarkup({ manifests: [{ ...server, installed: true }], cache: { ...base, scopes: { local: { directory: "/mock/servers", servers: { demo: running } } } } });
     expect(runningMarkup).toContain("停止</button>");
+    expect(runningMarkup).toContain("打开控制台");
+    expect(runningMarkup).not.toContain(">发送命令</button>");
     expect(runningMarkup).toContain("重启</button>");
     expect(runningMarkup).not.toContain("删除服务器</button>");
     expect(runningMarkup).toContain("/java");
@@ -106,7 +114,7 @@ describe("ServerDetailPage", () => {
         recordLifecycleError: async () => false, recordDeleted: async () => false,
         coreStatus: "ready", coreError: null,
       };
-      return <SettingsProvider><ServersContext.Provider value={value}><OperationsContext.Provider value={operations}><ServerDetailPage serverId="demo" onBack={() => {}} /></OperationsContext.Provider></ServersContext.Provider></SettingsProvider>;
+      return <LauncherContext.Provider value={{ status: "ready", core: null, error: null, session: null, openSession: async () => { throw new Error("not expected in static test"); } }}><SettingsProvider><ServersContext.Provider value={value}><OperationsContext.Provider value={operations}><ServerDetailPage serverId="demo" onBack={() => {}} /></OperationsContext.Provider></ServersContext.Provider></SettingsProvider></LauncherContext.Provider>;
     };
 
     jest.useFakeTimers({ now: 15_000 });

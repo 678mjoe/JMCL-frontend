@@ -9,6 +9,7 @@ import { deriveServerState } from "@/lib/serverState";
 import { useServerOperations } from "@/lib/serverOperations";
 import { serverLoaderName } from "@/lib/serverPresentation";
 import { useServerUptime } from "@/lib/serverUptime";
+import { ServerConsolePanel } from "@/components/ServerConsolePanel";
 
 export interface ServerDetailPageProps { serverId: string; onBack: () => void }
 
@@ -42,6 +43,7 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
   const startedAt = cached?.started_at_ms;
   const uptime = uptimeMs === null ? null : `${Math.floor(uptimeMs / 3600000)}:${String(Math.floor(uptimeMs / 60000) % 60).padStart(2, "0")}:${String(Math.floor(uptimeMs / 1000) % 60).padStart(2, "0")}`;
   const run = (action: () => Promise<boolean>) => { void action().catch(() => undefined); };
+  const knownLifecycle = server.installed && (cached?.state === "stopped" || cached?.state === "running");
   const timestamp = (value: number) => new Intl.DateTimeFormat(settings.language, { dateStyle: "medium", timeStyle: "short" }).format(value);
 
   return <div className="mx-auto max-w-3xl p-6">
@@ -69,6 +71,7 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
       {derived.capabilities.delete && <Button variant="destructive" disabled={busy} onClick={() => setDeleteOpen(true)}><Trash2 />{t("servers.delete")}</Button>}
     </div>
     {busy && <p className="mt-3 text-sm text-muted-foreground">{t(operation?.stage === "finishing" ? "serverInstall.finishing" : "serverLifecycle.pending")}</p>}
+    {knownLifecycle && <ServerConsolePanel server={server} running={cached.state === "running"} />}
     <ServerInstallDialog open={installOpen} onOpenChange={setInstallOpen} server={server} />
     <DeleteServerDialog open={deleteOpen} onOpenChange={setDeleteOpen} server={server} onDeleted={onBack} />
   </div>;
