@@ -5,10 +5,13 @@ import {
   mockCredentialDelete,
   mockCredentialGet,
   mockCredentialSet,
+  mockEndpointConfigRead,
+  mockEndpointConfigWrite,
   mockServerStatusCacheRead,
   mockServerStatusCacheWrite,
 } from "./mockTransport";
 import type { ServerStatusCacheV1 } from "./serverStatusCache";
+import { EndpointRepository, parseEndpointConfig, validateEndpointConfig, type EndpointConfigV1 } from "./endpoints";
 import { isMockTransport } from "./transportMode";
 
 export { isMockTransport };
@@ -60,6 +63,25 @@ export async function writeServerStatusCache(cache: ServerStatusCacheV1): Promis
   }
   await invoke("server_status_cache_write", { cache });
 }
+
+export async function readEndpointConfig(): Promise<EndpointConfigV1> {
+  if (isMockTransport()) return parseEndpointConfig(mockEndpointConfigRead());
+  return parseEndpointConfig(await invoke<unknown>("endpoint_config_read"));
+}
+
+export async function writeEndpointConfig(config: EndpointConfigV1): Promise<void> {
+  const canonical = validateEndpointConfig(config);
+  if (isMockTransport()) {
+    mockEndpointConfigWrite(canonical);
+    return;
+  }
+  await invoke("endpoint_config_write", { config: canonical });
+}
+
+export const endpointRepository = new EndpointRepository({
+  read: readEndpointConfig,
+  write: writeEndpointConfig,
+});
 
 export const openDialog = (options?: OpenDialogOptions) =>
   isMockTransport() ? Promise.resolve<string | null>("/mock/jmcl/import/world.zip") : tauriOpen(options);

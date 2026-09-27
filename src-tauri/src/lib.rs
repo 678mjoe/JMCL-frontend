@@ -1,6 +1,7 @@
 //! JMCL GUI: Tauri bridge to `jmcl-core` JSON Lines RPC sessions.
 
 pub mod credentials;
+pub mod endpoints;
 pub mod pool;
 pub mod server_status_cache;
 pub mod session;
@@ -172,7 +173,9 @@ pub fn run() {
             credentials::credential_get,
             credentials::credential_delete,
             server_status_cache::server_status_cache_read,
-            server_status_cache::server_status_cache_write
+            server_status_cache::server_status_cache_write,
+            endpoints::endpoint_config_read,
+            endpoints::endpoint_config_write
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

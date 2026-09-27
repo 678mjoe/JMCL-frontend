@@ -46,6 +46,16 @@ export function createEmptyServerStatusCache(): ServerStatusCacheV1 {
 
 export const canonicalEmptyServerStatusCache = createEmptyServerStatusCache;
 
+/** Remove one SSH endpoint's advisory cache without touching the legacy local scope. */
+export function removeServerEndpointScope(
+  cache: ServerStatusCacheV1,
+  endpointId: string,
+): ServerStatusCacheV1 {
+  if (endpointId === "local" || !Object.hasOwn(cache.scopes, endpointId)) return cache;
+  const { [endpointId]: _removed, ...scopes } = cache.scopes;
+  return { schema_version: 1, scopes };
+}
+
 function emptyStatus(
   state: CachedServerLifecycle,
   nowMs: number,

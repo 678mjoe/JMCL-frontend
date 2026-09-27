@@ -20,6 +20,7 @@ import {
   type ServerMockState,
 } from "./serverMock";
 import { isMockTransport } from "./transportMode";
+import { canonicalEndpointConfig, type EndpointConfigV1 } from "./endpoints";
 
 type MockEventHandler = (event: {
   kind: "event" | "diagnostic";
@@ -281,6 +282,7 @@ let activeScenario: MockScenario = initialState.scenario;
 let fixture: MockFixture = initialState.fixture;
 let serverMockState: ServerMockState = createServerMockState(activeScenario);
 let mockServerStatusCache = createEmptyServerStatusCache();
+let mockEndpointConfig: EndpointConfigV1 = canonicalEndpointConfig();
 
 export function resetMockFixture(
   scenario: MockScenario = readScenario(),
@@ -290,6 +292,7 @@ export function resetMockFixture(
   fixture = nextState.fixture;
   serverMockState = createServerMockState(activeScenario);
   mockServerStatusCache = createEmptyServerStatusCache();
+  mockEndpointConfig = canonicalEndpointConfig();
 }
 
 export function mockScenario(): MockScenario {
@@ -872,6 +875,19 @@ export function mockServerStatusCacheWrite(cache: ServerStatusCacheV1): void {
 export function resetMockServerStatusCache(): void {
   if (!isMockTransport()) return;
   mockServerStatusCache = createEmptyServerStatusCache();
+}
+
+export function mockEndpointConfigRead(): EndpointConfigV1 {
+  return structuredClone(mockEndpointConfig);
+}
+
+export function mockEndpointConfigWrite(config: EndpointConfigV1): void {
+  mockEndpointConfig = structuredClone(config);
+}
+
+export function resetMockEndpointConfig(): void {
+  if (!isMockTransport()) return;
+  mockEndpointConfig = canonicalEndpointConfig();
 }
 
 export const mockFixtureSummary = {

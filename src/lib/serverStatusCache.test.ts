@@ -15,9 +15,23 @@ import {
   reduceServerStatus,
   reduceServerStopped,
   type ServerStatusCacheV1,
+  removeServerEndpointScope,
 } from "./serverStatusCache";
 
 describe("server status cache reducers", () => {
+  test("endpoint removal preserves local data and every unrelated scope", () => {
+    const local = { directory: "/local", servers: { alpha: { state: "running" as const, pid: 7, supervisor_pid: null, java_path: null, started_at_ms: 1, checked_at_ms: 2, last_stale_cleanup_at_ms: null } } };
+    const other = { directory: "/other", servers: {} };
+    const target = { directory: "/target", servers: {} };
+    const cache: ServerStatusCacheV1 = { schema_version: 1, scopes: { local, other, target } };
+    const localResult = removeServerEndpointScope(cache, "local");
+    expect(localResult).toEqual(cache);
+    expect(localResult.scopes.local).toBe(local);
+    const result = removeServerEndpointScope(cache, "target");
+    expect(result.scopes.local).toBe(local);
+    expect(result.scopes.other).toBe(other);
+    expect(result.scopes.target).toBeUndefined();
+  });
   test("creates a server entry without mutating the input cache", () => {
     const cache = createEmptyServerStatusCache();
 

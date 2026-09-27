@@ -31,6 +31,7 @@ export interface Settings {
   hideTestVersions: boolean;
   /** Selected Microsoft account id (public metadata; tokens stay in the keychain). */
   activeAccountId: string | null;
+  selectedServerEndpointId: string;
   /** Per-instance java_override executable paths; absent = auto policy (docs/java.md §Forced Override). */
   javaOverrides: Record<string, string>;
 }
@@ -47,13 +48,19 @@ const defaults: Settings = {
   source: "official",
   hideTestVersions: true,
   activeAccountId: null,
+  selectedServerEndpointId: "local",
   javaOverrides: {},
 };
+
+export function mergeStoredSettings(stored: unknown): Settings {
+  if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return defaults;
+  return { ...defaults, ...(stored as Partial<Settings>) };
+}
 
 function loadStored(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaults, ...(JSON.parse(raw) as Partial<Settings>) };
+    if (raw) return mergeStoredSettings(JSON.parse(raw));
   } catch {
     // Corrupted storage — fall back to defaults.
   }
