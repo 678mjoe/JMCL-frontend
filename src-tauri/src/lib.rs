@@ -5,6 +5,7 @@ pub mod endpoints;
 pub mod pool;
 pub mod server_status_cache;
 pub mod session;
+pub mod ssh_transport;
 pub mod transport;
 
 use std::time::{Duration, Instant};
@@ -22,6 +23,15 @@ async fn core_open(
     binary_path: Option<String>,
 ) -> Result<pool::SessionInfo, SessionError> {
     pool.open(binary_path.as_deref()).await
+}
+
+/// Open an independent system OpenSSH RPC session for a persisted endpoint.
+#[tauri::command]
+async fn endpoint_session_open(
+    pool: State<'_, SessionPool>,
+    endpoint_id: String,
+) -> Result<pool::SessionInfo, SessionError> {
+    pool.open_endpoint(&endpoint_id).await
 }
 
 /// Close a session. Unknown ids are a no-op.
@@ -102,7 +112,7 @@ async fn core_request(
     let session = pool
         .get(session_id)
         .await
-        .ok_or_else(|| SessionError::transport(format!("unknown session {session_id}")))?;
+        .ok_or_else(|| SessionError::coded("SESSION_CLOSED", "This session is closed."))?;
     let mut forwarder = CompactEventForwarder::new(compact_events.unwrap_or(false));
     let result = session
         .request(&method, params.unwrap_or_else(|| json!({})), |event| {
@@ -167,6 +177,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             core_open,
+            endpoint_session_open,
             core_close,
             core_request,
             credentials::credential_set,

@@ -13,6 +13,28 @@ use async_trait::async_trait;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::mpsc;
+use tokio::time::{timeout, Duration};
+
+/// Safe, serializable classification for transport failures. Messages are
+/// suitable for the UI and must never contain process output or destinations.
+#[derive(Debug, Clone)]
+pub struct TransportFailure {
+    pub code: String,
+    pub message: String,
+}
+
+impl TransportFailure {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn local(message: impl Into<String>) -> Self {
+        Self::new("TRANSPORT_ERROR", message)
+    }
+}
 
 /// One inbound item from a transport.
 #[derive(Debug)]
@@ -22,19 +44,25 @@ pub enum TransportEvent {
     /// One diagnostics line (child stderr).
     Diagnostic(String),
     /// The RPC stream ended; carries a human-readable reason.
-    Closed(String),
+    Closed(TransportFailure),
 }
 
 /// A bidirectional JSON Lines channel to one core endpoint.
 #[async_trait]
 pub trait LineTransport: Send {
     /// Write one request line; the transport appends the newline.
-    async fn write_line(&mut self, line: &str) -> Result<(), String>;
+    async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure>;
     /// Wait for the next inbound item. Yields [`TransportEvent::Closed`]
     /// once the stream ends.
     async fn next_event(&mut self) -> TransportEvent;
     /// Half-close the request stream; the core exits after draining.
-    async fn close(&mut self) -> Result<(), String>;
+    async fn close(&mut self) -> Result<(), TransportFailure>;
+    /// Immediately terminate this transport. Must be idempotent.
+    async fn abort(&mut self) -> Result<(), TransportFailure>;
+    /// Error code used when a complete stdout line is not valid protocol JSON.
+    fn protocol_error_code(&self) -> &'static str {
+        "TRANSPORT_ERROR"
+    }
 }
 
 #[cfg(windows)]
@@ -135,13 +163,14 @@ impl LocalProcessTransport {
                         }
                     }
                     Ok(None) => {
-                        let _ = stdout_tx
-                            .send(TransportEvent::Closed("core closed its RPC stream".into()));
+                        let _ = stdout_tx.send(TransportEvent::Closed(TransportFailure::local(
+                            "core closed its RPC stream",
+                        )));
                         break;
                     }
                     Err(e) => {
-                        let _ = stdout_tx.send(TransportEvent::Closed(format!(
-                            "RPC stream read error: {e}"
+                        let _ = stdout_tx.send(TransportEvent::Closed(TransportFailure::local(
+                            format!("RPC stream read error: {e}"),
                         )));
                         break;
                     }
@@ -173,32 +202,48 @@ impl LocalProcessTransport {
 
 #[async_trait]
 impl LineTransport for LocalProcessTransport {
-    async fn write_line(&mut self, line: &str) -> Result<(), String> {
-        let stdin = self.stdin.as_mut().ok_or("session is closed")?;
+    async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure> {
+        let stdin = self
+            .stdin
+            .as_mut()
+            .ok_or_else(|| TransportFailure::local("session is closed"))?;
         stdin
             .write_all(line.as_bytes())
             .await
-            .map_err(|e| format!("write to core failed: {e}"))?;
+            .map_err(|_| TransportFailure::local("write to core failed"))?;
         stdin
             .write_all(b"\n")
             .await
-            .map_err(|e| format!("write to core failed: {e}"))?;
+            .map_err(|_| TransportFailure::local("write to core failed"))?;
         stdin
             .flush()
             .await
-            .map_err(|e| format!("flush to core failed: {e}"))
+            .map_err(|_| TransportFailure::local("flush to core failed"))
     }
 
     async fn next_event(&mut self) -> TransportEvent {
-        self.rx
-            .recv()
-            .await
-            .unwrap_or_else(|| TransportEvent::Closed("reader tasks stopped".into()))
+        self.rx.recv().await.unwrap_or_else(|| {
+            TransportEvent::Closed(TransportFailure::local("reader tasks stopped"))
+        })
     }
 
-    async fn close(&mut self) -> Result<(), String> {
+    async fn close(&mut self) -> Result<(), TransportFailure> {
         // Dropping stdin sends EOF; the core drains and exits.
         self.stdin.take();
+        if timeout(Duration::from_secs(1), self.child.wait())
+            .await
+            .is_err()
+        {
+            let _ = self.child.start_kill();
+            let _ = self.child.wait().await;
+        }
+        Ok(())
+    }
+
+    async fn abort(&mut self) -> Result<(), TransportFailure> {
+        self.stdin.take();
+        let _ = self.child.start_kill();
+        let _ = self.child.wait().await;
         Ok(())
     }
 }

@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+printf '%s\n' "$@" > "$FAKE_SSH_ARGV_FILE"
+printf '%s\n' "$$" > "$FAKE_SSH_PID_FILE"
+case "$FAKE_SSH_MODE" in
+  host_unknown) echo 'No ED25519 host key is known for fake.invalid and you have requested strict checking.' >&2; exit 255 ;;
+  host_changed) echo 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!' >&2; exit 255 ;;
+  auth) echo 'Permission denied (publickey,password).' >&2; exit 255 ;;
+  remote_failed) echo 'jmcl-core: command not found' >&2; exit 255 ;;
+  generic_failed) echo 'synthetic failure marker DESTINATION_SECRET' >&2; exit 255 ;;
+  delayed) exec sleep 60 ;;
+  malformed) echo 'synthetic stdout marker DESTINATION_SECRET'; exec sleep 60 ;;
+  partial_stdout) printf 'partial protocol marker DESTINATION_SECRET'; exit 0 ;;
+  oversized_stdout) head -c 2097153 /dev/zero | tr '\000' 'M'; exec sleep 60 ;;
+  stderr) head -c 50000 /dev/zero | tr '\000' x >&2 ;;
+esac
+respond() {
+  request="$1"
+  ending='\n'
+  [ "$FAKE_SSH_MODE" != crlf ] || ending='\r\n'
+  id=$(printf '%s' "$request" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  method=$(printf '%s' "$request" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
+  if [ "$method" = core.version ]; then
+    if [ "$FAKE_SSH_MODE" = malformed_identity ]; then
+      printf '{"id":"%s","event":"result","result":{"version":"fake"}}%b' "$id" "$ending"
+      return
+    fi
+    protocol=1
+    [ "$FAKE_SSH_MODE" != wrong_protocol ] || protocol=2
+    printf '{"id":"%s","event":"result","result":{"name":"jmcl-core","version":"fake","protocol":%s}}%b' "$id" "$protocol" "$ending"
+  else
+    if [ "$FAKE_SSH_MODE" = null_error ]; then
+      printf '{"id":null,"event":"error","error":{"message":"DESTINATION_SECRET"}}%b' "$ending"
+      return
+    fi
+    printf '{"id":"%s","event":"result","result":{"pong":true}}%b' "$id" "$ending"
+  fi
+}
+IFS= read -r request || exit 0
+respond "$request"
+case "$FAKE_SSH_MODE" in
+  disconnect) exit 0 ;;
+  stdout_close_alive) exec sleep 60 1>&- ;;
+  flood_exit) i=0; while [ "$i" -lt 32 ]; do printf '{"id":"other","event":"progress"}\n'; i=$((i + 1)); done; exit 0 ;;
+  never_request) IFS= read -r request || exit 0; exec sleep 60 ;;
+  flood) while :; do printf '{"id":"other","event":"progress"}\n'; done ;;
+esac
+while IFS= read -r request; do respond "$request"; done

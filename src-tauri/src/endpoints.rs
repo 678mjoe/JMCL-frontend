@@ -236,6 +236,37 @@ pub fn read_endpoint_config_from_dir(dir: &Path) -> Result<EndpointConfigV1, End
     Ok(parse_endpoint_config(&bytes))
 }
 
+/// Strict counterpart used when opening a persisted endpoint session. The
+/// Stage 2A convenience reader intentionally falls back to Local for recovery;
+/// a session open must distinguish corrupt configuration from a missing ID.
+pub fn read_endpoint_config_strict_from_dir(dir: &Path) -> Result<EndpointConfigV1, EndpointError> {
+    let file = match File::open(dir.join(ENDPOINT_CONFIG_FILE_NAME)) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(canonical_endpoint_config())
+        }
+        Err(_) => return Err(EndpointError::Io("opening config")),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|_| EndpointError::Io("reading config metadata"))?;
+    if metadata.len() > MAX_ENDPOINT_CONFIG_BYTES as u64 {
+        return Err(EndpointError::Validation);
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take((MAX_ENDPOINT_CONFIG_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|_| EndpointError::Io("reading config"))?;
+    if bytes.len() > MAX_ENDPOINT_CONFIG_BYTES {
+        return Err(EndpointError::Validation);
+    }
+    let config = serde_json::from_slice::<EndpointConfigV1>(&bytes)
+        .map_err(|_| EndpointError::Validation)?;
+    let config = canonicalize_config(config);
+    validate_endpoint_config(&config)?;
+    Ok(config)
+}
+
 pub fn write_endpoint_config_to_dir(
     dir: &Path,
     config: &EndpointConfigV1,
