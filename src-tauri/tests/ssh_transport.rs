@@ -449,7 +449,7 @@ async fn endpoint_open_reports_safe_not_found_kind_and_config_codes() {
     write_config(&tmp, "fake-host");
     let pool = SessionPool::new(Some(tmp.0.clone()));
     let missing = pool
-        .open_endpoint_with_executable("missing", Some(&fixture()))
+        .open_endpoint_with_executable("123e4567-e89b-42d3-a456-426614174099", Some(&fixture()))
         .await
         .unwrap_err();
     assert!(

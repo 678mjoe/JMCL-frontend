@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { useLauncher } from "@/lib/launcher";
 import { useServers } from "@/lib/servers";
 import { useSettings } from "@/lib/settings";
 import { deriveServerState } from "@/lib/serverState";
@@ -9,7 +8,6 @@ import { Button } from "@/components/ui/button";
 
 export function ServerConsolePanel({ server, running }: { server: ServerManifest; running: boolean }) {
   const { t } = useSettings();
-  const { openSession } = useLauncher();
   const servers = useServers();
   const scope = servers.captureOperationScope();
   const controller = useMemo(() => new ServerLogController({
@@ -17,7 +15,7 @@ export function ServerConsolePanel({ server, running }: { server: ServerManifest
     captureScope: servers.captureOperationScope,
     isScopeCurrent: servers.isOperationScopeCurrent,
     openSession: async () => {
-      const session = await openSession();
+      const session = await servers.openSession();
       const dedicated: ServerLogSession = {
         close: () => session.close(),
         serverLogs: (directory, id, options) => session.serverLogs(directory, id, options),
@@ -25,13 +23,13 @@ export function ServerConsolePanel({ server, running }: { server: ServerManifest
       };
       return dedicated;
     },
-  }), [server.id, servers.captureOperationScope, servers.isOperationScopeCurrent, openSession]);
+  }), [server.id, servers.captureOperationScope, servers.isOperationScopeCurrent, servers.openSession]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [shown, setShown] = useState(false);
   const [command, setCommand] = useState("");
   const logRef = useRef<HTMLPreElement>(null);
   const followRef = useRef(true);
-  const scopeKey = scope ? `${scope.directory}\u0000${scope.sourceRevision}` : "none";
+  const scopeKey = scope ? `${scope.endpointId}\u0000${scope.kind}\u0000${scope.directory}\u0000${scope.sourceRevision}` : "none";
   const derived = deriveServerState({
     manifest: server,
     status: { running, stale_state: false },

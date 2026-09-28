@@ -4,10 +4,12 @@ import {
   useContext,
   useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { readServerStatusCache, writeServerStatusCache } from "./native";
+import { SessionOwner } from "./sessionLifecycle";
 import { errorText, useLauncher } from "./launcher";
 import {
   createEmptyServerStatusCache,
@@ -28,9 +30,9 @@ import type {
   ServerManifest,
   ServerStatus,
 } from "./types";
-import type { CoreSession } from "./rpc";
-
-export const SERVER_SCOPE = "local";
+import { CoreSession } from "./rpc";
+import type { EndpointConfigV1 } from "./endpoints";
+import { readEndpointConfig } from "./native";
 
 export interface ServerControllerRpc {
   list: (directory: string) => Promise<ServerListResult>;
@@ -50,11 +52,18 @@ export interface ServerControllerSnapshot {
 }
 
 interface SourceKey {
-  sessionKey: object | string;
-  directory: string;
+  readonly sessionKey: object | string;
+  readonly endpointId: string;
+  readonly kind: "local" | "ssh";
+  readonly directory: string;
 }
 
-export interface ServerOperationScope { directory: string; sourceRevision: number }
+export interface ServerOperationScope {
+  readonly endpointId: string;
+  readonly kind: "local" | "ssh";
+  readonly directory: string;
+  readonly sourceRevision: number;
+}
 
 interface StartupResult {
   manifests: ServerManifest[];
@@ -75,30 +84,34 @@ function sortedManifests(manifests: ServerManifest[]): ServerManifest[] {
 }
 
 function sameSource(left: SourceKey | null, right: SourceKey): boolean {
-  return left?.sessionKey === right.sessionKey && left.directory === right.directory;
+  return left?.sessionKey === right.sessionKey && left.endpointId === right.endpointId && left.kind === right.kind && left.directory === right.directory;
 }
 
 function getStartup(
   rpc: ServerControllerRpc,
   source: SourceKey,
+  sourceRevision: number,
+  cacheBarrier: Promise<void>,
   now: () => number,
 ): Promise<StartupResult> {
+  const sourceId = JSON.stringify([source.endpointId, source.kind, source.directory, sourceRevision]);
   let byDirectory = startupRegistry.get(source.sessionKey);
   if (!byDirectory) {
     byDirectory = new Map();
     startupRegistry.set(source.sessionKey, byDirectory);
   }
-  const existing = byDirectory.get(source.directory);
+  const existing = byDirectory.get(sourceId);
   if (existing) return existing;
 
   const startup = (async (): Promise<StartupResult> => {
+    await cacheBarrier.catch(() => undefined);
     const loadedCache = await rpc.readCache().catch(() => createEmptyServerStatusCache());
     try {
       const result = await rpc.list(source.directory);
       const manifests = sortedManifests(result.servers);
       const cache = reconcileServerManifest(
         loadedCache,
-        SERVER_SCOPE,
+        source.endpointId,
         source.directory,
         manifests.map((server) => server.id),
         now(),
@@ -108,7 +121,7 @@ function getStartup(
       return { manifests: [], cache: loadedCache, listError: errorText(error) };
     }
   })();
-  byDirectory.set(source.directory, startup);
+  byDirectory.set(sourceId, startup);
   return startup;
 }
 
@@ -168,13 +181,14 @@ export class ServerController {
   }
 
   async start(source: SourceKey): Promise<void> {
-    if (sameSource(this.source, source)) return;
+    const capturedSource = Object.freeze({ ...source });
+    if (sameSource(this.source, capturedSource)) return;
     this.revision += 1;
     this.sourceRevision += 1;
     this.manifestGeneration += 1;
     this.activeListRequest = null;
     this.startupLoading = true;
-    this.source = source;
+    this.source = capturedSource;
     this.transitionGenerations.clear();
     this.statusRequestIds.clear();
     const startupRevision = this.revision;
@@ -186,10 +200,10 @@ export class ServerController {
       listError: null,
       statusErrors: {},
       pendingStatus: new Set(),
-      directory: source.directory,
+      directory: capturedSource.directory,
     });
-    const result = await getStartup(this.rpc, source, this.now);
-    if (!sameSource(this.source, source) || this.sourceRevision !== sourceRevision) return;
+    const result = await getStartup(this.rpc, capturedSource, sourceRevision, this.writeQueue, this.now);
+    if (!sameSource(this.source, capturedSource) || this.sourceRevision !== sourceRevision) return;
     this.startupLoading = false;
     const manifests = startupRevision === this.revision
       ? result.manifests
@@ -198,8 +212,8 @@ export class ServerController {
       ? result.cache
       : reconcileServerManifest(
         this.snapshot.cache,
-        SERVER_SCOPE,
-        source.directory,
+        capturedSource.endpointId,
+        capturedSource.directory,
         manifests.map((server) => server.id),
         this.now(),
       );
@@ -253,7 +267,7 @@ export class ServerController {
       const manifests = sortedManifests(result.servers);
       const cache = reconcileServerManifest(
         this.snapshot.cache,
-        SERVER_SCOPE,
+        source.endpointId,
         source.directory,
         manifests.map((server) => server.id),
         this.now(),
@@ -282,14 +296,16 @@ export class ServerController {
     const isCurrentRequest = () => this.statusRequestIds.get(id) === requestId;
     const isApplicable = () => isCurrentRequest()
       && this.sourceRevision === sourceRevision
-      && this.source?.directory === source.directory
+      && this.source?.endpointId === source.endpointId
+      && this.source.kind === source.kind
+      && this.source.directory === source.directory
       && (this.transitionGenerations.get(id) ?? 0) === transitionGeneration;
     try {
       const result = await this.rpc.status(source.directory, id);
       if (!isApplicable()) return;
       const cache = reduceServerStatus(
         this.snapshot.cache,
-        SERVER_SCOPE,
+        source.endpointId,
         source.directory,
         id,
         result,
@@ -317,7 +333,8 @@ export class ServerController {
     }
   }
 
-  async recordCreated(manifest: ServerManifest): Promise<void> {
+  async recordCreated(manifest: ServerManifest, scope = this.captureOperationScope()): Promise<void> {
+    if (!scope || !this.isOperationScopeCurrent(scope)) return;
     const source = this.source;
     if (!source) return;
     this.invalidateExplicitList();
@@ -327,7 +344,7 @@ export class ServerController {
     ]);
     const cache = reduceServerCreated(
       this.snapshot.cache,
-      SERVER_SCOPE,
+      source.endpointId,
       source.directory,
       manifest.id,
       this.now(),
@@ -338,11 +355,11 @@ export class ServerController {
   }
 
   captureOperationScope(): ServerOperationScope | null {
-    return this.source ? { directory: this.source.directory, sourceRevision: this.sourceRevision } : null;
+    return this.source ? { endpointId: this.source.endpointId, kind: this.source.kind, directory: this.source.directory, sourceRevision: this.sourceRevision } : null;
   }
 
   isOperationScopeCurrent(scope: ServerOperationScope): boolean {
-    return this.source?.directory === scope.directory && this.sourceRevision === scope.sourceRevision;
+    return this.source?.endpointId === scope.endpointId && this.source.kind === scope.kind && this.source.directory === scope.directory && this.sourceRevision === scope.sourceRevision;
   }
 
   private async transition(id: string, scope: ServerOperationScope, update: (cache: ServerStatusCacheV1) => ServerStatusCacheV1): Promise<boolean> {
@@ -373,28 +390,28 @@ export class ServerController {
     const manifests = sortedManifests([...this.snapshot.manifests.filter((item) => item.id !== manifest.id), manifest]);
     this.update({ manifests, listError: null });
     return this.transition(manifest.id, scope, (cache) =>
-      reduceServerInstalled(cache, SERVER_SCOPE, scope.directory, manifest.id, this.now()));
+      reduceServerInstalled(cache, scope.endpointId, scope.directory, manifest.id, this.now()));
   }
 
   recordStarted(id: string, result: ServerLifecycleStartResult, scope: ServerOperationScope): Promise<boolean> {
-    return this.transition(id, scope, (cache) => reduceServerStarted(cache, SERVER_SCOPE, scope.directory, id, {
+    return this.transition(id, scope, (cache) => reduceServerStarted(cache, scope.endpointId, scope.directory, id, {
       pid: result.pid, supervisor_pid: result.supervisor_pid, java_path: result.java_path, started_at_ms: result.started_at_ms,
     }, this.now()));
   }
 
   recordStopped(id: string, scope: ServerOperationScope): Promise<boolean> {
-    return this.transition(id, scope, (cache) => reduceServerStopped(cache, SERVER_SCOPE, scope.directory, id, this.now()));
+    return this.transition(id, scope, (cache) => reduceServerStopped(cache, scope.endpointId, scope.directory, id, this.now()));
   }
 
   recordLifecycleError(id: string, code: string, scope: ServerOperationScope): Promise<boolean> {
-    return this.transition(id, scope, (cache) => reduceServerLifecycleError(cache, SERVER_SCOPE, scope.directory, id, code, this.now()));
+    return this.transition(id, scope, (cache) => reduceServerLifecycleError(cache, scope.endpointId, scope.directory, id, code, this.now()));
   }
 
   async recordDeleted(id: string, scope: ServerOperationScope): Promise<boolean> {
     if (!this.isOperationScopeCurrent(scope)) return false;
     const manifests = this.snapshot.manifests.filter((item) => item.id !== id);
     this.update({ manifests });
-    return this.transition(id, scope, (cache) => reduceServerDeleted(cache, SERVER_SCOPE, scope.directory, id, this.now()));
+    return this.transition(id, scope, (cache) => reduceServerDeleted(cache, scope.endpointId, scope.directory, id, this.now()));
   }
 }
 
@@ -408,7 +425,7 @@ export function createServerController(
 export interface ServersContextValue extends ServerControllerSnapshot {
   refreshList: () => Promise<void>;
   refreshServerStatus: (id: string) => Promise<void>;
-  recordCreated: (manifest: ServerManifest) => Promise<void>;
+  recordCreated: (manifest: ServerManifest, scope?: ServerOperationScope) => Promise<void>;
   captureOperationScope: () => ServerOperationScope | null;
   isOperationScopeCurrent: (scope: ServerOperationScope) => boolean;
   recordInstalled: (manifest: ServerManifest, scope: ServerOperationScope) => Promise<boolean>;
@@ -418,6 +435,8 @@ export interface ServersContextValue extends ServerControllerSnapshot {
   recordDeleted: (id: string, scope: ServerOperationScope) => Promise<boolean>;
   coreStatus: "starting" | "ready" | "error";
   coreError: string | null;
+  endpointId: string;
+  openSession: () => Promise<CoreSession>;
 }
 
 export const ServersContext = createContext<ServersContextValue | null>(null);
@@ -432,8 +451,34 @@ function rpcForSession(session: CoreSession): ServerControllerRpc {
 }
 
 export function ServersProvider({ children }: { children: ReactNode }) {
-  const { settings } = useSettings();
-  const { status, session, error: coreError } = useLauncher();
+  const { settings, update } = useSettings();
+  const { error: launcherError } = useLauncher();
+  const [endpointConfig, setEndpointConfig] = useState<EndpointConfigV1 | null>(null);
+  const [endpointError, setEndpointError] = useState<string | null>(null);
+  const [endpointReady, setEndpointReady] = useState(false);
+  const [controlStatus, setControlStatus] = useState<"starting" | "ready" | "error">("starting");
+  const [controlError, setControlError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setEndpointReady(false);
+    void readEndpointConfig().then((config) => {
+      if (!cancelled) { setEndpointConfig(config); setEndpointError(null); setEndpointReady(true); }
+    }).catch((error) => {
+      if (!cancelled) { setEndpointConfig(null); setEndpointError(errorText(error)); setEndpointReady(true); }
+    });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (endpointConfig && !endpointConfig.endpoints.some((item) => item.id === settings.selectedServerEndpointId)) {
+      update({ selectedServerEndpointId: "local" });
+    }
+  }, [endpointConfig, settings.selectedServerEndpointId, update]);
+  const endpoint = endpointConfig?.endpoints.find((item) => item.id === settings.selectedServerEndpointId)
+    ?? endpointConfig?.endpoints.find((item) => item.id === "local")
+    ?? null;
+  const openSession = useCallback(() => endpoint
+    ? CoreSession.openEndpoint(endpoint)
+    : Promise.reject(new Error(endpointError ?? "Server endpoint is unavailable")), [endpoint, endpointError]);
   const controllerRef = useRef<ServerController | null>(null);
   if (!controllerRef.current) {
     controllerRef.current = new ServerController({
@@ -444,27 +489,49 @@ export function ServersProvider({ children }: { children: ReactNode }) {
     });
   }
   const controller = controllerRef.current;
+  const controlSessionOwner = useRef(new SessionOwner<CoreSession>()).current;
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
     controller.getSnapshot,
   );
 
+  const sourceDirectory = endpoint?.kind === "ssh" ? endpoint.serversDirectory ?? "" : settings.serversDir;
   useEffect(() => {
-    if (status === "ready" && session && settings.serversDir) {
-      // The RPC functions are session-bound for this settled source key.
-      // Preserve the component-owned controller while replacing only its
-      // dependency methods for this session/directory.
-      controller.replaceRpc(rpcForSession(session));
-      void controller.start({ sessionKey: session, directory: settings.serversDir });
+    let cancelled = false;
+    if (!endpointReady) return;
+    if (!endpoint || !sourceDirectory) {
+      setControlStatus("error");
+      setControlError(endpointError ?? (endpoint ? "Server directory is unavailable" : "Selected server endpoint is unavailable"));
+      controller.setUnavailable(sourceDirectory, endpointError ?? (endpoint ? "Server directory is unavailable" : "Selected server endpoint is unavailable"));
       return;
     }
-    controller.setUnavailable(settings.serversDir, status === "error" ? coreError : null);
-  }, [controller, coreError, session, settings.serversDir, status]);
+    setControlStatus("starting");
+    setControlError(null);
+    controller.setUnavailable(sourceDirectory, null);
+    void controlSessionOwner.open(() => CoreSession.openEndpoint(endpoint)).then(async (opened) => {
+      if (cancelled || !opened) return;
+      controller.replaceRpc(rpcForSession(opened));
+      setControlStatus("ready");
+      await controller.start({ sessionKey: opened, endpointId: endpoint.id, kind: endpoint.kind, directory: sourceDirectory });
+    }).catch((error) => {
+      if (!cancelled) {
+        const message = errorText(error);
+        setControlStatus("error");
+        setControlError(message);
+        controller.setUnavailable(sourceDirectory, message);
+      }
+    });
+    return () => {
+      cancelled = true;
+      controller.setUnavailable(sourceDirectory, null);
+      void controlSessionOwner.close().catch(() => undefined);
+    };
+  }, [controlSessionOwner, controller, endpoint, endpointError, endpointReady, sourceDirectory]);
 
   const refreshList = useCallback(() => controller.refreshList(), [controller]);
   const refreshServerStatus = useCallback((id: string) => controller.refreshServerStatus(id), [controller]);
-  const recordCreated = useCallback((manifest: ServerManifest) => controller.recordCreated(manifest), [controller]);
+  const recordCreated = useCallback((manifest: ServerManifest, scope?: ServerOperationScope) => controller.recordCreated(manifest, scope), [controller]);
   const captureOperationScope = useCallback(() => controller.captureOperationScope(), [controller]);
   const isOperationScopeCurrent = useCallback((scope: ServerOperationScope) => controller.isOperationScopeCurrent(scope), [controller]);
   const recordInstalled = useCallback((manifest: ServerManifest, scope: ServerOperationScope) => controller.recordInstalled(manifest, scope), [controller]);
@@ -479,8 +546,10 @@ export function ServersProvider({ children }: { children: ReactNode }) {
     recordCreated,
     captureOperationScope, isOperationScopeCurrent, recordInstalled, recordStarted,
     recordStopped, recordLifecycleError, recordDeleted,
-    coreStatus: status,
-    coreError,
+    coreStatus: endpointReady ? controlStatus : "starting",
+    coreError: controlError ?? endpointError ?? launcherError,
+    endpointId: endpoint?.id ?? "local",
+    openSession,
   };
   return <ServersContext.Provider value={value}>{children}</ServersContext.Provider>;
 }

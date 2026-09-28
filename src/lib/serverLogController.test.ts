@@ -3,13 +3,13 @@ import { ServerLogController, MAX_SERVER_LOG_BUFFER_CHARS, isNearLogBottom } fro
 import type { ServerLogResult } from "./types";
 import { translate } from "./i18n";
 
-type Scope = { directory: string; sourceRevision: number };
+type Scope = { endpointId: string; kind: "local" | "ssh"; directory: string; sourceRevision: number };
 const result = (text: string, patch: Partial<ServerLogResult> = {}): ServerLogResult => ({
   stage: "server.logs", id: "demo", text, file_id: 7, start_cursor: 0,
   next_cursor: text.length, eof: true, reset: false, truncated: false, ...patch,
 });
 function harness(options: { reads?: Array<() => Promise<ServerLogResult>>; commands?: Array<() => Promise<{ stage: "server.command"; id: string; accepted: true; pid: number }>>; now?: () => number } = {}) {
-  let scope: Scope | null = { directory: "/a", sourceRevision: 1 };
+  let scope: Scope | null = { endpointId: "local", kind: "local", directory: "/a", sourceRevision: 1 };
   const calls: Array<{ method: string; args: unknown[] }> = [];
   let timers = new Map<number, () => void>();
   let nextTimer = 0;
@@ -19,7 +19,7 @@ function harness(options: { reads?: Array<() => Promise<ServerLogResult>>; comma
   const controller = new ServerLogController({
     serverId: "demo",
     captureScope: () => scope,
-    isScopeCurrent: (candidate) => !!scope && scope.directory === candidate.directory && scope.sourceRevision === candidate.sourceRevision,
+    isScopeCurrent: (candidate) => !!scope && scope.endpointId === candidate.endpointId && scope.kind === candidate.kind && scope.directory === candidate.directory && scope.sourceRevision === candidate.sourceRevision,
     openSession: async () => {
       opens++;
       return {
@@ -117,7 +117,7 @@ describe("ServerLogController", () => {
     const h = harness({ reads: [() => new Promise<ServerLogResult>((r) => { resolve = r; })] });
     const pending = h.controller.open(); await Promise.resolve(); await h.controller.close();
     resolve(result("stale")); await pending; expect(h.controller.getSnapshot().text).toBe(""); expect(h.closes()).toBe(1);
-    h.setScope({ directory: "/b", sourceRevision: 2 }); await h.controller.open();
+    h.setScope({ endpointId: "local", kind: "local", directory: "/b", sourceRevision: 2 }); await h.controller.open();
     expect(h.controller.getSnapshot().text).not.toBe("stale");
   });
 
@@ -125,7 +125,7 @@ describe("ServerLogController", () => {
     let resolve!: (value: ServerLogResult) => void;
     const h = harness({ reads: [() => new Promise<ServerLogResult>((r) => { resolve = r; }), async () => result("new source")] });
     const oldRead = h.controller.open(); await Promise.resolve();
-    h.setScope({ directory: "/b", sourceRevision: 2 });
+    h.setScope({ endpointId: "local", kind: "local", directory: "/b", sourceRevision: 2 });
     const newRead = h.controller.open(); resolve(result("stale source"));
     await Promise.all([oldRead, newRead]);
     expect(h.closes()).toBe(1);
@@ -133,11 +133,24 @@ describe("ServerLogController", () => {
     expect(h.calls[1]?.args.slice(0, 2)).toEqual(["/b", "demo"]);
   });
 
+  test("endpoint switch invalidates a late log result at the same directory", async () => {
+    let resolve!: (value: ServerLogResult) => void;
+    const h = harness({ reads: [() => new Promise<ServerLogResult>((r) => { resolve = r; }), async () => result("new endpoint")] });
+    const oldRead = h.controller.open();
+    await Promise.resolve();
+    h.setScope({ endpointId: "ssh-remote", kind: "ssh", directory: "/a", sourceRevision: 2 });
+    const newRead = h.controller.open();
+    resolve(result("stale endpoint"));
+    await Promise.all([oldRead, newRead]);
+    expect(h.controller.getSnapshot().text).toBe("new endpoint");
+    expect(h.closes()).toBe(1);
+  });
+
   test("a source change detected by a late response closes the stale session and ignores its result", async () => {
     let resolve!: (value: ServerLogResult) => void;
     const h = harness({ reads: [() => new Promise<ServerLogResult>((r) => { resolve = r; }), async () => result("new scope")] });
     const pending = h.controller.open(); await Promise.resolve();
-    h.setScope({ directory: "/b", sourceRevision: 2 });
+    h.setScope({ endpointId: "local", kind: "local", directory: "/b", sourceRevision: 2 });
     resolve(result("stale")); await pending;
     expect(h.closes()).toBe(1);
     expect(h.controller.getSnapshot()).toMatchObject({ open: false, text: "" });

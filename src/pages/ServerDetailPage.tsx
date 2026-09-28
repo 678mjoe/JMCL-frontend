@@ -17,10 +17,11 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
   const [installOpen, setInstallOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { t, settings } = useSettings();
-  const { manifests, cache, loading, listError, statusErrors, pendingStatus, directory, refreshServerStatus, coreStatus, coreError } = useServers();
+  const { manifests, cache, loading, listError, statusErrors, pendingStatus, directory, endpointId, refreshServerStatus, coreStatus, coreError } = useServers();
   const { operationFor, start, stop, restart } = useServerOperations();
   const server = manifests.find((item) => item.id === serverId);
-  const cached = cache.scopes.local?.directory === directory ? cache.scopes.local.servers[serverId] : undefined;
+  const selectedScope = cache.scopes[endpointId];
+  const cached = selectedScope?.directory === directory ? selectedScope.servers[serverId] : undefined;
   const isDisplayingServer = coreStatus !== "error" && !listError && !loading && coreStatus !== "starting" && Boolean(server);
   const uptimeMs = useServerUptime(isDisplayingServer && cached?.state === "running", cached?.started_at_ms, serverId);
   if (coreStatus === "error") return <DetailMessage icon="error" title={t("core.error")} description={coreError ?? ""} backLabel={t("servers.back")} onBack={onBack} />;

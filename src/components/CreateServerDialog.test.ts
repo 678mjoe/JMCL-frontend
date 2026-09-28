@@ -58,7 +58,7 @@ describe("server create submit seam", () => {
       writeCache: async () => {},
     };
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "create-route-cache-error", directory: "/srv/servers" });
+    await controller.start({ sessionKey: "create-route-cache-error", endpointId: "local", kind: "local", directory: "/srv/servers" });
     rpc.writeCache = async () => { throw new Error("disk unavailable"); };
     const session = CoreSession.createForTesting(async <T>() => server as T);
     const events: string[] = [];
@@ -72,5 +72,24 @@ describe("server create submit seam", () => {
 
     expect(controller.getSnapshot().manifests.map(({ id }) => id)).toContain("created");
     expect(events).toEqual(["route"]);
+  });
+
+  test("a create completion from a stale endpoint does not route or update current cache", async () => {
+    const server: ServerManifest = {
+      id: "created", name: "Created", version_id: "1.21.4", fabric_loader: null,
+      neoforge_version: null, forge_version: null, source: "official", accept_eula: false,
+      java_path: null, installed: false,
+    };
+    const session = CoreSession.createForTesting(async <T>() => server as T);
+    const events: string[] = [];
+    await submitServerCreate({
+      session, directory: "/remote", id: server.id, versionId: server.version_id,
+      name: server.name, source: server.source, loader: "none", loaderVersion: "",
+      sourceScope: { endpointId: "ssh-old", kind: "ssh", directory: "/remote", sourceRevision: 1 },
+      isSourceCurrent: () => false,
+      recordCreated: async () => { events.push("record"); },
+      onCreated: () => { events.push("route"); },
+    });
+    expect(events).toEqual(["record"]);
   });
 });

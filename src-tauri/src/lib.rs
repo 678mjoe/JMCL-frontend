@@ -41,6 +41,15 @@ async fn core_close(pool: State<'_, SessionPool>, session_id: u64) -> Result<(),
     Ok(())
 }
 
+/// Close only the live SSH sessions owned by one persisted endpoint.
+#[tauri::command]
+async fn endpoint_sessions_close(
+    pool: State<'_, SessionPool>,
+    endpoint_id: String,
+) -> Result<(), SessionError> {
+    pool.close_endpoint(&endpoint_id).await
+}
+
 const INSTALL_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
 struct CompactEventForwarder {
@@ -179,6 +188,7 @@ pub fn run() {
             core_open,
             endpoint_session_open,
             core_close,
+            endpoint_sessions_close,
             core_request,
             credentials::credential_set,
             credentials::credential_get,

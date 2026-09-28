@@ -95,7 +95,7 @@ describe("server directory controller", () => {
     const rpc = fakeRpc();
     const controller = createServerController(rpc, { now: () => 10 });
 
-    await controller.start({ sessionKey: "session-a", directory });
+    await controller.start({ sessionKey: "session-a", endpointId: "local", kind: "local", directory });
 
     expect(rpc.calls.filter((call) => call === "list")).toHaveLength(1);
     expect(rpc.calls.some((call) => call.startsWith("status:"))).toBe(false);
@@ -104,10 +104,51 @@ describe("server directory controller", () => {
     expect(controller.getSnapshot().cache.scopes.local.servers.new).toBeUndefined();
   });
 
+  test("endpoint cache scopes stay disjoint and local cache survives remote startup", async () => {
+    const rpc = fakeRpc();
+    rpc.cache = reduceServerCreated(rpc.cache, "ssh-a", "/remote/servers", "remote-only", 9);
+    const controller = createServerController(rpc, { now: () => 10 });
+    await controller.start({ sessionKey: "local-session", endpointId: "local", kind: "local", directory });
+    const localValue = controller.getSnapshot().cache.scopes.local;
+    await controller.start({ sessionKey: "ssh-control", endpointId: "ssh-a", kind: "ssh", directory: "/remote/servers" });
+    expect(controller.getSnapshot().cache.scopes.local).toEqual(localValue);
+    expect(controller.getSnapshot().cache.scopes["ssh-a"].directory).toBe("/remote/servers");
+  });
+
+  test("captured source identity changes across endpoint, directory, and away-back revisions", async () => {
+    const controller = createServerController(fakeRpc());
+    await controller.start({ sessionKey: "a", endpointId: "ssh-a", kind: "ssh", directory: "/same" });
+    const first = controller.captureOperationScope();
+    await controller.start({ sessionKey: "b", endpointId: "ssh-b", kind: "ssh", directory: "/same" });
+    expect(controller.isOperationScopeCurrent(first!)).toBe(false);
+    await controller.start({ sessionKey: "a2", endpointId: "ssh-a", kind: "ssh", directory: "/same" });
+    expect(controller.isOperationScopeCurrent(first!)).toBe(false);
+    expect(controller.captureOperationScope()).toMatchObject({ endpointId: "ssh-a", kind: "ssh", directory: "/same" });
+  });
+
+  test("away-and-back source reuse cannot revive an old startup list", async () => {
+    const old = deferred<{ stage: "server.list"; servers: ServerManifest[] }>();
+    const rpc = fakeRpc([]);
+    let calls = 0;
+    rpc.list = async () => {
+      calls++;
+      if (calls === 1) return old.promise;
+      return { stage: "server.list", servers: [manifest(calls === 2 ? "middle" : "returned-current")] };
+    };
+    const controller = createServerController(rpc);
+    const first = controller.start({ sessionKey: "reused-control", endpointId: "ssh-a", kind: "ssh", directory: "/remote" });
+    await controller.start({ sessionKey: "middle-control", endpointId: "ssh-b", kind: "ssh", directory: "/remote-b" });
+    await controller.start({ sessionKey: "reused-control", endpointId: "ssh-a", kind: "ssh", directory: "/remote" });
+    old.resolve({ stage: "server.list", servers: [manifest("stale-first-visit")] });
+    await first;
+    expect(calls).toBe(3);
+    expect(controller.getSnapshot().manifests.map((item) => item.id)).toEqual(["returned-current"]);
+  });
+
   test("refreshList is one list request and zero status requests", async () => {
     const rpc = fakeRpc();
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "session-b", directory });
+    await controller.start({ sessionKey: "session-b", endpointId: "local", kind: "local", directory });
     rpc.calls.length = 0;
 
     await controller.refreshList();
@@ -119,7 +160,7 @@ describe("server directory controller", () => {
   test("list reconciliation preserves status cache and deduplicates manifest IDs", async () => {
     const rpc = fakeRpc([manifest("listed", { installed: true })]);
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "list-cache-dedupe", directory });
+    await controller.start({ sessionKey: "list-cache-dedupe", endpointId: "local", kind: "local", directory });
     await controller.recordStarted("listed", { stage: "server.start", id: "listed", running: true, pid: 77, supervisor_pid: 78, java_path: "/java", started_at_ms: 79 }, controller.captureOperationScope()!);
     rpc.list = async () => ({ stage: "server.list", servers: [manifest("listed"), manifest("listed", { name: "Listed again" })] });
     await controller.refreshList();
@@ -133,7 +174,7 @@ describe("server directory controller", () => {
     let calls = 0;
     rpc.list = async () => (++calls === 1 ? { stage: "server.list", servers: [manifest("deleted")] } : listed.promise);
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "list-delete", directory });
+    await controller.start({ sessionKey: "list-delete", endpointId: "local", kind: "local", directory });
     const refresh = controller.refreshList();
     const scope = controller.captureOperationScope()!;
     await controller.recordDeleted("deleted", scope);
@@ -149,7 +190,7 @@ describe("server directory controller", () => {
     let calls = 0;
     rpc.list = async () => (++calls === 1 ? { stage: "server.list", servers: [] } : listed.promise);
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: `list-${transition}`, directory });
+    await controller.start({ sessionKey: `list-${transition}`, endpointId: "local", kind: "local", directory });
     const refresh = controller.refreshList();
     if (transition === "create") await controller.recordCreated(manifest("created"));
     else await controller.recordInstalled(manifest("installed", { installed: true }), controller.captureOperationScope()!);
@@ -171,9 +212,9 @@ describe("server directory controller", () => {
       return { stage: "server.list", servers: [manifest(call === 1 ? "old-startup" : "new-startup")] };
     };
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "list-source-a", directory });
+    await controller.start({ sessionKey: "list-source-a", endpointId: "local", kind: "local", directory });
     const oldRefresh = controller.refreshList();
-    await controller.start({ sessionKey: "list-source-b", directory: "/other" });
+    await controller.start({ sessionKey: "list-source-b", endpointId: "local", kind: "local", directory: "/other" });
     const newRefresh = controller.refreshList();
     old.resolve({ stage: "server.list", servers: [manifest("old-list")] });
     await oldRefresh;
@@ -196,9 +237,9 @@ describe("server directory controller", () => {
       return { stage: "server.list", servers: [] };
     };
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "list-error-source-a", directory });
+    await controller.start({ sessionKey: "list-error-source-a", endpointId: "local", kind: "local", directory });
     const oldRefresh = controller.refreshList();
-    await controller.start({ sessionKey: "list-error-source-b", directory: "/other" });
+    await controller.start({ sessionKey: "list-error-source-b", endpointId: "local", kind: "local", directory: "/other" });
     const newRefresh = controller.refreshList();
     oldError.reject(new Error("old source error"));
     await oldRefresh;
@@ -216,7 +257,7 @@ describe("server directory controller", () => {
     let listCount = 0;
     rpc.list = async () => (++listCount === 1 ? { stage: "server.list", servers: [] } : listCount === 2 ? older.promise : newer.promise);
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "list-overlap", directory });
+    await controller.start({ sessionKey: "list-overlap", endpointId: "local", kind: "local", directory });
     const first = controller.refreshList();
     const second = controller.refreshList();
     newer.resolve({ stage: "server.list", servers: [manifest("newer")] });
@@ -231,8 +272,8 @@ describe("server directory controller", () => {
     const rpc = fakeRpc();
     const controller = createServerController(rpc);
     await Promise.all([
-      controller.start({ sessionKey: "strict-session", directory }),
-      controller.start({ sessionKey: "strict-session", directory }),
+      controller.start({ sessionKey: "strict-session", endpointId: "local", kind: "local", directory }),
+      controller.start({ sessionKey: "strict-session", endpointId: "local", kind: "local", directory }),
     ]);
 
     expect(rpc.calls.filter((call) => call === "list")).toHaveLength(1);
@@ -241,7 +282,7 @@ describe("server directory controller", () => {
   test("refreshServerStatus performs one status request and persists the reducer result", async () => {
     const rpc = fakeRpc([manifest("keep", { installed: true })]);
     const controller = createServerController(rpc, { now: () => 20 });
-    await controller.start({ sessionKey: "session-c", directory });
+    await controller.start({ sessionKey: "session-c", endpointId: "local", kind: "local", directory });
     rpc.calls.length = 0;
 
     await controller.refreshServerStatus("keep");
@@ -255,7 +296,7 @@ describe("server directory controller", () => {
     const rpc = fakeRpc([manifest("keep", { installed: true })]);
     rpc.status = async () => first.promise;
     const controller = createServerController(rpc, { now: () => 21 });
-    await controller.start({ sessionKey: "status-transition", directory });
+    await controller.start({ sessionKey: "status-transition", endpointId: "local", kind: "local", directory });
     const refresh = controller.refreshServerStatus("keep");
     await Promise.resolve();
     await controller.recordStarted("keep", { stage: "server.start", id: "keep", running: true, pid: 88, supervisor_pid: 89, java_path: "/new", started_at_ms: 90 }, controller.captureOperationScope()!);
@@ -279,7 +320,7 @@ describe("server directory controller", () => {
       return status("keep", true);
     };
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "status-transition-clear", directory });
+    await controller.start({ sessionKey: "status-transition-clear", endpointId: "local", kind: "local", directory });
     await controller.refreshServerStatus("keep");
     expect(controller.getSnapshot().statusErrors.keep).toBe("previous failure");
     const first = controller.refreshServerStatus("keep");
@@ -306,11 +347,11 @@ describe("server directory controller", () => {
       return oldError.promise;
     };
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "status-source-a", directory });
+    await controller.start({ sessionKey: "status-source-a", endpointId: "local", kind: "local", directory });
     const oldResponseRefresh = controller.refreshServerStatus("keep");
     const oldErrorRefresh = controller.refreshServerStatus("error");
     await Promise.resolve();
-    await controller.start({ sessionKey: "status-source-b", directory: "/other" });
+    await controller.start({ sessionKey: "status-source-b", endpointId: "local", kind: "local", directory: "/other" });
     const newSourceCache = controller.getSnapshot().cache;
     const newRefresh = controller.refreshServerStatus("keep");
     await Promise.resolve();
@@ -326,6 +367,22 @@ describe("server directory controller", () => {
     expect(controller.getSnapshot().cache.scopes.local.servers.keep.state).toBe("running");
   });
 
+  test("endpoint switch at the same directory invalidates old explicit status completion", async () => {
+    const old = deferred<ServerStatus>();
+    const rpc = fakeRpc([manifest("keep", { installed: true })]);
+    let calls = 0;
+    rpc.status = async () => (++calls === 1 ? old.promise : status("keep", true));
+    const controller = createServerController(rpc);
+    await controller.start({ sessionKey: "status-endpoint-a", endpointId: "ssh-a", kind: "ssh", directory: "/shared" });
+    const staleRefresh = controller.refreshServerStatus("keep");
+    await controller.start({ sessionKey: "status-endpoint-b", endpointId: "ssh-b", kind: "ssh", directory: "/shared" });
+    await controller.refreshServerStatus("keep");
+    old.reject(new Error("old endpoint status failure"));
+    await staleRefresh;
+    expect(controller.getSnapshot().statusErrors).toEqual({});
+    expect(controller.getSnapshot().cache.scopes["ssh-b"].servers.keep.state).toBe("running");
+  });
+
   test("only the newest overlapping status request can update response, error, or pending state", async () => {
     const older = deferred<ServerStatus>();
     const newer = deferred<ServerStatus>();
@@ -333,7 +390,7 @@ describe("server directory controller", () => {
     let requests = 0;
     rpc.status = async () => (++requests === 1 ? older.promise : newer.promise);
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "overlapping-status", directory });
+    await controller.start({ sessionKey: "overlapping-status", endpointId: "local", kind: "local", directory });
     const first = controller.refreshServerStatus("keep");
     const second = controller.refreshServerStatus("keep");
     await Promise.resolve();
@@ -354,7 +411,7 @@ describe("server directory controller", () => {
     const firstWrite = new Promise<void>((resolve) => (releaseFirst = resolve));
     let writeCount = 0;
     const controller = createServerController(rpc, { now: () => 30 });
-    await controller.start({ sessionKey: "session-d", directory });
+    await controller.start({ sessionKey: "session-d", endpointId: "local", kind: "local", directory });
     rpc.writeCache = async (next) => {
       writes.push(next);
       writeCount += 1;
@@ -377,7 +434,7 @@ describe("server directory controller", () => {
     const writes: ServerStatusCacheV1[] = [];
     let shouldFail = true;
     const controller = createServerController(rpc, { now: () => 40 });
-    await controller.start({ sessionKey: "cache-failure-create", directory });
+    await controller.start({ sessionKey: "cache-failure-create", endpointId: "local", kind: "local", directory });
     rpc.writeCache = async (next) => {
       writes.push(next);
       if (shouldFail) {
@@ -399,7 +456,7 @@ describe("server directory controller", () => {
   test("cache write failure does not become a status error or undo the result", async () => {
     const rpc = fakeRpc([manifest("keep", { installed: true })]);
     const controller = createServerController(rpc, { now: () => 50 });
-    await controller.start({ sessionKey: "cache-failure-status", directory });
+    await controller.start({ sessionKey: "cache-failure-status", endpointId: "local", kind: "local", directory });
     rpc.writeCache = async () => { throw new Error("disk unavailable"); };
 
     await expect(controller.refreshServerStatus("keep")).resolves.toBeUndefined();
@@ -410,7 +467,7 @@ describe("server directory controller", () => {
   test("cache write failure does not turn a successful list refresh into an error", async () => {
     const rpc = fakeRpc([manifest("listed")]);
     const controller = createServerController(rpc);
-    await controller.start({ sessionKey: "cache-failure-list", directory });
+    await controller.start({ sessionKey: "cache-failure-list", endpointId: "local", kind: "local", directory });
     rpc.writeCache = async () => { throw new Error("disk unavailable"); };
 
     await expect(controller.refreshList()).resolves.toBeUndefined();
@@ -421,7 +478,7 @@ describe("server directory controller", () => {
   test("lifecycle transition methods persist manifest and exact process state", async () => {
     const rpc = fakeRpc([manifest("alpha")]);
     const controller = createServerController(rpc, { now: () => 50 });
-    await controller.start({ sessionKey: "transition-session", directory });
+    await controller.start({ sessionKey: "transition-session", endpointId: "local", kind: "local", directory });
     const scope = controller.captureOperationScope()!;
     await controller.recordInstalled(manifest("alpha", { installed: true, accept_eula: true }), scope);
     expect(controller.getSnapshot().manifests[0].installed).toBe(true);
@@ -439,11 +496,11 @@ describe("server directory controller", () => {
   test("lifecycle error uses stable code inference and old scope cannot update new source", async () => {
     const rpc = fakeRpc([manifest("alpha")]);
     const controller = createServerController(rpc, { now: () => 60 });
-    await controller.start({ sessionKey: "scope-a", directory });
+    await controller.start({ sessionKey: "scope-a", endpointId: "local", kind: "local", directory });
     const old = controller.captureOperationScope()!;
     await controller.recordLifecycleError("alpha", "SERVER_ALREADY_RUNNING", old);
     expect(controller.getSnapshot().cache.scopes.local.servers.alpha).toMatchObject({ state: "running", pid: null });
-    await controller.start({ sessionKey: "scope-b", directory: "/other" });
+    await controller.start({ sessionKey: "scope-b", endpointId: "local", kind: "local", directory: "/other" });
     const newCache = controller.getSnapshot().cache;
     expect(await controller.recordDeleted("alpha", old)).toBe(false);
     expect(controller.getSnapshot().cache).toEqual(newCache);
@@ -453,7 +510,7 @@ describe("server directory controller", () => {
     const rpc = fakeRpc([manifest("alpha")]);
     rpc.writeCache = async () => { throw new Error("disk unavailable"); };
     const controller = createServerController(rpc, { now: () => 70 });
-    await controller.start({ sessionKey: "write-failure-transition", directory });
+    await controller.start({ sessionKey: "write-failure-transition", endpointId: "local", kind: "local", directory });
     const scope = controller.captureOperationScope()!;
     await expect(controller.recordStopped("alpha", scope)).resolves.toBe(true);
     expect(controller.getSnapshot().cache.scopes.local.servers.alpha.state).toBe("stopped");
@@ -462,7 +519,7 @@ describe("server directory controller", () => {
   test("independent server transitions share a source revision", async () => {
     const rpc = fakeRpc([manifest("alpha"), manifest("beta")]);
     const controller = createServerController(rpc, { now: () => 80 });
-    await controller.start({ sessionKey: "parallel-transitions", directory });
+    await controller.start({ sessionKey: "parallel-transitions", endpointId: "local", kind: "local", directory });
     const scope = controller.captureOperationScope()!;
     const result = (id: string, pid: number) => ({ stage: "server.start" as const, id, running: true as const, pid, supervisor_pid: pid + 1, java_path: "/java", started_at_ms: 70 });
     const outcomes = await Promise.all([controller.recordStarted("alpha", result("alpha", 10), scope), controller.recordStarted("beta", result("beta", 20), scope)]);

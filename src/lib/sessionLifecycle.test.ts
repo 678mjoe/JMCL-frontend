@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  SessionOwner,
   withCancellableOpenedSession,
   withOpenedSession,
 } from "./sessionLifecycle";
@@ -22,5 +23,27 @@ describe("withOpenedSession", () => {
     );
     expect(result).toBeUndefined();
     expect(closed).toBe(true);
+  });
+});
+
+describe("SessionOwner", () => {
+  test("source cleanup closes the persistent control session", async () => {
+    let closeCount = 0;
+    const owner = new SessionOwner<{ close: () => Promise<void> }>();
+    const session = { close: async () => { closeCount++; } };
+    expect(await owner.open(async () => session)).toBe(session);
+    await owner.close();
+    expect(closeCount).toBe(1);
+  });
+
+  test("unmount during session open closes the late session without adopting it", async () => {
+    let resolve!: (session: { close: () => Promise<void> }) => void;
+    let closeCount = 0;
+    const owner = new SessionOwner<{ close: () => Promise<void> }>();
+    const opening = owner.open(() => new Promise((r) => { resolve = r; }));
+    await owner.close();
+    resolve({ close: async () => { closeCount++; } });
+    expect(await opening).toBeNull();
+    expect(closeCount).toBe(1);
   });
 });

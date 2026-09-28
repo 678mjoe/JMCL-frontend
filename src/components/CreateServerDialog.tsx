@@ -4,10 +4,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { errorText, useLauncher } from "@/lib/launcher";
+import { errorText } from "@/lib/launcher";
 import { listLoaderVersions } from "@/lib/loaderVersions";
 import { useServers } from "@/lib/servers";
 import { useSettings } from "@/lib/settings";
+import { withCancellableOpenedSession } from "@/lib/sessionLifecycle";
 import type { ServerManifest, VersionSummary } from "@/lib/types";
 import {
   deriveServerId,
@@ -26,8 +27,8 @@ export interface CreateServerDialogProps {
 
 export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServerDialogProps) {
   const { t, settings } = useSettings();
-  const { session } = useLauncher();
-  const { manifests, recordCreated } = useServers();
+  const servers = useServers();
+  const { manifests, recordCreated } = servers;
   const [name, setName] = useState("");
   const [id, setId] = useState("");
   const [idTouched, setIdTouched] = useState(false);
@@ -54,20 +55,24 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
   }, [open]);
 
   useEffect(() => {
-    if (!open || !session) return;
+    if (!open || !servers.directory) return;
     let cancelled = false;
+    let session: Awaited<ReturnType<typeof servers.openSession>> | null = null;
     setVersionsState("loading");
-    session.versionList({ type: settings.hideTestVersions ? "release" : undefined, limit: 1000 })
-      .then((result) => {
-        if (cancelled) return;
-        setVersions(result.versions);
-        setVersionsState("ready");
-      })
+    void withCancellableOpenedSession(servers.openSession, () => cancelled, async (opened) => {
+      session = opened;
+      return opened.versionList({ type: settings.hideTestVersions ? "release" : undefined, limit: 1000 });
+    }).then((result) => {
+      session = null;
+      if (cancelled || !result) return;
+      setVersions(result.versions);
+      setVersionsState("ready");
+    })
       .catch(() => {
         if (!cancelled) setVersionsState("error");
       });
-    return () => { cancelled = true; };
-  }, [open, session, settings.hideTestVersions]);
+    return () => { cancelled = true; void session?.close().catch(() => undefined); };
+  }, [open, servers.directory, servers.openSession, settings.hideTestVersions]);
 
   useEffect(() => {
     if (!open || loader === "none" || !versionId) {
@@ -95,7 +100,7 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
 
   const idValid = isValidServerId(id);
   const duplicate = manifests.some((server) => server.id === id);
-  const canSubmit = Boolean(session && settings.serversDir && versionId && idValid && !duplicate &&
+  const canSubmit = Boolean(servers.directory && servers.captureOperationScope() && versionId && idValid && !duplicate &&
     isLoaderVersionSelectionValid(loader, loaderVersion, loaderVersions, loaderState) && !pending);
 
   const onNameChange = useCallback((value: string) => {
@@ -104,13 +109,14 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
   }, [idTouched]);
 
   const submit = useCallback(async () => {
-    if (!session || !canSubmit) return;
+    const sourceScope = servers.captureOperationScope();
+    if (!sourceScope || !canSubmit) return;
     setPending(true);
     setSubmitError(null);
     try {
-      await submitServerCreate({
+      await withCancellableOpenedSession(servers.openSession, () => !servers.isOperationScopeCurrent(sourceScope), (session) => submitServerCreate({
         session,
-        directory: settings.serversDir,
+        directory: sourceScope.directory,
         id,
         versionId,
         name,
@@ -118,13 +124,15 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
         loader,
         loaderVersion,
         recordCreated,
+        sourceScope,
+        isSourceCurrent: servers.isOperationScopeCurrent,
         onCreated,
-      });
+      }));
     } catch (error) {
       setSubmitError(errorText(error));
       setPending(false);
     }
-  }, [canSubmit, id, loader, loaderVersion, name, onCreated, recordCreated, session, settings.serversDir, settings.source, versionId]);
+  }, [canSubmit, id, loader, loaderVersion, name, onCreated, recordCreated, servers.captureOperationScope, servers.isOperationScopeCurrent, servers.openSession, settings.source, versionId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

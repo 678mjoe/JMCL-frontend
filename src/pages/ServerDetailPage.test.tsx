@@ -26,7 +26,8 @@ function detailMarkup(overrides: Partial<ServersContextValue> = {}) {
     captureOperationScope: () => null, isOperationScopeCurrent: () => false,
     recordInstalled: async () => false, recordStarted: async () => false, recordStopped: async () => false,
     recordLifecycleError: async () => false, recordDeleted: async () => false,
-    coreStatus: "ready", coreError: null, ...overrides,
+    endpointId: "local",
+    coreStatus: "ready", coreError: null, openSession: async () => { throw new Error("not expected in static test"); }, ...overrides,
   };
   return renderToStaticMarkup(
     <LauncherContext.Provider value={{ status: "ready", core: null, error: null, session: null, openSession: async () => { throw new Error("not expected in static test"); } }}>
@@ -48,6 +49,24 @@ describe("ServerDetailPage", () => {
     expect(markup).toContain("尚无状态记录");
     expect(markup).toContain("BMCLAPI");
     expect(markup).toContain("最后已知状态");
+  });
+
+  test("uses the selected endpoint cache state when local and remote conflict", () => {
+    const base = createEmptyServerStatusCache();
+    const stopped = { state: "stopped" as const, pid: null, supervisor_pid: null, java_path: null, started_at_ms: null, checked_at_ms: 100, last_stale_cleanup_at_ms: null };
+    const running = { ...stopped, state: "running" as const, pid: 42, supervisor_pid: 41, java_path: "/remote/java", started_at_ms: 50 };
+    const markup = detailMarkup({
+      endpointId: "ssh-remote",
+      manifests: [{ ...server, installed: true }],
+      cache: { ...base, scopes: {
+        local: { directory: "/mock/servers", servers: { demo: stopped } },
+        "ssh-remote": { directory: "/mock/servers", servers: { demo: running } },
+      } },
+    });
+    expect(markup).toContain("最后已知：运行中");
+    expect(markup).toContain("/remote/java");
+    expect(markup).toContain("停止</button>");
+    expect(markup).not.toContain("启动</button>");
   });
 
   test("created server exposes install and delete, while unknown installed server only refreshes", () => {
@@ -112,9 +131,9 @@ describe("ServerDetailPage", () => {
         captureOperationScope: () => null, isOperationScopeCurrent: () => false,
         recordInstalled: async () => false, recordStarted: async () => false, recordStopped: async () => false,
         recordLifecycleError: async () => false, recordDeleted: async () => false,
-        coreStatus: "ready", coreError: null,
+        coreStatus: "ready", coreError: null, endpointId: "local", openSession: async () => { throw new Error("not expected in static test"); },
       };
-      return <LauncherContext.Provider value={{ status: "ready", core: null, error: null, session: null, openSession: async () => { throw new Error("not expected in static test"); } }}><SettingsProvider><ServersContext.Provider value={value}><OperationsContext.Provider value={operations}><ServerDetailPage serverId="demo" onBack={() => {}} /></OperationsContext.Provider></ServersContext.Provider></SettingsProvider></LauncherContext.Provider>;
+      return <LauncherContext.Provider value={{ status: "ready", core: null, error: null, session: null, openSession: async () => { throw new Error("not expected in static test"); } }}><SettingsProvider><ServersContext.Provider value={{ ...value, openSession: async () => { throw new Error("not expected in static test"); } }}><OperationsContext.Provider value={operations}><ServerDetailPage serverId="demo" onBack={() => {}} /></OperationsContext.Provider></ServersContext.Provider></SettingsProvider></LauncherContext.Provider>;
     };
 
     jest.useFakeTimers({ now: 15_000 });

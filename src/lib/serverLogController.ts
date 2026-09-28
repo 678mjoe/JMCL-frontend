@@ -86,7 +86,7 @@ export class ServerLogController {
   private current(generation: number, scope: ServerOperationScope): boolean {
     if (generation !== this.generation) return false;
     const live = this.options.captureScope();
-    const matches = this.options.isScopeCurrent(scope) && live?.directory === scope.directory && live.sourceRevision === scope.sourceRevision;
+    const matches = this.options.isScopeCurrent(scope) && live?.endpointId === scope.endpointId && live.kind === scope.kind && live.directory === scope.directory && live.sourceRevision === scope.sourceRevision;
     if (!matches) void this.invalidateScope(generation);
     return matches;
   }
@@ -120,7 +120,7 @@ export class ServerLogController {
   async open(): Promise<void> {
     const requestedScope = this.options.captureScope();
     if (!requestedScope) return;
-    if (this.snapshot.open && this.scope && this.scope.directory === requestedScope.directory && this.scope.sourceRevision === requestedScope.sourceRevision) {
+    if (this.snapshot.open && this.scope && this.scope.endpointId === requestedScope.endpointId && this.scope.kind === requestedScope.kind && this.scope.directory === requestedScope.directory && this.scope.sourceRevision === requestedScope.sourceRevision) {
       if (this.opening) return this.opening;
       return;
     }

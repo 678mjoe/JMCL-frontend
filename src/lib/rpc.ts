@@ -74,6 +74,7 @@ import type {
   WorldBackupEntry,
   WorldEntry,
 } from "./types";
+import type { Endpoint } from "./endpoints";
 
 export interface CoreEvent {
   event: string;
@@ -202,6 +203,10 @@ type RequestExecutor = <T = unknown, E extends CoreEvent = LooseCoreEvent>(
   options?: RequestOptions,
 ) => Promise<T>;
 
+type SessionOpenExecutor = (command: "core_open" | "endpoint_session_open", args: Record<string, unknown>) => Promise<SessionInfo>;
+let sessionOpenExecutorForTesting: SessionOpenExecutor | null = null;
+let nextMockEndpointSessionId = 10;
+
 function omitUndefined<T extends Record<string, unknown>>(params: T): Record<string, unknown> {
   return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined));
 }
@@ -285,6 +290,10 @@ export class CoreSession {
    * auto-detection next to/above the app executable.
    */
   static async open(binaryPath?: string): Promise<CoreSession> {
+    if (sessionOpenExecutorForTesting) {
+      const info = await sessionOpenExecutorForTesting("core_open", { binaryPath: binaryPath ?? null });
+      return new CoreSession(info.session_id, info.core);
+    }
     if (isMockTransport()) {
       // Keep mock startup semantically equivalent to the real RPC handshake.
       let core: CoreIdentity;
@@ -300,6 +309,34 @@ export class CoreSession {
       binaryPath: binaryPath ?? null,
     });
     return new CoreSession(info.session_id, info.core);
+  }
+
+  /** Open an independent SSH session using the persisted endpoint selected in Rust. */
+  static async openSshEndpoint(endpointId: string): Promise<CoreSession> {
+    if (sessionOpenExecutorForTesting) {
+      const info = await sessionOpenExecutorForTesting("endpoint_session_open", { endpointId });
+      if (info.core.protocol !== 1) throw new RpcError({ kind: "transport", message: "Unsupported core protocol" });
+      return new CoreSession(info.session_id, info.core);
+    }
+    if (isMockTransport()) {
+      let core: CoreIdentity;
+      try { core = await mockRequest<CoreIdentity>("core.version", {}); }
+      catch (e) { throw normalizeError(e); }
+      if (core.protocol !== 1) throw new RpcError({ kind: "transport", message: "Unsupported core protocol" });
+      return new CoreSession(nextMockEndpointSessionId++, core, true);
+    }
+    const info = await call<SessionInfo>("endpoint_session_open", { endpointId });
+    return new CoreSession(info.session_id, info.core);
+  }
+
+  /** Inject only the native open boundary in focused factory tests. */
+  static setOpenExecutorForTesting(executor: SessionOpenExecutor | null): void {
+    sessionOpenExecutorForTesting = executor;
+  }
+
+  /** Local endpoints retain the local core_open path; SSH sends only its opaque ID. */
+  static openEndpoint(endpoint: Endpoint): Promise<CoreSession> {
+    return endpoint.kind === "local" ? CoreSession.open() : CoreSession.openSshEndpoint(endpoint.id);
   }
 
   /** Half-close the session; an in-flight request finishes first. */

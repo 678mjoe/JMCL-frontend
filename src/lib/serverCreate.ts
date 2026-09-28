@@ -1,4 +1,5 @@
 import type { CoreSession } from "./rpc";
+import type { ServerOperationScope } from "./servers";
 import type { LoaderFields, ServerManifest, Source } from "./types";
 
 export type LoaderChoice = "none" | "fabric" | "neoforge" | "forge";
@@ -14,6 +15,8 @@ export async function submitServerCreate({
   loader,
   loaderVersion,
   recordCreated,
+  sourceScope,
+  isSourceCurrent,
   onCreated,
 }: {
   session: Pick<CoreSession, "serverCreate">;
@@ -24,7 +27,9 @@ export async function submitServerCreate({
   source: Source;
   loader: LoaderChoice;
   loaderVersion: string;
-  recordCreated: (server: ServerManifest) => Promise<void>;
+  recordCreated: (server: ServerManifest, scope?: ServerOperationScope) => Promise<void>;
+  sourceScope?: ServerOperationScope;
+  isSourceCurrent?: (scope: ServerOperationScope) => boolean;
   onCreated: (server: ServerManifest) => void;
 }): Promise<void> {
   const loaderField: LoaderFields = loader === "fabric"
@@ -40,7 +45,8 @@ export async function submitServerCreate({
     accept_eula: false,
     ...loaderField,
   });
-  await recordCreated(server);
+  await recordCreated(server, sourceScope);
+  if (sourceScope && isSourceCurrent && !isSourceCurrent(sourceScope)) return;
   onCreated(server);
 }
 

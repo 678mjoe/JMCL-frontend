@@ -22,13 +22,15 @@ export function ServersPage({ onOpenDetail }: ServersPageProps) {
     statusErrors,
     pendingStatus,
     directory,
+    endpointId,
     refreshList,
     refreshServerStatus,
     coreStatus,
     coreError,
   } = useServers();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const scope = cache.scopes.local?.directory === directory ? cache.scopes.local : undefined;
+  const selectedScope = cache.scopes[endpointId];
+  const scope = selectedScope?.directory === directory ? selectedScope : undefined;
 
   const created = (server: ServerManifest) => {
     setDialogOpen(false);

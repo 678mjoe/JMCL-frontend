@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
-import { errorText, useLauncher } from "./launcher";
+import { errorText } from "./launcher";
 import { useServers, type ServerOperationScope } from "./servers";
 import { useSettings } from "./settings";
 import { withOpenedSession, type ClosableSession } from "./sessionLifecycle";
 import type { InstallEvent, SessionEvent } from "./rpc";
+import { RpcError } from "./rpc";
 import type { ServerLifecycleStartResult, ServerManifest, ServerManifestResult, ServerStopResult } from "./types";
 
 export type ServerOperationKind = "install" | "start" | "stop" | "restart" | "delete";
@@ -38,6 +39,11 @@ function errorCode(error: unknown): string | null {
   if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code;
   return null;
 }
+function isTransportFailure(error: unknown): boolean {
+  return error instanceof RpcError
+    ? error.kind === "transport"
+    : errorCode(error)?.startsWith("SSH_") === true || errorCode(error)?.startsWith("SESSION_") === true || errorCode(error) === "TRANSPORT_ERROR";
+}
 
 export function canInstallServer(manifest: ServerManifest, consent: boolean): boolean {
   return manifest.accept_eula || consent;
@@ -56,7 +62,7 @@ export class ServerOperationsController {
   getSnapshot = () => this.operations;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private operationKey(id: string, scope: ServerOperationScope): string {
-    return JSON.stringify([scope.directory, scope.sourceRevision, id]);
+    return JSON.stringify([scope.endpointId, scope.kind, scope.directory, scope.sourceRevision, id]);
   }
   operationFor = (id: string) => {
     const scope = this.options.directory.captureOperationScope();
@@ -68,7 +74,7 @@ export class ServerOperationsController {
     const next = { ...this.operations };
     let changed = false;
     for (const [key, record] of Object.entries(next)) {
-      const isCurrent = currentScope && record.scope.directory === currentScope.directory && record.scope.sourceRevision === currentScope.sourceRevision;
+      const isCurrent = currentScope && record.scope.endpointId === currentScope.endpointId && record.scope.kind === currentScope.kind && record.scope.directory === currentScope.directory && record.scope.sourceRevision === currentScope.sourceRevision;
       if (!record.operation.pending && !isCurrent) { delete next[key]; changed = true; }
     }
     if (changed) this.operations = next;
@@ -102,7 +108,7 @@ export class ServerOperationsController {
       return actionInvoked;
     } catch (error) {
       const code = errorCode(error);
-      if (actionInvoked && this.options.directory.isOperationScopeCurrent(scope) && ["start", "stop", "restart"].includes(kind)) {
+      if (actionInvoked && !isTransportFailure(error) && this.options.directory.isOperationScopeCurrent(scope) && ["start", "stop", "restart"].includes(kind)) {
         await this.options.directory.recordLifecycleError(id, code ?? "UNKNOWN", scope);
       }
       const current = this.operations[key]?.operation;
@@ -128,7 +134,10 @@ export class ServerOperationsController {
       const key = this.operationKey(manifest.id, scope);
       const update = (operation: ServerOperation) => this.update(key, manifest.id, scope, operation);
       update({ ...this.operations[key].operation, stage: "downloading" });
-      await session.install(scope.directory, manifest.id, { accept_eula: true, store_directory: this.options.storeDirectory || undefined }, (progress) => {
+      const installOptions = scope.kind === "local"
+        ? { accept_eula: true as const, store_directory: this.options.storeDirectory || undefined }
+        : { accept_eula: true as const };
+      await session.install(scope.directory, manifest.id, installOptions, (progress) => {
         const finishedDownload = progress.event === "progress" && progress.progress.files_total > 0 && progress.progress.files_completed >= progress.progress.files_total;
         const stage = finishedDownload || this.operations[key]?.operation.stage === "finishing" ? "finishing" : "downloading";
         update({ ...this.operations[key].operation, stage, progress });
@@ -156,12 +165,11 @@ export interface OperationsContextValue {
 export const OperationsContext = createContext<OperationsContextValue | null>(null);
 
 export function ServerOperationsProvider({ children }: { children: ReactNode }) {
-  const { openSession } = useLauncher();
   const { storeDir } = useSettings().settings;
   const directory = useServers();
   const controller = useMemo(() => new ServerOperationsController({
     openSession: async () => {
-      const session = await openSession();
+      const session = await directory.openSession();
       return {
         close: () => session.close(),
         install: (dir, id, options, event) => session.serverInstall(dir, id, options, (rpcEvent: SessionEvent<InstallEvent>) => {
@@ -174,7 +182,7 @@ export function ServerOperationsProvider({ children }: { children: ReactNode }) 
         delete: (dir, id) => session.serverDelete(dir, id),
       };
     }, directory, storeDirectory: storeDir,
-  }), [directory.captureOperationScope, directory.isOperationScopeCurrent, directory.recordInstalled, directory.recordStarted, directory.recordStopped, directory.recordLifecycleError, directory.recordDeleted, openSession]);
+  }), [directory.captureOperationScope, directory.isOperationScopeCurrent, directory.recordInstalled, directory.recordStarted, directory.recordStopped, directory.recordLifecycleError, directory.recordDeleted, directory.openSession]);
   controller.setStoreDirectory(storeDir);
   useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const value: OperationsContextValue = {

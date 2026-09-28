@@ -78,6 +78,12 @@ export async function writeEndpointConfig(config: EndpointConfigV1): Promise<voi
   await invoke("endpoint_config_write", { config: canonical });
 }
 
+export async function closeEndpointSessions(endpointId: string): Promise<void> {
+  if (endpointId === "local") throw new Error("The local endpoint cannot be closed as an endpoint group");
+  if (isMockTransport()) return;
+  await invoke("endpoint_sessions_close", { endpointId });
+}
+
 export const endpointRepository = new EndpointRepository({
   read: readEndpointConfig,
   write: writeEndpointConfig,

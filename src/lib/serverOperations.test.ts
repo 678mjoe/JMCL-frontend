@@ -14,8 +14,9 @@ function deferred<T>() {
 function harness(overrides: Partial<ServerOperationsRpc> = {}) {
   let cache: ServerStatusCacheV1 = createEmptyServerStatusCache();
   const calls: string[] = [];
+  const installParams: Array<{ directory: string; id: string; options: { accept_eula: true; store_directory?: string } }> = [];
   const rpc = {
-    install: async (_d, id, options, event) => { calls.push(`install:${id}:${options.accept_eula}`); event?.({ event: "progress", source: "official", progress: { files_completed: 1, files_total: 1, bytes_verified: 10, bytes_total: 10, bytes_processed: 10, bytes_transferred: 10 } }); return { stage: "server.install", id, version_id: "1.21.4", source: "official", java: { path: "/java", version: "21", major_version: 21, vendor: "test" }, properties_created: true, files_total: 1, files_downloaded: 1, files_cached: 0, files_hard_linked: 0, files_copied: 0, bytes_verified: 10, bytes_transferred: 10 }; },
+    install: async (directory, id, options, event) => { installParams.push({ directory, id, options }); calls.push(`install:${id}:${options.accept_eula}`); event?.({ event: "progress", source: "official", progress: { files_completed: 1, files_total: 1, bytes_verified: 10, bytes_total: 10, bytes_processed: 10, bytes_transferred: 10 } }); return { stage: "server.install", id, version_id: "1.21.4", source: "official", java: { path: "/java", version: "21", major_version: 21, vendor: "test" }, properties_created: true, files_total: 1, files_downloaded: 1, files_cached: 0, files_hard_linked: 0, files_copied: 0, bytes_verified: 10, bytes_transferred: 10 }; },
     get: async (_d, id) => { calls.push(`get:${id}`); return { stage: "server.get", ...installed }; },
     start: async (_d, id) => { calls.push(`start:${id}`); return { stage: "server.start", id, running: true, pid: 44, supervisor_pid: 43, started_at_ms: 1000, java_path: "/java" }; },
     stop: async (_d, id) => { calls.push(`stop:${id}`); return { stage: "server.stop", id, running: false, termination: "graceful", pid: 44 }; },
@@ -24,11 +25,12 @@ function harness(overrides: Partial<ServerOperationsRpc> = {}) {
     ...overrides,
   } as Omit<ServerOperationsRpc, "close">;
   const records: string[] = [];
-  let currentScope = { directory: "/servers", sourceRevision: 1 };
+  type TestScope = { endpointId: string; kind: "local" | "ssh"; directory: string; sourceRevision: number };
+  let currentScope: TestScope = { endpointId: "local", kind: "local", directory: "/servers", sourceRevision: 1 };
   let forcedCurrent: boolean | null = null;
   const directory = {
     captureOperationScope: () => currentScope,
-    isOperationScopeCurrent: (scope: { directory: string; sourceRevision: number }) => forcedCurrent ?? (scope.directory === currentScope.directory && scope.sourceRevision === currentScope.sourceRevision),
+    isOperationScopeCurrent: (scope: { endpointId: string; kind: "local" | "ssh"; directory: string; sourceRevision: number }) => forcedCurrent ?? (scope.endpointId === currentScope.endpointId && scope.kind === currentScope.kind && scope.directory === currentScope.directory && scope.sourceRevision === currentScope.sourceRevision),
     recordInstalled: async (_m: ServerManifest) => { records.push("installed"); return true; },
     recordStarted: async (_id: string, _r: unknown) => { records.push("started"); return true; },
     recordStopped: async (_id: string) => { records.push("stopped"); return true; },
@@ -41,7 +43,7 @@ function harness(overrides: Partial<ServerOperationsRpc> = {}) {
     directory,
     storeDirectory: "/store",
   });
-  return { controller, calls, records, setScope: (scope: { directory: string; sourceRevision: number }) => { currentScope = scope; forcedCurrent = null; }, setScopeCurrent: (current: boolean) => { forcedCurrent = current; }, get closeCount() { return closeCount; }, cache: () => cache };
+  return { controller, calls, installParams, records, setScope: (scope: TestScope) => { currentScope = scope; forcedCurrent = null; }, setScopeCurrent: (current: boolean) => { forcedCurrent = current; }, get closeCount() { return closeCount; }, cache: () => cache };
 }
 
 describe("ServerOperationsController", () => {
@@ -64,6 +66,17 @@ describe("ServerOperationsController", () => {
     expect(h.calls).toEqual([]);
     await h.controller.install(installed, false);
     expect(h.calls).toEqual(["install:alpha:true", "get:alpha"]);
+  });
+
+  test("sends store_directory for local installs and omits it for SSH installs", async () => {
+    const local = harness();
+    await local.controller.install(manifest, true);
+    expect(local.installParams).toEqual([{ directory: "/servers", id: "alpha", options: { accept_eula: true, store_directory: "/store" } }]);
+
+    const remote = harness();
+    remote.setScope({ endpointId: "ssh-remote", kind: "ssh", directory: "/remote/servers", sourceRevision: 2 });
+    await remote.controller.install(manifest, true);
+    expect(remote.installParams).toEqual([{ directory: "/remote/servers", id: "alpha", options: { accept_eula: true } }]);
   });
 
   test("same server is exclusive while different servers run independently", async () => {
@@ -102,7 +115,7 @@ describe("ServerOperationsController", () => {
     const controller = new ServerOperationsController({
       openSession: async () => { throw new Error("session unavailable"); },
       directory: {
-        captureOperationScope: () => ({ directory: "/servers", sourceRevision: 1 }),
+        captureOperationScope: () => ({ endpointId: "local", kind: "local", directory: "/servers", sourceRevision: 1 }),
         isOperationScopeCurrent: () => true,
         recordInstalled: async () => true,
         recordStarted: async () => true,
@@ -119,6 +132,13 @@ describe("ServerOperationsController", () => {
     const h = harness({ start: async () => { throw new Error("connection lost"); } });
     await expect(h.controller.start(installed)).rejects.toThrow("connection lost");
     expect(h.records).toEqual(["error:UNKNOWN"]);
+  });
+
+  test.each(["start", "stop", "restart"] as const)("does not infer lifecycle state after transport failure during %s", async (kind) => {
+    const h = harness({ [kind]: async () => { throw Object.assign(new Error("link down"), { kind: "transport", code: "SSH_DISCONNECTED" }); } });
+    await expect(h.controller[kind](installed)).rejects.toThrow("link down");
+    expect(h.records).toEqual([]);
+    expect(h.closeCount).toBe(1);
   });
 
   test("delete records removal only after one successful RPC", async () => {
@@ -144,7 +164,7 @@ describe("ServerOperationsController", () => {
     const oldAction = h.controller.start(installed);
     await Promise.resolve(); await Promise.resolve();
     expect(h.controller.operationFor("alpha")?.pending).toBe(true);
-    h.setScope({ directory: "/next", sourceRevision: 2 });
+    h.setScope({ endpointId: "ssh-next", kind: "ssh", directory: "/next", sourceRevision: 2 });
     expect(h.controller.operationFor("alpha")).toBeUndefined();
     const newAction = h.controller.start(installed);
     await Promise.resolve(); await Promise.resolve();
@@ -165,7 +185,7 @@ describe("ServerOperationsController", () => {
     const h = harness({ start: async () => (++starts === 1 ? first.promise : second.promise) });
     const oldAction = h.controller.start(installed).catch(() => false);
     await Promise.resolve(); await Promise.resolve();
-    h.setScope({ directory: "/next", sourceRevision: 2 });
+    h.setScope({ endpointId: "ssh-next", kind: "ssh", directory: "/next", sourceRevision: 2 });
     const newAction = h.controller.start(installed);
     await Promise.resolve(); await Promise.resolve();
     second.resolve({ stage: "server.start", id: "alpha", running: true, pid: 2, supervisor_pid: 3, started_at_ms: 4, java_path: "/new" });
@@ -180,10 +200,29 @@ describe("ServerOperationsController", () => {
     const h = harness({ start: async () => result.promise });
     const oldAction = h.controller.start(installed);
     await Promise.resolve(); await Promise.resolve();
-    h.setScope({ directory: "/next", sourceRevision: 2 });
+    h.setScope({ endpointId: "ssh-next", kind: "ssh", directory: "/next", sourceRevision: 2 });
     result.resolve({ stage: "server.start", id: "alpha", running: true, pid: 1, supervisor_pid: 2, started_at_ms: 3, java_path: "/old" });
     await oldAction;
     expect(h.records).toEqual([]);
     expect(h.controller.operationFor("alpha")).toBeUndefined();
+  });
+
+  test("same directory on another endpoint has isolated operation state and completion", async () => {
+    const old = deferred<ServerLifecycleStartResult>();
+    const current = deferred<ServerLifecycleStartResult>();
+    let count = 0;
+    const h = harness({ start: async () => (++count === 1 ? old.promise : current.promise) });
+    const oldAction = h.controller.start(installed);
+    await Promise.resolve(); await Promise.resolve();
+    h.setScope({ endpointId: "ssh-remote", kind: "ssh", directory: "/servers", sourceRevision: 2 });
+    expect(h.controller.operationFor("alpha")).toBeUndefined();
+    const newAction = h.controller.start(installed);
+    await Promise.resolve(); await Promise.resolve();
+    current.resolve({ stage: "server.start", id: "alpha", running: true, pid: 2, supervisor_pid: 3, started_at_ms: 4, java_path: "/remote" });
+    await newAction;
+    old.resolve({ stage: "server.start", id: "alpha", running: true, pid: 1, supervisor_pid: 2, started_at_ms: 3, java_path: "/local" });
+    await oldAction;
+    expect(h.records).toEqual(["started"]);
+    expect(h.controller.operationFor("alpha")).toMatchObject({ pending: false, error: null });
   });
 });
