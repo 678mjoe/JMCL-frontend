@@ -16,6 +16,7 @@ import {
   type InstanceMutation,
 } from "./instanceCoordinator";
 import { mockRequest } from "./mockTransport";
+import { closeEndpointMockSession, endpointMockRequest, openEndpointMockSession } from "./endpointMock";
 import { isMockTransport } from "./transportMode";
 import type {
   AccountProfile,
@@ -205,7 +206,6 @@ type RequestExecutor = <T = unknown, E extends CoreEvent = LooseCoreEvent>(
 
 type SessionOpenExecutor = (command: "core_open" | "endpoint_session_open", args: Record<string, unknown>) => Promise<SessionInfo>;
 let sessionOpenExecutorForTesting: SessionOpenExecutor | null = null;
-let nextMockEndpointSessionId = 10;
 
 function omitUndefined<T extends Record<string, unknown>>(params: T): Record<string, unknown> {
   return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined));
@@ -274,6 +274,7 @@ export class CoreSession {
     readonly core: CoreIdentity,
     private readonly mock = false,
     private readonly requestExecutor?: RequestExecutor,
+    private readonly endpointMock = false,
   ) {}
 
   /**
@@ -315,17 +316,18 @@ export class CoreSession {
   static async openSshEndpoint(endpointId: string): Promise<CoreSession> {
     if (sessionOpenExecutorForTesting) {
       const info = await sessionOpenExecutorForTesting("endpoint_session_open", { endpointId });
-      if (info.core.protocol !== 1) throw new RpcError({ kind: "transport", message: "Unsupported core protocol" });
+      if (info.core.protocol !== 1) throw new RpcError({ kind: "transport", code: "UNSUPPORTED_PROTOCOL", message: "Unsupported core protocol" });
       return new CoreSession(info.session_id, info.core);
     }
     if (isMockTransport()) {
-      let core: CoreIdentity;
-      try { core = await mockRequest<CoreIdentity>("core.version", {}); }
+      let info: SessionInfo;
+      try { info = await openEndpointMockSession(endpointId); }
       catch (e) { throw normalizeError(e); }
-      if (core.protocol !== 1) throw new RpcError({ kind: "transport", message: "Unsupported core protocol" });
-      return new CoreSession(nextMockEndpointSessionId++, core, true);
+      if (info.core.protocol !== 1) throw new RpcError({ kind: "transport", code: "UNSUPPORTED_PROTOCOL", message: "Unsupported core protocol" });
+      return new CoreSession(info.session_id, info.core, true, undefined, true);
     }
     const info = await call<SessionInfo>("endpoint_session_open", { endpointId });
+    if (info.core.protocol !== 1) throw new RpcError({ kind: "transport", code: "UNSUPPORTED_PROTOCOL", message: "Unsupported core protocol" });
     return new CoreSession(info.session_id, info.core);
   }
 
@@ -341,6 +343,7 @@ export class CoreSession {
 
   /** Half-close the session; an in-flight request finishes first. */
   async close(): Promise<void> {
+    if (this.endpointMock) { await closeEndpointMockSession(this.id); return; }
     if (this.mock) return;
     await call("core_close", { sessionId: this.id });
   }
@@ -355,6 +358,10 @@ export class CoreSession {
     const execute = async () => {
       if (this.requestExecutor) {
         return this.requestExecutor<T, E>(method, params, onEvent, options);
+      }
+      if (this.endpointMock) {
+        try { return await endpointMockRequest<T>(this.id, method); }
+        catch (e) { throw normalizeError(e); }
       }
       if (this.mock) {
         try {

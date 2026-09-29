@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { CoreSession, launchExecuteParams } from "./rpc";
+import { ENDPOINT_MOCK_SCENARIOS, MOCK_SSH_ENDPOINT_ID, endpointMockConfig, endpointMockOpenSessionCount, resetEndpointMock } from "./endpointMock";
+import { runEndpointConnectionTest } from "./endpointConnectionTest";
 
 describe("launch.execute wire params", () => {
   test("keeps instance, loader, Java, and source fields at the top level", () => {
@@ -73,5 +75,33 @@ describe("endpoint session factories", () => {
   test("rejects an SSH open response with an unsupported protocol as a transport error", async () => {
     CoreSession.setOpenExecutorForTesting(async () => ({ session_id: 7, core: { name: "test", version: "2", protocol: 2 } }));
     await expect(CoreSession.openSshEndpoint("ssh-id")).rejects.toMatchObject({ kind: "transport", message: "Unsupported core protocol" });
+  });
+
+  test("runs isolated mock SSH connection scenarios with sanitized states and guaranteed close", async () => {
+    resetEndpointMock("ssh-host-key-unknown");
+    const endpoint = endpointMockConfig().endpoints[1];
+    if (!endpoint || endpoint.kind !== "ssh") throw new Error("SSH endpoint fixture missing");
+    resetEndpointMock("default");
+    const connected = await runEndpointConnectionTest(endpoint);
+    expect(connected).toEqual({ status: "connected", core: { name: "jmcl-core", version: "0.1.0-mock" } });
+    expect(endpointMockOpenSessionCount()).toBe(0);
+
+    const expected = [
+      ["ssh-host-key-unknown", "unknown-host-key"],
+      ["ssh-host-key-changed", "changed-host-key"],
+      ["ssh-auth-required", "auth-required"],
+      ["ssh-timeout", "timeout"],
+      ["ssh-bad-protocol", "unsupported-protocol"],
+      ["ssh-disconnect", "disconnected"],
+    ] as const;
+    expect(ENDPOINT_MOCK_SCENARIOS).toHaveLength(expected.length);
+    for (const [scenario, code] of expected) {
+      resetEndpointMock(scenario);
+      const state = await runEndpointConnectionTest(endpoint);
+      expect(state).toEqual({ status: "error", code });
+      expect(JSON.stringify(state)).not.toContain("mock-user@mock-host");
+      expect(endpointMockOpenSessionCount()).toBe(0);
+    }
+    expect(endpoint.id).toBe(MOCK_SSH_ENDPOINT_ID);
   });
 });

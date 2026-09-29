@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { LauncherProvider, useLauncher } from "@/lib/launcher";
 import { MicrosoftAccountsProvider } from "@/lib/auth";
 import { SettingsProvider, useSettings } from "@/lib/settings";
+import { EndpointContextProvider } from "@/lib/endpointContext";
 import { ServersProvider } from "@/lib/servers";
 import { TasksProvider } from "@/lib/tasks";
 import { ServerOperationsProvider } from "@/lib/serverOperations";
@@ -141,17 +142,19 @@ function Shell() {
 export default function App() {
   return (
     <SettingsProvider>
-      <LauncherProvider>
-        <ServersProvider>
-          <MicrosoftAccountsProvider>
-            <ServerOperationsProvider>
-              <TasksProvider>
-                <Shell />
-              </TasksProvider>
-            </ServerOperationsProvider>
-          </MicrosoftAccountsProvider>
-        </ServersProvider>
-      </LauncherProvider>
+      <EndpointContextProvider>
+        <LauncherProvider>
+          <ServersProvider>
+            <MicrosoftAccountsProvider>
+              <ServerOperationsProvider>
+                <TasksProvider>
+                  <Shell />
+                </TasksProvider>
+              </ServerOperationsProvider>
+            </MicrosoftAccountsProvider>
+          </ServersProvider>
+        </LauncherProvider>
+      </EndpointContextProvider>
     </SettingsProvider>
   );
 }

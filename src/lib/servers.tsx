@@ -31,8 +31,7 @@ import type {
   ServerStatus,
 } from "./types";
 import { CoreSession } from "./rpc";
-import type { EndpointConfigV1 } from "./endpoints";
-import { readEndpointConfig } from "./native";
+import { useEndpointContext } from "./endpointContext";
 
 export interface ServerControllerRpc {
   list: (directory: string) => Promise<ServerListResult>;
@@ -451,31 +450,11 @@ function rpcForSession(session: CoreSession): ServerControllerRpc {
 }
 
 export function ServersProvider({ children }: { children: ReactNode }) {
-  const { settings, update } = useSettings();
+  const { settings } = useSettings();
+  const { selectedEndpoint: endpoint, loading: endpointLoading, error: endpointError } = useEndpointContext();
   const { error: launcherError } = useLauncher();
-  const [endpointConfig, setEndpointConfig] = useState<EndpointConfigV1 | null>(null);
-  const [endpointError, setEndpointError] = useState<string | null>(null);
-  const [endpointReady, setEndpointReady] = useState(false);
   const [controlStatus, setControlStatus] = useState<"starting" | "ready" | "error">("starting");
   const [controlError, setControlError] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    setEndpointReady(false);
-    void readEndpointConfig().then((config) => {
-      if (!cancelled) { setEndpointConfig(config); setEndpointError(null); setEndpointReady(true); }
-    }).catch((error) => {
-      if (!cancelled) { setEndpointConfig(null); setEndpointError(errorText(error)); setEndpointReady(true); }
-    });
-    return () => { cancelled = true; };
-  }, []);
-  useEffect(() => {
-    if (endpointConfig && !endpointConfig.endpoints.some((item) => item.id === settings.selectedServerEndpointId)) {
-      update({ selectedServerEndpointId: "local" });
-    }
-  }, [endpointConfig, settings.selectedServerEndpointId, update]);
-  const endpoint = endpointConfig?.endpoints.find((item) => item.id === settings.selectedServerEndpointId)
-    ?? endpointConfig?.endpoints.find((item) => item.id === "local")
-    ?? null;
   const openSession = useCallback(() => endpoint
     ? CoreSession.openEndpoint(endpoint)
     : Promise.reject(new Error(endpointError ?? "Server endpoint is unavailable")), [endpoint, endpointError]);
@@ -499,7 +478,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
   const sourceDirectory = endpoint?.kind === "ssh" ? endpoint.serversDirectory ?? "" : settings.serversDir;
   useEffect(() => {
     let cancelled = false;
-    if (!endpointReady) return;
+    if (endpointLoading) return;
     if (!endpoint || !sourceDirectory) {
       setControlStatus("error");
       setControlError(endpointError ?? (endpoint ? "Server directory is unavailable" : "Selected server endpoint is unavailable"));
@@ -527,7 +506,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
       controller.setUnavailable(sourceDirectory, null);
       void controlSessionOwner.close().catch(() => undefined);
     };
-  }, [controlSessionOwner, controller, endpoint, endpointError, endpointReady, sourceDirectory]);
+  }, [controlSessionOwner, controller, endpoint, endpointError, endpointLoading, sourceDirectory]);
 
   const refreshList = useCallback(() => controller.refreshList(), [controller]);
   const refreshServerStatus = useCallback((id: string) => controller.refreshServerStatus(id), [controller]);
@@ -546,7 +525,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
     recordCreated,
     captureOperationScope, isOperationScopeCurrent, recordInstalled, recordStarted,
     recordStopped, recordLifecycleError, recordDeleted,
-    coreStatus: endpointReady ? controlStatus : "starting",
+    coreStatus: endpointLoading ? "starting" : controlStatus,
     coreError: controlError ?? endpointError ?? launcherError,
     endpointId: endpoint?.id ?? "local",
     openSession,
