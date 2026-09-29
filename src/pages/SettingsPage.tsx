@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { EndpointManager } from "@/components/EndpointManager";
 import { useMicrosoftAccounts } from "@/lib/auth";
 import type { Language } from "@/lib/i18n";
 import { errorText, useLauncher } from "@/lib/launcher";
@@ -221,6 +222,10 @@ export function SettingsPage() {
         <Separator />
 
         <AccountsSection />
+
+        <Separator />
+
+        <EndpointManager />
 
         <Separator />
 

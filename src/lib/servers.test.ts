@@ -5,6 +5,7 @@ import {
 } from "./servers";
 import {
   createEmptyServerStatusCache,
+  removeServerEndpointScope,
   reduceServerCreated,
   type ServerStatusCacheV1,
 } from "./serverStatusCache";
@@ -223,6 +224,140 @@ describe("server directory controller", () => {
     await newRefresh;
     expect(controller.getSnapshot().manifests.map(({ id }) => id)).toEqual(["new-list"]);
     expect(controller.getSnapshot().listError).toBeNull();
+  });
+
+  test("endpoint cache cleanup drains queued writes and rejects late writes from the deleted active source", async () => {
+    const lateStatus = deferred<ServerStatus>();
+    const queuedWrite = deferred<void>();
+    const rpc = fakeRpc([]);
+    rpc.cache = {
+      schema_version: 1,
+      scopes: {
+        local: { directory, servers: {} },
+        "ssh-deleted": { directory: "/remote", servers: {} },
+        "ssh-keep": { directory: "/other", servers: {} },
+      },
+    };
+    let blockWrite = false;
+    let writes = 0;
+    const originalWrite = rpc.writeCache;
+    rpc.writeCache = async (cache) => {
+      writes++;
+      if (blockWrite) {
+        blockWrite = false;
+        await queuedWrite.promise;
+      }
+      await originalWrite(cache);
+    };
+    rpc.status = async () => lateStatus.promise;
+    const controller = createServerController(rpc);
+    await controller.start({ sessionKey: "deleting-session", endpointId: "ssh-deleted", kind: "ssh", directory: "/remote" });
+    const pendingStatus = controller.refreshServerStatus("late-server");
+    blockWrite = true;
+    const pendingQueuedWrite = controller.recordCreated(manifest("new-server"));
+
+    const drain = controller.prepareEndpointDeletion("ssh-deleted");
+    lateStatus.resolve(status("late-server", true));
+    queuedWrite.resolve();
+    await Promise.all([drain, pendingStatus, pendingQueuedWrite]);
+    const writesAfterDrain = writes;
+
+    const latest = await rpc.readCache();
+    await rpc.writeCache(removeServerEndpointScope(latest, "ssh-deleted"));
+    expect(writes).toBe(writesAfterDrain + 1);
+    expect(rpc.cache.scopes.local).toBeDefined();
+    expect(rpc.cache.scopes["ssh-keep"]).toBeDefined();
+    expect(rpc.cache.scopes["ssh-deleted"]).toBeUndefined();
+    expect(rpc.cache.scopes["ssh-deleted"]?.servers["late-server"]).toBeUndefined();
+  });
+
+  test("queued stale snapshots cannot resurrect a deleted scope across local startup and serialized cleanup", async () => {
+    const oldWriteGate = deferred<void>();
+    const lateWriteGate = deferred<void>();
+    const rpc = fakeRpc([]);
+    rpc.cache = {
+      schema_version: 1,
+      scopes: {
+        local: { directory, servers: { existing: { state: "unknown", pid: null, supervisor_pid: null, java_path: null, started_at_ms: null, checked_at_ms: 1, last_stale_cleanup_at_ms: null } } },
+        "ssh-deleted": { directory: "/remote", servers: {} },
+        "ssh-keep": { directory: "/other", servers: {} },
+      },
+    };
+    let writes = 0;
+    let holdWrites = false;
+    const rawWrite = rpc.writeCache;
+    rpc.writeCache = async (cache) => {
+      writes++;
+      if (holdWrites && writes === 2) await oldWriteGate.promise;
+      if (holdWrites && writes === 3) await lateWriteGate.promise;
+      await rawWrite(cache);
+    };
+    const controller = createServerController(rpc);
+    const initial = controller.start({ sessionKey: "race-session-ssh", endpointId: "ssh-deleted", kind: "ssh", directory: "/remote" });
+    await initial;
+    holdWrites = true;
+    const oldScope = controller.captureOperationScope()!;
+    // Hold an already queued write containing the endpoint to be deleted.
+    const staleWrite = controller.recordCreated(manifest("old-snapshot"), oldScope);
+    await Promise.resolve();
+    const barrier = controller.prepareEndpointDeletion("ssh-deleted");
+    oldWriteGate.resolve();
+    await barrier;
+
+    // A fresh local startup reads the still-present disk snapshot, then queues
+    // its write while cleanup is waiting behind that write.
+    const localStart = controller.start({ sessionKey: "race-session-local", endpointId: "local", kind: "local", directory });
+    while (writes < 3) await Promise.resolve();
+    const cleanup = controller.cleanupEndpointCache("ssh-deleted");
+    lateWriteGate.resolve();
+    await Promise.all([staleWrite, localStart, cleanup]);
+
+    expect(rpc.cache.scopes.local).toBeDefined();
+    expect(rpc.cache.scopes["ssh-keep"]).toBeDefined();
+    expect(rpc.cache.scopes["ssh-deleted"]).toBeUndefined();
+  });
+
+  test("deleting an unselected endpoint drains writes without invalidating the active source", async () => {
+    const rpc = fakeRpc([manifest("kept")]);
+    rpc.cache = {
+      schema_version: 1,
+      scopes: {
+        local: { directory, servers: {} },
+        "ssh-unselected": { directory: "/unused", servers: {} },
+      },
+    };
+    const controller = createServerController(rpc);
+    await controller.start({ sessionKey: "local-session", endpointId: "local", kind: "local", directory });
+    const scope = controller.captureOperationScope();
+    await controller.prepareEndpointDeletion("ssh-unselected");
+    expect(controller.captureOperationScope()).toEqual(scope);
+    expect(controller.getSnapshot().manifests.map(({ id }) => id)).toEqual(["keep", "new"]);
+    await controller.refreshList();
+    expect(controller.getSnapshot().manifests.map(({ id }) => id)).toEqual(["kept"]);
+    expect(rpc.calls).toContain("list");
+  });
+
+  test("deleting the selected endpoint invalidates old list, status, and lifecycle work", async () => {
+    const oldList = deferred<{ stage: "server.list"; servers: ServerManifest[] }>();
+    const oldStatus = deferred<ServerStatus>();
+    const rpc = fakeRpc([]);
+    let listCalls = 0;
+    rpc.list = async () => ++listCalls === 2 ? oldList.promise : { stage: "server.list", servers: [] };
+    rpc.status = async () => oldStatus.promise;
+    const controller = createServerController(rpc);
+    await controller.start({ sessionKey: "selected-ssh", endpointId: "ssh-deleted", kind: "ssh", directory: "/remote" });
+    const staleScope = controller.captureOperationScope()!;
+    const listRefresh = controller.refreshList();
+    const statusRefresh = controller.refreshServerStatus("late-server");
+    await controller.prepareEndpointDeletion("ssh-deleted");
+    expect(controller.captureOperationScope()).toBeNull();
+    oldList.resolve({ stage: "server.list", servers: [manifest("late-list")] });
+    oldStatus.resolve(status("late-server", true));
+    await Promise.all([listRefresh, statusRefresh]);
+    expect(await controller.recordStarted("late-server", { stage: "server.start", id: "late-server", running: true, pid: 7, supervisor_pid: 6, java_path: "/java", started_at_ms: 1 }, staleScope)).toBe(false);
+    expect(controller.getSnapshot().manifests).toEqual([]);
+    expect(controller.getSnapshot().statusErrors).toEqual({});
+    expect(controller.getSnapshot().pendingStatus.size).toBe(0);
   });
 
   test("old list error after source switch cannot clear the new list loading state", async () => {

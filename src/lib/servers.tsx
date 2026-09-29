@@ -21,6 +21,7 @@ import {
   reduceServerStarted,
   reduceServerStopped,
   reduceServerStatus,
+  removeServerEndpointScope,
   type ServerStatusCacheV1,
 } from "./serverStatusCache";
 import { useSettings } from "./settings";
@@ -127,6 +128,7 @@ function getStartup(
 export class ServerController {
   private source: SourceKey | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
+  private readonly deletedEndpointIds = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private readonly now: () => number;
   private revision = 0;
@@ -172,11 +174,37 @@ export class ServerController {
   }
 
   private enqueueCacheWrite(cache: ServerStatusCacheV1): Promise<void> {
-    const write = this.writeQueue.catch(() => undefined).then(() => this.rpc.writeCache(cache));
+    const write = this.writeQueue.catch(() => undefined).then(() => {
+      const filtered = [...this.deletedEndpointIds].reduce(removeServerEndpointScope, cache);
+      return this.rpc.writeCache(filtered);
+    });
     this.writeQueue = write.catch(() => undefined);
     // Cache persistence is advisory. Keep writes ordered, but let a failed
     // write settle before the next one without changing the core operation's result.
     return write.catch(() => undefined);
+  }
+
+  /** Invalidate the active endpoint synchronously, then wait for already queued advisory writes. */
+  async prepareEndpointDeletion(endpointId: string): Promise<void> {
+    this.deletedEndpointIds.add(endpointId);
+    if (this.source?.endpointId === endpointId) {
+      // Invalidate synchronously before yielding so old source responses cannot
+      // repopulate controller state while cleanup waits for queued writes.
+      this.setUnavailable(this.snapshot.directory, null);
+    }
+    await this.writeQueue.catch(() => undefined);
+  }
+
+  /** Read, remove, and persist an endpoint scope as one serialized cache operation. */
+  async cleanupEndpointCache(endpointId: string): Promise<void> {
+    this.deletedEndpointIds.add(endpointId);
+    const cleanup = this.writeQueue.catch(() => undefined).then(async () => {
+      const latest = await this.rpc.readCache();
+      const filtered = [...this.deletedEndpointIds].reduce(removeServerEndpointScope, latest);
+      if (filtered !== latest) await this.rpc.writeCache(filtered);
+    });
+    this.writeQueue = cleanup.then(() => undefined, () => undefined);
+    await cleanup;
   }
 
   async start(source: SourceKey): Promise<void> {
@@ -432,6 +460,8 @@ export interface ServersContextValue extends ServerControllerSnapshot {
   recordStopped: (id: string, scope: ServerOperationScope) => Promise<boolean>;
   recordLifecycleError: (id: string, code: string, scope: ServerOperationScope) => Promise<boolean>;
   recordDeleted: (id: string, scope: ServerOperationScope) => Promise<boolean>;
+  prepareEndpointDeletion: (endpointId: string) => Promise<void>;
+  cleanupEndpointCache: (endpointId: string) => Promise<void>;
   coreStatus: "starting" | "ready" | "error";
   coreError: string | null;
   endpointId: string;
@@ -518,6 +548,8 @@ export function ServersProvider({ children }: { children: ReactNode }) {
   const recordStopped = useCallback((id: string, scope: ServerOperationScope) => controller.recordStopped(id, scope), [controller]);
   const recordLifecycleError = useCallback((id: string, code: string, scope: ServerOperationScope) => controller.recordLifecycleError(id, code, scope), [controller]);
   const recordDeleted = useCallback((id: string, scope: ServerOperationScope) => controller.recordDeleted(id, scope), [controller]);
+  const prepareEndpointDeletion = useCallback((endpointId: string) => controller.prepareEndpointDeletion(endpointId), [controller]);
+  const cleanupEndpointCache = useCallback((endpointId: string) => controller.cleanupEndpointCache(endpointId), [controller]);
   const value: ServersContextValue = {
     ...snapshot,
     refreshList,
@@ -525,6 +557,8 @@ export function ServersProvider({ children }: { children: ReactNode }) {
     recordCreated,
     captureOperationScope, isOperationScopeCurrent, recordInstalled, recordStarted,
     recordStopped, recordLifecycleError, recordDeleted,
+    prepareEndpointDeletion,
+    cleanupEndpointCache,
     coreStatus: endpointLoading ? "starting" : controlStatus,
     coreError: controlError ?? endpointError ?? launcherError,
     endpointId: endpoint?.id ?? "local",

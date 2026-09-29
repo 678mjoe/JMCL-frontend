@@ -28,6 +28,8 @@ function pageMarkup(overrides: Partial<ServersContextValue> = {}) {
     recordStopped: async () => false,
     recordLifecycleError: async () => false,
     recordDeleted: async () => false,
+    prepareEndpointDeletion: async () => {},
+    cleanupEndpointCache: async () => {},
     coreStatus: "ready",
     coreError: null,
     endpointId: "local",

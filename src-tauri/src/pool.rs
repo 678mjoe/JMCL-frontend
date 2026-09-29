@@ -28,6 +28,7 @@ struct PoolState {
     sessions: HashMap<u64, Arc<Session>>,
     owners: HashMap<u64, String>,
     endpoint_sessions: HashMap<String, HashSet<u64>>,
+    endpoint_generations: HashMap<String, u64>,
 }
 
 #[derive(Default)]
@@ -94,6 +95,12 @@ impl SessionPool {
         handshake_timeout: Duration,
     ) -> Result<SessionInfo, SessionError> {
         validate_endpoint_id(endpoint_id)?;
+        // Capture before reading configuration or starting SSH so deletion can
+        // invalidate every open already in flight, including handshakes.
+        let endpoint_generation = {
+            let state = self.state.lock().await;
+            *state.endpoint_generations.get(endpoint_id).unwrap_or(&0)
+        };
         let app_data_dir = self.working_dir.as_deref().ok_or_else(|| {
             SessionError::coded(
                 "ENDPOINT_CONFIG_INVALID",
@@ -131,7 +138,8 @@ impl SessionPool {
             .map_err(SessionError::from_transport)?;
         let remaining = handshake_timeout.saturating_sub(started.elapsed());
         let session = Session::establish_with_timeout(Box::new(transport), remaining).await?;
-        self.insert_established(session, endpoint_id).await
+        self.insert_established_if_current(session, endpoint_id, endpoint_generation)
+            .await
     }
 
     async fn insert_established(
@@ -144,6 +152,36 @@ impl SessionPool {
             core: session.identity().clone(),
         };
         let mut state = self.state.lock().await;
+        state.sessions.insert(info.session_id, Arc::new(session));
+        state.owners.insert(info.session_id, endpoint_id.to_owned());
+        state
+            .endpoint_sessions
+            .entry(endpoint_id.to_owned())
+            .or_default()
+            .insert(info.session_id);
+        Ok(info)
+    }
+
+    async fn insert_established_if_current(
+        &self,
+        session: Session,
+        endpoint_id: &str,
+        captured_generation: u64,
+    ) -> Result<SessionInfo, SessionError> {
+        let mut state = self.state.lock().await;
+        let current_generation = *state.endpoint_generations.get(endpoint_id).unwrap_or(&0);
+        if current_generation != captured_generation {
+            drop(state);
+            session.close().await;
+            return Err(SessionError::coded(
+                "ENDPOINT_NOT_FOUND",
+                "The saved endpoint no longer exists.",
+            ));
+        }
+        let info = SessionInfo {
+            session_id: self.next_id.fetch_add(1, Ordering::Relaxed) + 1,
+            core: session.identity().clone(),
+        };
         state.sessions.insert(info.session_id, Arc::new(session));
         state.owners.insert(info.session_id, endpoint_id.to_owned());
         state
@@ -190,6 +228,11 @@ impl SessionPool {
         }
         let sessions = {
             let mut state = self.state.lock().await;
+            let generation = state
+                .endpoint_generations
+                .entry(endpoint_id.to_owned())
+                .or_default();
+            *generation = generation.wrapping_add(1);
             let ids = state
                 .endpoint_sessions
                 .remove(endpoint_id)
@@ -269,6 +312,7 @@ mod tests {
     use serde_json::json;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Mutex as StdMutex;
+    use tokio::sync::Notify;
 
     struct TestTransport {
         pending: StdMutex<Option<String>>,
@@ -312,6 +356,45 @@ mod tests {
         }))
         .await
         .unwrap()
+    }
+
+    struct DelayedHandshakeTransport {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+        pending: StdMutex<Option<String>>,
+        closes: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl LineTransport for DelayedHandshakeTransport {
+        async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure> {
+            let request: serde_json::Value = serde_json::from_str(line).unwrap();
+            let id = request.get("id").and_then(|value| value.as_str()).unwrap();
+            self.entered.notify_one();
+            self.release.notified().await;
+            *self.pending.lock().unwrap() = Some(
+                json!({
+                    "id": id,
+                    "event": "result",
+                    "result": {"name": "fake-core", "version": "1", "protocol": 1}
+                })
+                .to_string(),
+            );
+            Ok(())
+        }
+
+        async fn next_event(&mut self) -> TransportEvent {
+            TransportEvent::Line(self.pending.lock().unwrap().take().unwrap())
+        }
+
+        async fn close(&mut self) -> Result<(), TransportFailure> {
+            self.closes.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn abort(&mut self) -> Result<(), TransportFailure> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -374,5 +457,46 @@ mod tests {
         assert!(validate_endpoint_id("local").is_ok());
         assert!(validate_endpoint_id("not-an-id").is_err());
         assert!(validate_endpoint_id("123e4567-e89b-42d3-a456-426614174000").is_ok());
+    }
+
+    #[tokio::test]
+    async fn close_endpoint_rejects_and_reaps_a_session_whose_handshake_finishes_late() {
+        let pool = Arc::new(SessionPool::default());
+        let endpoint_id = "123e4567-e89b-42d3-a456-426614174000";
+        let generation = *pool
+            .state
+            .lock()
+            .await
+            .endpoint_generations
+            .get(endpoint_id)
+            .unwrap_or(&0);
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let closes = Arc::new(AtomicUsize::new(0));
+        let handshake = {
+            let entered = entered.clone();
+            let release = release.clone();
+            let closes = closes.clone();
+            tokio::spawn(async move {
+                Session::establish(Box::new(DelayedHandshakeTransport {
+                    entered,
+                    release,
+                    pending: StdMutex::new(None),
+                    closes,
+                }))
+                .await
+                .unwrap()
+            })
+        };
+        entered.notified().await;
+        pool.close_endpoint(endpoint_id).await.unwrap();
+        release.notify_one();
+        let session = handshake.await.unwrap();
+        let result = pool
+            .insert_established_if_current(session, endpoint_id, generation)
+            .await;
+        assert!(result.is_err());
+        assert!(pool.endpoint_session_ids(endpoint_id).await.is_empty());
+        assert_eq!(closes.load(Ordering::SeqCst), 1);
     }
 }

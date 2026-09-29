@@ -26,6 +26,8 @@ function detailMarkup(overrides: Partial<ServersContextValue> = {}) {
     captureOperationScope: () => null, isOperationScopeCurrent: () => false,
     recordInstalled: async () => false, recordStarted: async () => false, recordStopped: async () => false,
     recordLifecycleError: async () => false, recordDeleted: async () => false,
+    prepareEndpointDeletion: async () => {},
+    cleanupEndpointCache: async () => {},
     endpointId: "local",
     coreStatus: "ready", coreError: null, openSession: async () => { throw new Error("not expected in static test"); }, ...overrides,
   };
@@ -131,6 +133,8 @@ describe("ServerDetailPage", () => {
         captureOperationScope: () => null, isOperationScopeCurrent: () => false,
         recordInstalled: async () => false, recordStarted: async () => false, recordStopped: async () => false,
         recordLifecycleError: async () => false, recordDeleted: async () => false,
+        prepareEndpointDeletion: async () => {},
+        cleanupEndpointCache: async () => {},
         coreStatus: "ready", coreError: null, endpointId: "local", openSession: async () => { throw new Error("not expected in static test"); },
       };
       return <LauncherContext.Provider value={{ status: "ready", core: null, error: null, session: null, openSession: async () => { throw new Error("not expected in static test"); } }}><SettingsProvider><ServersContext.Provider value={{ ...value, openSession: async () => { throw new Error("not expected in static test"); } }}><OperationsContext.Provider value={operations}><ServerDetailPage serverId="demo" onBack={() => {}} /></OperationsContext.Provider></ServersContext.Provider></SettingsProvider></LauncherContext.Provider>;
