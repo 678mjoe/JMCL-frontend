@@ -17,7 +17,7 @@ JMCL 是 Minecraft: Java Edition 的桌面启动器。本仓库包含 React/Type
 - 安装进度以及 stdout、stderr、core 诊断日志；
 - 中英文界面、主题、官方/BMCLAPI 源和可配置目录。
 
-服务器 GUI 和 SSH transport 尚未实现。客户端数据包、完整整合包/CurseForge 支持及高级启动选项也不在当前范围内。mock 有稳定的列表错误场景，但没有声称提供安装失败或超出下文所述确定性事件的安装进度场景切换。
+GUI 已支持本地服务器管理，以及通过系统 OpenSSH 建立按 endpoint 隔离的远程会话。SSH 使用严格的 `known_hosts` 校验、固定远程命令 `exec jmcl-core rpc`，并继承用户的 SSH 配置和 agent；JMCL 不保存 SSH 凭据。Pi 上的 fake-ssh 测试覆盖了 transport 行为，但真实 macOS/Windows Tauri GUI、系统 SSH、主机密钥行为和原生子进程清理仍待平台验收。客户端数据包、完整整合包/CurseForge 支持及高级启动选项不在当前范围内。
 
 ## 技术栈与开发依赖
 
@@ -39,13 +39,15 @@ bun install --frozen-lockfile
 flowchart LR
     UI[React UI] -->|Tauri invoke / Channel| Bridge[Rust RPC bridge]
     Bridge -->|JSON Lines over stdio| Core[jmcl-core rpc]
+    Bridge -->|按 endpoint 隔离的系统 OpenSSH| SSH[OpenSSH]
+    SSH -->|固定命令 exec jmcl-core rpc| Remote[远程 jmcl-core]
     Core --> Files[实例和共享制品存储]
     Core --> Game[Minecraft 进程]
 ```
 
 `jmcl-core` 以持久子进程运行。GUI 发送 JSON Lines 请求并接收进度和终止事件。协议 v1 的单个 session 同时只处理一个请求；安装和启动使用独立 session。按实例的协调器禁止同一实例的 mutation 并发，同时允许不同实例并行。
 
-RPC 契约见 [`gui-handoff.md`](./gui-handoff.md)。Rust transport 与 session 层解耦，未来可以增加远程 transport 而不改变 React RPC 接口。
+服务器 endpoint 使用独立 session，因此选择 SSH endpoint 不会把本地实例、账户或 Java 操作重定向到远端。SSH destination 和可选的远程服务器目录属于 endpoint 元数据；认证由用户的系统 OpenSSH 配置处理。`StrictHostKeyChecking=yes` 会拒绝未知或已变更的主机密钥，`BatchMode=yes` 会禁用交互式密码/口令提示。RPC 契约见 [`gui-handoff.md`](./gui-handoff.md)，尚待完成的桌面检查见 [`stage-2-platform-handoff.md`](./docs/verification/stage-2-platform-handoff.md)。
 
 ## 开发环境与 core 查找顺序
 
@@ -84,6 +86,7 @@ mock 场景在初始化时选择，修改后重启 Vite 即可复位：
 - `default`（默认）：5 个实例、账户/托管 Java/内容/世界 fixture，以及进度和交错日志；
 - `empty`：实例、账户、托管 Java、内容和世界均为空；
 - `errors`：`core.version` 和 `instance.list` 确定性返回 `MOCK_SCENARIO_ERROR`。
+- `ssh-host-key-unknown`、`ssh-host-key-changed`、`ssh-auth-required`、`ssh-timeout`、`ssh-bad-protocol` 和 `ssh-disconnect`：endpoint mock 对 SSH 建连或请求失败的模拟结果。
 
 可以用 URL 查询参数或环境变量选择：
 

@@ -17,7 +17,7 @@ The GUI currently supports:
 - installation progress plus stdout, stderr, and core diagnostics;
 - Chinese/English UI, themes, official/BMCLAPI sources, and configurable directories.
 
-The server GUI and SSH transport are not implemented yet. Client data packs, full modpack/CurseForge support, and advanced launch options are also outside the current scope. The mock deliberately covers stable list errors, but does not claim install-failure or install-progress scenario switching beyond the deterministic events described below.
+The GUI includes local server management and endpoint-scoped remote sessions through the system OpenSSH client. SSH uses strict `known_hosts` checking, a fixed remote `exec jmcl-core rpc` command, and the user's inherited SSH configuration/agent; JMCL does not store SSH credentials. Pi fake-SSH tests cover transport behavior, but the real macOS and Windows Tauri GUI, system SSH, host-key behavior, and native child-process cleanup still need platform verification. Client data packs, full modpack/CurseForge support, and advanced launch options are outside the current scope.
 
 ## Technology stack and dependencies
 
@@ -39,13 +39,15 @@ bun install --frozen-lockfile
 flowchart LR
     UI[React UI] -->|Tauri invoke / Channel| Bridge[Rust RPC bridge]
     Bridge -->|JSON Lines over stdio| Core[jmcl-core rpc]
+    Bridge -->|endpoint-scoped system OpenSSH| SSH[OpenSSH]
+    SSH -->|fixed exec jmcl-core rpc| Remote[Remote jmcl-core]
     Core --> Files[Instances and shared store]
     Core --> Game[Minecraft process]
 ```
 
 `jmcl-core` runs as a persistent child process. The GUI sends JSON Lines requests and receives progress and terminal events. A protocol v1 session handles one request at a time; installation and launch use dedicated sessions. The instance coordinator prevents concurrent mutations of one instance while allowing different instances to proceed in parallel.
 
-See [`gui-handoff.md`](./gui-handoff.md) for the RPC contract. The Rust transport is separated from the session layer, leaving room for a future remote transport without changing the React RPC surface.
+Server endpoints use separate sessions, so selecting an SSH endpoint does not redirect local instance, account, or Java operations. SSH destinations and optional remote server directories are endpoint metadata; authentication remains with the user's system OpenSSH setup. `StrictHostKeyChecking=yes` refuses unknown or changed host keys, and `BatchMode=yes` disables interactive password/passphrase prompts. See [`gui-handoff.md`](./gui-handoff.md) for the RPC contract and [`stage-2-platform-handoff.md`](./docs/verification/stage-2-platform-handoff.md) for the remaining desktop checks.
 
 ## Development requirements and core lookup
 
@@ -84,6 +86,7 @@ The mock scenario is selected at initialization and can be reset by restarting V
 - `default` (the default): five instances, account/runtime/content/world fixtures, progress and mixed logs;
 - `empty`: empty instances, accounts, managed Java, content, and worlds;
 - `errors`: deterministic `MOCK_SCENARIO_ERROR` for `core.version` and `instance.list`.
+- `ssh-host-key-unknown`, `ssh-host-key-changed`, `ssh-auth-required`, `ssh-timeout`, `ssh-bad-protocol`, and `ssh-disconnect`: endpoint mock outcomes for SSH setup or request failures.
 
 Use either a query parameter or an environment variable:
 
