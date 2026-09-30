@@ -10,6 +10,33 @@ use jmcl_lib::ssh_transport::{build_ssh_argv, SshProcessTransport};
 use jmcl_lib::transport::LineTransport;
 use serde_json::json;
 
+fn process_is_alive(pid: i32) -> bool {
+    let output = std::process::Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .output()
+        .expect("the Unix kill utility must be available for process liveness checks");
+    output.status.success()
+}
+
+fn assert_process_gone(pid: i32) {
+    assert!(!process_is_alive(pid), "child process {pid} remains alive");
+}
+
+#[test]
+fn process_liveness_check_detects_a_child_before_and_after_reap() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("sleep must be available for the controlled child process test");
+    let pid = child.id() as i32;
+
+    assert!(process_is_alive(pid), "child process {pid} should be alive");
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert_process_gone(pid);
+}
+
 #[test]
 fn ssh_argv_is_exact_and_has_one_immutable_remote_command() {
     let argv = build_ssh_argv("fake-host");
@@ -248,7 +275,7 @@ async fn stdout_eof_with_live_child_returns_safe_disconnect_and_reaps_child() {
         .trim()
         .parse()
         .unwrap();
-    assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    assert_process_gone(pid);
 }
 
 #[tokio::test]
@@ -296,10 +323,7 @@ async fn partial_stdout_at_eof_is_protocol_corruption_and_reaped() {
             .trim()
             .parse()
             .unwrap();
-        assert!(
-            !Path::new(&format!("/proc/{pid}")).exists(),
-            "attempt {attempt}: child {pid} remains"
-        );
+        assert_process_gone(pid);
     }
 }
 
@@ -322,7 +346,7 @@ async fn oversized_stdout_is_protocol_corruption_and_reaped() {
         .trim()
         .parse()
         .unwrap();
-    assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    assert_process_gone(pid);
 }
 
 #[tokio::test]
@@ -339,7 +363,7 @@ async fn stdout_flood_is_bounded_and_cancellable() {
         .trim()
         .parse()
         .unwrap();
-    assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    assert_process_gone(pid);
 }
 
 #[tokio::test]
@@ -358,7 +382,7 @@ async fn close_after_natural_exit_does_not_wait_for_blocked_stdout_sender() {
         .trim()
         .parse()
         .unwrap();
-    assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    assert_process_gone(pid);
 }
 
 #[tokio::test]
@@ -376,7 +400,7 @@ async fn unsupported_protocol_is_preserved_as_its_own_code() {
         .trim()
         .parse()
         .unwrap();
-    assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    assert_process_gone(pid);
 }
 
 #[tokio::test]
@@ -414,8 +438,8 @@ async fn cancelling_hung_fake_ssh_kills_only_its_child() {
         .trim()
         .parse()
         .unwrap();
-    assert!(!std::path::Path::new(&format!("/proc/{first_pid}")).exists());
-    assert!(!std::path::Path::new(&format!("/proc/{second_pid}")).exists());
+    assert_process_gone(first_pid);
+    assert_process_gone(second_pid);
 }
 
 #[tokio::test]
@@ -492,12 +516,14 @@ async fn handshake_timeout_kills_child_and_does_not_insert_session() {
         .unwrap_err();
     assert!(matches!(error, SessionError::Transport { code, .. } if code == "SSH_TIMEOUT"));
     assert!(pool.get(1).await.is_none());
-    let pid: i32 = std::fs::read_to_string(tmp.path("pid"))
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
-    assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    match std::fs::read_to_string(tmp.path("pid")) {
+        Ok(contents) => {
+            let pid: i32 = contents.trim().parse().unwrap();
+            assert_process_gone(pid);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => panic!("failed to read fake SSH PID file: {error}"),
+    }
 }
 
 #[tokio::test]
