@@ -7,6 +7,7 @@ import {
   endpointMockRequest,
   closeEndpointMockSession,
   readEndpointMockScenario,
+  endpointMockRequestCounts,
 } from "./endpointMock";
 
 describe("isolated SSH endpoint mock", () => {
@@ -36,12 +37,30 @@ describe("isolated SSH endpoint mock", () => {
     }
   });
 
-  test("assigns distinct session IDs and disconnects at ping, without exposing endpoint details", async () => {
+  test("routes only list and explicit status through the isolated server dispatcher", async () => {
+    resetEndpointMock("default");
+    const session = await openEndpointMockSession("mock-ssh-endpoint");
+    const listed = await endpointMockRequest<{ servers: Array<{ id: string }> }>(session.session_id, "server.list", { directory: "/srv/jmcl/servers" });
+    expect(listed.servers.length).toBeGreaterThan(0);
+    expect(endpointMockRequestCounts()).toEqual({ list: 1, status: 0 });
+    await expect(endpointMockRequest(session.session_id, "server.status", { directory: "/srv/jmcl/servers", id: listed.servers[0]?.id })).resolves.toBeDefined();
+    expect(endpointMockRequestCounts()).toEqual({ list: 1, status: 1 });
+    await expect(endpointMockRequest(session.session_id, "server.create", { directory: "/srv/jmcl/servers" })).rejects.toMatchObject({ code: "ENDPOINT_MOCK_METHOD_UNSUPPORTED" });
+    await closeEndpointMockSession(session.session_id);
+
+    resetEndpointMock("empty");
+    const emptySession = await openEndpointMockSession("mock-ssh-endpoint");
+    await expect(endpointMockRequest<{ servers: unknown[] }>(emptySession.session_id, "server.list", { directory: "/srv/jmcl/servers" })).resolves.toMatchObject({ servers: [] });
+    await closeEndpointMockSession(emptySession.session_id);
+  });
+
+  test("disconnects on server list and explicit status, without exposing endpoint details", async () => {
     resetEndpointMock("ssh-disconnect");
     const first = await openEndpointMockSession("mock-ssh-endpoint");
     const second = await openEndpointMockSession("mock-ssh-endpoint");
     expect(first.session_id).not.toBe(second.session_id);
-    await expect(endpointMockRequest(first.session_id, "ping")).rejects.toMatchObject({ code: "SSH_DISCONNECTED" });
+    await expect(endpointMockRequest(first.session_id, "server.list", { directory: "/srv/jmcl/servers" })).rejects.toMatchObject({ code: "SSH_DISCONNECTED" });
+    await expect(endpointMockRequest(first.session_id, "server.status", { directory: "/srv/jmcl/servers", id: "demo" })).rejects.toMatchObject({ code: "SSH_DISCONNECTED" });
     expect(JSON.stringify(first)).not.toContain("mock-user@mock-host");
     await closeEndpointMockSession(first.session_id);
     await closeEndpointMockSession(second.session_id);

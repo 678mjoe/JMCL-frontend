@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { canonicalEndpointConfig, createSshEndpoint, editSshEndpoint, validateEndpointConfig, validateDestination, validateEndpoint, parseEndpointConfig, reconcileSelectedEndpointId, deleteSshEndpoint } from "./endpoints";
+import { canonicalEndpointConfig, createSshEndpoint, editSshEndpoint, validateEndpointConfig, validateDestination, validateEndpoint, parseEndpointConfig, reconcileSelectedEndpointId, deleteSshEndpoint, generateEndpointUuid } from "./endpoints";
 import { readEndpointConfig, writeEndpointConfig } from "./native";
 import { resetMockEndpointConfig } from "./mockTransport";
 
@@ -18,6 +18,26 @@ describe("endpoint config defaults", () => {
     const created = createSshEndpoint({ label: " Pi ", destination: " pi ", randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
     expect(created).toEqual({ id: "123e4567-e89b-42d3-a456-426614174000", kind: "ssh", label: "Pi", destination: "pi" });
     expect(editSshEndpoint(created, { label: "New", destination: "new-host" })).toEqual({ ...created, label: "New", destination: "new-host" });
+  });
+
+  test("generates a crypto-backed v4 UUID when randomUUID is unavailable on an HTTP mock origin", () => {
+    const source = {
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.set(Array.from({ length: 16 }, (_, index) => index));
+        return bytes;
+      },
+    };
+    const generated = generateEndpointUuid(source);
+    expect(generated).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+    expect(validateEndpoint({ id: generated, kind: "ssh", label: "Remote", destination: "host" }).id).toBe(generated);
+  });
+
+  test("prefers randomUUID in secure contexts", () => {
+    const generated = generateEndpointUuid({
+      randomUUID: () => "123e4567-e89b-42d3-a456-426614174000",
+      getRandomValues: () => { throw new Error("fallback must not run"); },
+    });
+    expect(generated).toBe("123e4567-e89b-42d3-a456-426614174000");
   });
 
   test("enforces endpoint count and Unicode scalar, destination byte, and path byte limits", () => {

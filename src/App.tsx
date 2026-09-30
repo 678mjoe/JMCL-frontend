@@ -63,18 +63,26 @@ function Shell() {
   ];
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <aside className="flex w-52 shrink-0 flex-col border-r">
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground sm:flex-row">
+      <aside className="flex w-full shrink-0 flex-col border-b sm:w-52 sm:border-b-0 sm:border-r">
         <div className="flex h-14 items-center px-4 text-lg font-semibold tracking-tight">
           {t("app.title")}
         </div>
-        <nav className="flex flex-1 flex-col gap-1 px-2">
+        <nav aria-label="Primary navigation" className="flex flex-row gap-1 px-2 sm:flex-1 sm:flex-col">
           {nav.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              type="button"
               onClick={() => setRoute({ page: id })}
+              aria-current={
+                route.page === id ||
+                ((route.page === "instance" || route.page === "instance-content") && id === "instances") ||
+                (route.page === "server" && id === "servers")
+                  ? "page"
+                  : undefined
+              }
               className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors sm:flex-none sm:justify-start sm:px-3",
                 route.page === id ||
                 ((route.page === "instance" || route.page === "instance-content") &&
                   id === "instances")
@@ -84,18 +92,20 @@ function Shell() {
               )}
             >
               <Icon className="size-4" />
-              {label}
+              <span className="truncate">{label}</span>
             </button>
           ))}
         </nav>
-        <div className="border-t">
-          <AccountWidget onManage={() => setRoute({ page: "settings" })} />
-        </div>
-        <div className="border-t py-3">
-          <CoreStatus />
+        <div className="flex min-w-0 items-center border-t sm:block">
+          <div className="min-w-0 flex-1">
+            <AccountWidget onManage={() => setRoute({ page: "settings" })} />
+          </div>
+          <div className="min-w-0 flex-1 border-l py-3 sm:border-l-0 sm:border-t">
+            <CoreStatus />
+          </div>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {route.page === "server" && route.serverId ? (
           <ServerDetailPage
             serverId={route.serverId}
@@ -121,7 +131,7 @@ function Shell() {
         ) : route.page === "java" ? (
           <JavaPage />
         ) : route.page === "servers" ? (
-          <ServersPage onOpenDetail={(serverId) => setRoute({ page: "server", serverId })} />
+          <ServersPage onOpenDetail={(serverId) => setRoute({ page: "server", serverId })} onOpenSettings={() => setRoute({ page: "settings" })} />
         ) : (
           <InstancesPage
             onOpenDetail={(instanceId) =>

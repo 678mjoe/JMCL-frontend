@@ -360,7 +360,7 @@ export class CoreSession {
         return this.requestExecutor<T, E>(method, params, onEvent, options);
       }
       if (this.endpointMock) {
-        try { return await endpointMockRequest<T>(this.id, method); }
+        try { return await endpointMockRequest<T>(this.id, method, params); }
         catch (e) { throw normalizeError(e); }
       }
       if (this.mock) {

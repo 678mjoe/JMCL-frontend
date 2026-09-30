@@ -8,6 +8,7 @@ import { useSettings } from "@/lib/settings";
 import { deriveServerState } from "@/lib/serverState";
 import { useServerOperations } from "@/lib/serverOperations";
 import { serverLoaderName } from "@/lib/serverPresentation";
+import { safeServerErrorKey, safeServerOperationError } from "@/lib/serverErrorPresentation";
 import { useServerUptime } from "@/lib/serverUptime";
 import { ServerConsolePanel } from "@/components/ServerConsolePanel";
 
@@ -24,8 +25,8 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
   const cached = selectedScope?.directory === directory ? selectedScope.servers[serverId] : undefined;
   const isDisplayingServer = coreStatus !== "error" && !listError && !loading && coreStatus !== "starting" && Boolean(server);
   const uptimeMs = useServerUptime(isDisplayingServer && cached?.state === "running", cached?.started_at_ms, serverId);
-  if (coreStatus === "error") return <DetailMessage icon="error" title={t("core.error")} description={coreError ?? ""} backLabel={t("servers.back")} onBack={onBack} />;
-  if (listError) return <DetailMessage icon="error" title={t("servers.listError")} description={listError} backLabel={t("servers.back")} onBack={onBack} />;
+  if (coreStatus === "error") return <DetailMessage icon="error" title={t("core.error")} description={endpointId === "local" ? coreError ?? "" : t(safeServerErrorKey(coreError, "servers.connectionFailed"))} backLabel={t("servers.back")} onBack={onBack} />;
+  if (listError) return <DetailMessage icon="error" title={t("servers.listError")} description={endpointId === "local" ? listError : t(safeServerErrorKey(listError, "servers.listError"))} backLabel={t("servers.back")} onBack={onBack} />;
   if (loading || coreStatus === "starting") return <DetailMessage icon="loading" title={t("common.loading")} description="" backLabel={t("servers.back")} onBack={onBack} />;
   if (!server) return <DetailMessage icon="error" title={t("servers.notFound")} description={t("servers.notFoundHint")} backLabel={t("servers.back")} onBack={onBack} />;
 
@@ -61,8 +62,8 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
       {uptime !== null && <Info label={t("serverDetail.uptime")} value={uptime} />}
     </div>
     {cached?.last_stale_cleanup_at_ms !== null && cached?.last_stale_cleanup_at_ms !== undefined && <p className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{t("serverDetail.staleCleanup", { time: timestamp(cached.last_stale_cleanup_at_ms) })}</p>}
-    {statusErrors[server.id] && <p className="mt-4 text-sm text-destructive">{statusErrors[server.id]}</p>}
-    {operation?.error && <p role="alert" className="mt-4 text-sm text-destructive">{operation.error}</p>}
+    {statusErrors[server.id] && <p role="alert" className="mt-4 text-sm text-destructive">{endpointId === "local" ? statusErrors[server.id] : t(safeServerErrorKey(statusErrors[server.id], "servers.statusRefreshFailed"))}</p>}
+    {operation?.error && <p role="alert" className="mt-4 text-sm text-destructive">{safeServerOperationError(operation.error, endpointId, t)}</p>}
     <div className="mt-6 flex flex-wrap items-center gap-3">
       <Button variant="outline" disabled={pendingStatus.has(server.id) || busy || !derived.capabilities.refreshStatus} onClick={() => void refreshServerStatus(server.id)}><RefreshCw className={pendingStatus.has(server.id) ? "animate-spin" : undefined} />{pendingStatus.has(server.id) ? t("servers.refreshingStatus") : t("servers.refreshStatus")}</Button>
       {derived.capabilities.installRepair && <Button disabled={busy} onClick={() => setInstallOpen(true)}>{t(server.installed ? "serverInstall.repair" : "serverInstall.install")}</Button>}

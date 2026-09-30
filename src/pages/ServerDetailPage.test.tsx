@@ -18,7 +18,7 @@ const server: ServerManifest = {
 };
 const operations: OperationsContextValue = { operationFor: () => undefined, install: async () => true, start: async () => true, stop: async () => true, restart: async () => true, delete: async () => true };
 
-function detailMarkup(overrides: Partial<ServersContextValue> = {}) {
+function detailMarkup(overrides: Partial<ServersContextValue> = {}, operationContext: OperationsContextValue = operations) {
   const value: ServersContextValue = {
     manifests: [server], cache: createEmptyServerStatusCache(), loading: false,
     listError: null, statusErrors: {}, pendingStatus: new Set(), directory: "/mock/servers",
@@ -35,7 +35,7 @@ function detailMarkup(overrides: Partial<ServersContextValue> = {}) {
     <LauncherContext.Provider value={{ status: "ready", core: null, error: null, session: null, openSession: async () => { throw new Error("not expected in static test"); } }}>
     <SettingsProvider>
       <ServersContext.Provider value={value}>
-        <OperationsContext.Provider value={operations}>
+        <OperationsContext.Provider value={operationContext}>
           <ServerDetailPage serverId="demo" onBack={() => {}} />
         </OperationsContext.Provider>
       </ServersContext.Provider>
@@ -45,6 +45,22 @@ function detailMarkup(overrides: Partial<ServersContextValue> = {}) {
 }
 
 describe("ServerDetailPage", () => {
+  test("keeps remote core, list, status and operation diagnostics out of the UI", () => {
+    const core = detailMarkup({ endpointId: "ssh-remote", coreStatus: "error", coreError: "SSH_HOST_KEY_UNKNOWN: user@PRIVATE_HOST" });
+    expect(core).toContain("未知主机密钥");
+    expect(core).not.toContain("PRIVATE_HOST");
+
+    const list = detailMarkup({ endpointId: "ssh-remote", listError: "SSH_DISCONNECTED: PRIVATE_HOST" });
+    expect(list).toContain("连接已断开");
+    expect(list).not.toContain("PRIVATE_HOST");
+
+    const operationContext = { ...operations, operationFor: () => ({ kind: "start" as const, pending: false, stage: "running" as const, progress: null, error: "SSH_DISCONNECTED: PRIVATE_HOST" }) };
+    const detail = detailMarkup({ endpointId: "ssh-remote", statusErrors: { demo: "PRIVATE_HOST" } }, operationContext);
+    expect(detail).toContain("状态刷新失败");
+    expect(detail).toContain("连接已断开");
+    expect(detail).not.toContain("PRIVATE_HOST");
+  });
+
   test("shows no-record copy for unknown status and visible BMCLAPI attribution", () => {
     const markup = detailMarkup();
     expect(markup).toContain("未知（未检查）");

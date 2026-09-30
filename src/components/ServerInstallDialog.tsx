@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { canInstallServer, useServerOperations } from "@/lib/serverOperations";
+import { safeServerOperationError } from "@/lib/serverErrorPresentation";
+import { useServers } from "@/lib/servers";
 import { openUrl } from "@/lib/native";
 import { useSettings } from "@/lib/settings";
 import type { ServerManifest } from "@/lib/types";
@@ -10,6 +12,7 @@ import type { ServerManifest } from "@/lib/types";
 export function ServerInstallDialog({ open, onOpenChange, server }: { open: boolean; onOpenChange: (open: boolean) => void; server: ServerManifest }) {
   const { t } = useSettings();
   const { install, operationFor } = useServerOperations();
+  const { endpointId } = useServers();
   const [consent, setConsent] = useState(false);
   const operation = operationFor(server.id);
   const pending = operation?.pending === true;
@@ -25,7 +28,7 @@ export function ServerInstallDialog({ open, onOpenChange, server }: { open: bool
         <button type="button" className="text-primary underline" onClick={() => void openUrl("https://www.minecraft.net/eula")}>{t("serverInstall.eulaLink")}</button>
         <label className="flex items-start gap-2 text-sm"><Checkbox checked={consent} onCheckedChange={(checked) => setConsent(checked === true)} /><span>{t("serverInstall.eulaConsent")}</span></label>
       </div>}
-      {operation?.error && <p role="alert" className="text-sm text-destructive">{operation.error}</p>}
+      {operation?.error && <p role="alert" className="text-sm text-destructive">{safeServerOperationError(operation.error, endpointId, t)}</p>}
       {operation?.progress?.event === "progress" && <p className="text-sm text-muted-foreground">{t("serverInstall.files", { completed: operation.progress.progress.files_completed, total: operation.progress.progress.files_total })}</p>}
       {pending && <p className="text-sm text-muted-foreground">{t(operation?.stage === "finishing" ? "serverInstall.finishing" : "serverInstall.installing")}</p>}
       <DialogFooter><Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={pending || !canInstallServer(server, consent)} onClick={() => void submit()}>{t(pending ? "serverInstall.installing" : server.installed ? "serverInstall.repair" : "serverInstall.install")}</Button></DialogFooter>

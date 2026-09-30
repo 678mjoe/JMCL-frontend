@@ -10,7 +10,7 @@ import {
 } from "react";
 import { readServerStatusCache, writeServerStatusCache } from "./native";
 import { SessionOwner } from "./sessionLifecycle";
-import { errorText, useLauncher } from "./launcher";
+import { errorText } from "./launcher";
 import {
   createEmptyServerStatusCache,
   reconcileServerManifest,
@@ -482,7 +482,6 @@ function rpcForSession(session: CoreSession): ServerControllerRpc {
 export function ServersProvider({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
   const { selectedEndpoint: endpoint, loading: endpointLoading, error: endpointError } = useEndpointContext();
-  const { error: launcherError } = useLauncher();
   const [controlStatus, setControlStatus] = useState<"starting" | "ready" | "error">("starting");
   const [controlError, setControlError] = useState<string | null>(null);
   const openSession = useCallback(() => endpoint
@@ -560,7 +559,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
     prepareEndpointDeletion,
     cleanupEndpointCache,
     coreStatus: endpointLoading ? "starting" : controlStatus,
-    coreError: controlError ?? endpointError ?? launcherError,
+    coreError: controlError ?? endpointError,
     endpointId: endpoint?.id ?? "local",
     openSession,
   };

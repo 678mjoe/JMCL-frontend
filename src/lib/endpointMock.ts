@@ -1,5 +1,6 @@
 import { canonicalEndpointConfig, validateEndpointConfig, type EndpointConfigV1 } from "./endpoints";
 import type { CoreIdentity, SessionInfo } from "./types";
+import { createServerMockState, dispatchServerMockRequest, type ServerMockScenario } from "./serverMock";
 
 export const ENDPOINT_MOCK_SCENARIOS = [
   "ssh-host-key-unknown", "ssh-host-key-changed", "ssh-auth-required",
@@ -12,6 +13,8 @@ const sessions = new Set<number>();
 let nextSessionId = 1000;
 let activeScenario: EndpointMockScenario = readEndpointMockScenario();
 let config: EndpointConfigV1 = configFor(activeScenario);
+let serverState = createServerMockState((activeScenario === "empty" || activeScenario === "errors" ? activeScenario : "default") as ServerMockScenario, "/srv/jmcl/servers");
+let requestCounts = { list: 0, status: 0 };
 
 export function readEndpointMockScenario(): EndpointMockScenario {
   const globals = globalThis as typeof globalThis & { location?: Location };
@@ -37,11 +40,14 @@ export function resetEndpointMock(scenario: EndpointMockScenario = "default"): v
   config = configFor(scenario);
   sessions.clear();
   nextSessionId = 1000;
+  serverState = createServerMockState((scenario === "empty" || scenario === "errors" ? scenario : "default") as ServerMockScenario, "/srv/jmcl/servers");
+  requestCounts = { list: 0, status: 0 };
 }
 export function endpointMockConfig(): EndpointConfigV1 { return structuredClone(config); }
 export function writeEndpointMockConfig(next: EndpointConfigV1): void { config = validateEndpointConfig(next); }
 export function activeEndpointMockScenario(): EndpointMockScenario { return activeScenario; }
 export function endpointMockOpenSessionCount(): number { return sessions.size; }
+export function endpointMockRequestCounts(): Readonly<{ list: number; status: number }> { return { ...requestCounts }; }
 
 function error(code: string, message: string): never { throw { kind: "transport", code, message }; }
 
@@ -60,10 +66,15 @@ export async function openEndpointMockSession(_endpointId: string): Promise<Sess
   }
 }
 
-export async function endpointMockRequest<T>(sessionId: number, method: string): Promise<T> {
+export async function endpointMockRequest<T>(sessionId: number, method: string, params: Record<string, unknown> = {}): Promise<T> {
   if (!sessions.has(sessionId)) error("SSH_DISCONNECTED", "Endpoint session is closed");
-  if (method === "ping" && activeScenario === "ssh-disconnect") error("SSH_DISCONNECTED", "Endpoint disconnected");
+  if ((method === "ping" || method === "server.list" || method === "server.status") && activeScenario === "ssh-disconnect") error("SSH_DISCONNECTED", "Endpoint disconnected");
   if (method === "ping") return { pong: true } as T;
+  if (method === "server.list" || method === "server.status") {
+    if (method === "server.list") requestCounts.list += 1;
+    else requestCounts.status += 1;
+    return dispatchServerMockRequest<T>(serverState, method, params);
+  }
   error("ENDPOINT_MOCK_METHOD_UNSUPPORTED", "Endpoint mock method is unsupported");
 }
 

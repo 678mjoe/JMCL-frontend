@@ -99,6 +99,17 @@ export function parseEndpointConfig(value: unknown): EndpointConfigV1 {
   } catch { return canonicalEndpointConfig(); }
 }
 
+export function generateEndpointUuid(source: { randomUUID?: () => string; getRandomValues: (bytes: Uint8Array) => Uint8Array } = crypto): string {
+  if (typeof source.randomUUID === "function") return source.randomUUID();
+  // randomUUID is secure-context-only, but getRandomValues remains available
+  // to the HTTP Vite Mock browser on the private Docker bridge.
+  const bytes = source.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function createSshEndpoint(input: Omit<SshEndpoint, "id" | "kind"> & { randomUUID: () => string }): SshEndpoint {
   return validateEndpoint({ id: input.randomUUID(), kind: "ssh", label: input.label, destination: input.destination, serversDirectory: input.serversDirectory }) as SshEndpoint;
 }

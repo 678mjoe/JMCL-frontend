@@ -5,9 +5,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  type SshEndpoint,
-} from "@/lib/endpoints";
+import { generateEndpointUuid, type SshEndpoint } from "@/lib/endpoints";
 import { useEndpointContext } from "@/lib/endpointContext";
 import { runEndpointConnectionTest, type EndpointConnectionState } from "@/lib/endpointConnectionTest";
 import { closeEndpointSessions, endpointRepository } from "@/lib/native";
@@ -85,7 +83,7 @@ export function EndpointManager({
           repository,
           endpointId: editing === "new" ? null : editing.id,
           draft: form,
-          randomUUID: () => crypto.randomUUID(),
+          randomUUID: generateEndpointUuid,
         });
         replaceConfig(next);
       });

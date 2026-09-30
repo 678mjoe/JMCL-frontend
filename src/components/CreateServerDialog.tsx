@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { errorText } from "@/lib/launcher";
+import { safeServerOperationError } from "@/lib/serverErrorPresentation";
 import { listLoaderVersions } from "@/lib/loaderVersions";
 import { useServers } from "@/lib/servers";
 import { useSettings } from "@/lib/settings";
@@ -129,10 +130,10 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
         onCreated,
       }));
     } catch (error) {
-      setSubmitError(errorText(error));
+      setSubmitError(safeServerOperationError(errorText(error), servers.endpointId, t));
       setPending(false);
     }
-  }, [canSubmit, id, loader, loaderVersion, name, onCreated, recordCreated, servers.captureOperationScope, servers.isOperationScopeCurrent, servers.openSession, settings.source, versionId]);
+  }, [canSubmit, id, loader, loaderVersion, name, onCreated, recordCreated, servers.captureOperationScope, servers.endpointId, servers.isOperationScopeCurrent, servers.openSession, settings.source, t, versionId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
