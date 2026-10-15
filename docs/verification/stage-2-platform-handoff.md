@@ -32,7 +32,17 @@ These results support the Pi-side TypeScript, Rust, fake-SSH, and local-core che
 - Submitting the empty form left the dialog open. After cancellation, Settings showed a generic endpoint-invalid/save-failed message; field-specific error guidance was not established by this check. The endpoint config file remained absent (local-only default), confirming no SSH endpoint was persisted. No credentials or real destination were entered.
 - The app returned to Instances, then received a background Cmd+Q request. The driver reported an unverifiable delivery result; independent process and app-state reads subsequently confirmed that the exact app PID and both local core child PIDs were gone, no JMCL window remained, and no new JMCL crash report was present. This is local app/core exit evidence, not real SSH-child cleanup evidence.
 - Remaining UX findings: the native macOS Local server page displays the raw `UNSUPPORTED_PLATFORM` diagnostic instead of a friendly Linux-only/SSH setup explanation; the empty-endpoint-form error experience needs a focused follow-up. Neither issue was changed in this verification-only batch.
-- No real SSH host connection was attempted. Trusted-host RPC, strict host-key refusal, agent/authentication, endpoint switching under SSH, and SSH-child cleanup are still pending.
+- This local-only probe did not attempt a real SSH host connection. Subsequent trusted-host transport evidence is recorded below; negative host-key/auth cases and agent-specific behavior remain pending.
+
+## macOS to Pi transport evidence (2026-10-15)
+
+- The user authorized the current Pi as a transport-only target and ruled out running a full Minecraft server on it. The request allowlist was `core.version`, `ping`, and `server.list` against a dedicated empty directory. No server create/install/start, Java process, Minecraft command, or other lifecycle operation was requested.
+- The Mac's saved host key matched the Pi's public host key. The existing LAN route timed out, while the existing Access-backed alias succeeded with `BatchMode=yes` and `StrictHostKeyChecking=yes`; no new host trust was accepted. The saved host entry was unchanged after the test.
+- The noninteractive Pi shell initially could not find `jmcl-core`. With explicit user permission, a marked temporary PATH block and a user-level core symlink were used for this batch only. The exact fixed remote command `exec jmcl-core rpc` returned protocol v1 / core `0.1.0-dev`, `{"pong":true}`, and an empty `server.list`, with SSH exit 0 and no stderr.
+- A temporary endpoint was added through the native JMCL dialog; its stored type, destination, and empty-directory path were read back. Native Test Connection reported success with core `0.1.0-dev`. The real server page selected this endpoint and displayed the empty-list state without a transport/list error or visible clipping. A live process-path read confirmed the GUI used `/usr/bin/ssh` and its existing Access proxy, not a mock transport.
+- Switching back to Local restored the local page state and removed the recorded SSH/proxy and Pi RPC PIDs. After selecting the remote endpoint again and quitting the app, independent reads confirmed that the recorded app, local core, SSH, Access proxy, and Pi RPC PIDs had all exited. The empty directory remained empty throughout.
+- Cleanup was verified: the temporary endpoint was deleted through its named confirmation dialog, its cache scope was absent, selection fell back to Local, and the native endpoint config returned to its original absence. The app and CuaDriver lifecycle session were closed. The Pi PATH block and symlink were removed; `.bashrc` matched its original SHA-256 byte-for-byte. The empty directory, rollback backup/manifest, and this batch's screenshots were removed. The CuaDriver daemon was left available.
+- Existing noninteractive authentication succeeded, but key-file versus agent/Keychain behavior was not isolated. Real unknown/changed-host-key refusal, interactive-auth failure, disconnect/reconnect, and Windows acceptance remain unverified. This is transport and empty-list evidence, not Minecraft lifecycle proof.
 
 ## Human acceptance procedure
 
@@ -55,20 +65,21 @@ For each platform, record OS version and architecture, local core version if use
 
 ### macOS
 
-Record: macOS 26.5; arm64; local core 0.1.0-dev / protocol v1; OpenSSH 10.2p1; automated CLI/build check on 2026-09-30 and CuaDriver-scoped local GUI check on 2026-10-15; run type: ad-hoc packaged build, local-only GUI probe.
+Record: macOS 26.5; arm64; core 0.1.0-dev / protocol v1; OpenSSH 10.2p1; automated CLI/build check on 2026-09-30 and CuaDriver-scoped local GUI plus trusted-Pi transport checks on 2026-10-15; run type: ad-hoc packaged build.
 
 | Check | Result | Notes / evidence |
 |---|---|---|
 | Native Tauri app builds with the matching platform core/sidecar | PASS (local ad-hoc build only) | `.app` and `.dmg` created; embedded ARM64 core; strict bundle signature verification passed. Not notarized. |
-| Native Tauri app launches and exits | PASS (local mode only) | Exact build executable and native window verified; after quit request, the app and both local core PIDs were absent. No new JMCL crash report. No real SSH cleanup proof. |
-| App resolves system `ssh` from inherited `PATH`; inherited SSH environment and agent are usable | PENDING | |
+| Native Tauri app launches and exits | PASS | Exact build executable/window verified; app exited in both local and remote-selected probes. |
+| App resolves system `ssh` and inherited SSH configuration | PASS | Live `/usr/bin/ssh` and existing Access proxy process paths verified during native GUI transport. |
+| SSH agent / Keychain-specific environment behavior | PENDING | Existing noninteractive authentication worked, but the credential source was not isolated. |
 | Disposable unknown-host-key attempt is refused; no automatic trust is added | PENDING | |
 | Disposable changed-host-key attempt is refused | PENDING | |
-| Key or agent authentication succeeds against the trusted test host | PENDING | |
+| Key or agent authentication succeeds against the trusted test host | PASS (existing noninteractive configuration) | Native Test Connection and empty-list RPC succeeded without an application credential prompt; key-file versus agent not isolated. |
 | Interactive password/passphrase authentication fails promptly; no askpass prompt or hang | PENDING | |
-| Remote `core.version`, `ping`, and `server.list` succeed | PENDING | |
-| Switching back to Local returns to local server state | PENDING | |
-| Exiting the app cleans up its SSH child process | PENDING | |
+| Remote `core.version`, `ping`, and `server.list` succeed | PASS (empty-directory scope) | Exact fixed command, native connection test, and server page verified over real SSH. No Minecraft server ran. |
+| Switching back to Local returns to local server state | PASS | Local selection and its expected platform-limited state returned; former remote PIDs exited. |
+| Exiting the app cleans up its SSH child process | PASS | Recorded SSH/proxy and Pi RPC PIDs were absent after app exit with the remote endpoint selected. |
 
 ### Windows
 
@@ -90,3 +101,5 @@ Record: Windows version/build ______; architecture ______; core/version ______; 
 ## Gate
 
 Keep every unverified macOS and Windows item pending until there is actual evidence. The macOS ad-hoc build alone does not finish Stage 2 or open Stage 3. Do not begin the Stage 3 real server lifecycle acceptance on the strength of Pi fake-SSH/local-core results or a desktop build without native GUI/transport verification.
+
+The current Pi must not host a full Minecraft server instance. Even after the remaining Stage 2 gates pass, real Stage 3 lifecycle testing requires a separately selected, adequately resourced Linux host; that host is currently undecided.

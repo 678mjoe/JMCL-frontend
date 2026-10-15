@@ -55,7 +55,7 @@ ssh user@host jmcl-core rpc
 
 ### Raspberry Pi
 
-Pi 是无头开发、core 和服务器测试节点，不是最终桌面 UI 运行目标。
+Pi 是无头开发、core 和轻量传输测试节点，不是最终桌面 UI 运行目标，也不承担完整 Minecraft Server 实例运行。
 
 Pi 负责：
 
@@ -66,9 +66,10 @@ Pi 负责：
 - 浏览器自动化、截图和控制台检查；
 - Rust 格式检查和可独立执行的纯逻辑测试；
 - JMCLCore 编译和测试；
-- Linux-only `server.*` RPC 真实测试；
-- 测试用 Minecraft Server；
+- 轻量真实 RPC 验收：`core.version`、`ping`、专用空目录的 `server.list`；
 - SSH 远端目标。
+
+性能边界：不得在 Pi 上创建、安装或启动完整 Minecraft 服务器来做生命周期验收，不触发 Java/服务器负载。后续真实生命周期使用另行选定、性能足够的 Linux 主机（目标未定）；Mock、fake-SSH 和不启动真实服务器的纯逻辑测试不受此限制。
 
 Pi 不为完整 Tauri GUI 安装 GTK/WebKit 开发依赖。
 
@@ -348,10 +349,10 @@ Mock 场景至少包含：
 
 ## 8. 阶段 3——真实服务器生命周期闭环
 
-把基础服务器页面接到 Pi 的真实 core：
+把基础服务器页面接到性能足够的 Linux 测试主机上的真实 core（主机未定，不使用当前 Pi 运行完整服务器）：
 
 ```text
-添加 Pi 连接
+添加已批准的 Linux 测试主机连接
 → 列出服务器
 → 创建
 → 显式接受 EULA
@@ -378,7 +379,7 @@ Mock 场景至少包含：
 
 - GUI 关闭或 SSH 断开后服务器继续运行；
 - 重连后恢复状态与日志；
-- Pi 上真实服务器完成安装、启停和命令链；
+- 已批准且性能足够的 Linux 测试主机上，真实服务器完成安装、启停和命令链；
 - 不依赖 GUI 保存服务器进程。
 
 ## 9. 阶段 4——服务器配置与高级控制
