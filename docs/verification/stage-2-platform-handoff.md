@@ -2,6 +2,8 @@
 
 **Date:** 2026-09-30
 
+**Last evidence update:** 2026-10-15
+
 **Status:** Partial verification; macOS and Windows desktop acceptance remains **PENDING**. Stage 2 is not marked complete, and the Stage 3 gate is not open.
 
 ## Evidence recorded on Raspberry Pi
@@ -21,7 +23,16 @@ These results support the Pi-side TypeScript, Rust, fake-SSH, and local-core che
 - `bun run test`: 212 passed, 0 failed; `bun run build`: passed. Rust library tests: 24/24 passed. The initial macOS fake-SSH suite run had 18 passes and one scheduling-race failure before the test-only fix. With the fix, the suite passed 20/20 in three consecutive runs; Rust formatting check passed.
 - The local ARM64 core returned protocol v1 and `pong:true`. Its local `server.list` returned `UNSUPPORTED_PLATFORM`, as expected because real server management is Linux-only; this does **not** exercise a remote Linux core.
 - `bun run sidecar:prepare` staged the ARM64 macOS core. A plain `bun run tauri build` produced `.app` and `.dmg`, but the resulting linker ad-hoc signature failed strict bundle verification. Rebuilding with temporary `APPLE_SIGNING_IDENTITY=-` produced both artifacts with an embedded ARM64 core; `codesign --verify --deep --strict` then passed. This is an ad-hoc local test build, **not** notarized or validated for public distribution.
-- No GUI window was launched or inspected, and no real SSH host was contacted. The remote GUI-control daemon was not running during this check; Mac application behavior and every SSH/host-key/agent item remain pending.
+- At the CLI-only checkpoint, no GUI window was launched or inspected and no real SSH host was contacted. Subsequent local GUI evidence is recorded below; every real SSH/host-key/agent item remains pending.
+
+## macOS local GUI evidence (2026-10-15)
+
+- CuaDriver.app 0.28.0 reported Accessibility and Screen Recording granted, with AX available. The ad-hoc-signed build was opened in the background by its absolute build path, and the running executable path was checked to exclude the older installed copy.
+- The native WebView loaded with the local core connected. Background AX navigation to Settings and the add-SSH-endpoint dialog worked and was read back after each action. At an 800-by-600 window, the dialog screenshot showed all three labels, help text, and Cancel/Confirm buttons without visible clipping or overflow. This does not establish every theme/language or mobile breakpoint.
+- Submitting the empty form left the dialog open. After cancellation, Settings showed a generic endpoint-invalid/save-failed message; field-specific error guidance was not established by this check. The endpoint config file remained absent (local-only default), confirming no SSH endpoint was persisted. No credentials or real destination were entered.
+- The app returned to Instances, then received a background Cmd+Q request. The driver reported an unverifiable delivery result; independent process and app-state reads subsequently confirmed that the exact app PID and both local core child PIDs were gone, no JMCL window remained, and no new JMCL crash report was present. This is local app/core exit evidence, not real SSH-child cleanup evidence.
+- Remaining UX findings: the native macOS Local server page displays the raw `UNSUPPORTED_PLATFORM` diagnostic instead of a friendly Linux-only/SSH setup explanation; the empty-endpoint-form error experience needs a focused follow-up. Neither issue was changed in this verification-only batch.
+- No real SSH host connection was attempted. Trusted-host RPC, strict host-key refusal, agent/authentication, endpoint switching under SSH, and SSH-child cleanup are still pending.
 
 ## Human acceptance procedure
 
@@ -44,12 +55,12 @@ For each platform, record OS version and architecture, local core version if use
 
 ### macOS
 
-Record: macOS 26.5; arm64; local core 0.1.0-dev / protocol v1; OpenSSH 10.2p1; tester/date: automated CLI check, 2026-09-30; run type: ad-hoc packaged build only; GUI evidence: pending.
+Record: macOS 26.5; arm64; local core 0.1.0-dev / protocol v1; OpenSSH 10.2p1; automated CLI/build check on 2026-09-30 and CuaDriver-scoped local GUI check on 2026-10-15; run type: ad-hoc packaged build, local-only GUI probe.
 
 | Check | Result | Notes / evidence |
 |---|---|---|
-| Native Tauri app builds with the matching platform core/sidecar | PASS (local ad-hoc build only) | `.app` and `.dmg` created; embedded ARM64 core; strict bundle signature verification passed. Not notarized; app run remains pending. |
-| Native Tauri app launches and exits | PENDING | |
+| Native Tauri app builds with the matching platform core/sidecar | PASS (local ad-hoc build only) | `.app` and `.dmg` created; embedded ARM64 core; strict bundle signature verification passed. Not notarized. |
+| Native Tauri app launches and exits | PASS (local mode only) | Exact build executable and native window verified; after quit request, the app and both local core PIDs were absent. No new JMCL crash report. No real SSH cleanup proof. |
 | App resolves system `ssh` from inherited `PATH`; inherited SSH environment and agent are usable | PENDING | |
 | Disposable unknown-host-key attempt is refused; no automatic trust is added | PENDING | |
 | Disposable changed-host-key attempt is refused | PENDING | |
