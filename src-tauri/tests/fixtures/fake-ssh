@@ -6,6 +6,8 @@ case "$FAKE_SSH_MODE" in
   host_unknown) echo 'No ED25519 host key is known for fake.invalid and you have requested strict checking.' >&2; exit 255 ;;
   host_changed) echo 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!' >&2; exit 255 ;;
   auth) echo 'Permission denied (publickey,password).' >&2; exit 255 ;;
+  auth_password) echo 'diagnostic DESTINATION_SECRET' >&2; echo 'fixture-user@fixture.invalid: Permission denied (password).' >&2; exit 255 ;;
+  auth_keyboard) echo 'Permission denied (keyboard-interactive,password).' >&2; exit 255 ;;
   remote_failed) echo 'jmcl-core: command not found' >&2; exit 255 ;;
   generic_failed) echo 'synthetic failure marker DESTINATION_SECRET' >&2; exit 255 ;;
   delayed) exec sleep 60 ;;

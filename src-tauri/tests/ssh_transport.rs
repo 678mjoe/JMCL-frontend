@@ -201,6 +201,8 @@ async fn known_ssh_failures_are_typed_and_redacted() {
         ("host_unknown", "SSH_HOST_KEY_UNKNOWN"),
         ("host_changed", "SSH_HOST_KEY_CHANGED"),
         ("auth", "SSH_AUTH_REQUIRED_OR_FAILED"),
+        ("auth_password", "SSH_AUTH_REQUIRED_OR_FAILED"),
+        ("auth_keyboard", "SSH_AUTH_REQUIRED_OR_FAILED"),
         ("remote_failed", "SSH_REMOTE_COMMAND_FAILED"),
         ("generic_failed", "SSH_CONNECTION_FAILED"),
     ];
@@ -223,6 +225,14 @@ async fn known_ssh_failures_are_typed_and_redacted() {
         let serialized = serde_json::to_string(&SessionError::coded(actual, message)).unwrap();
         assert!(!serialized.contains("synthetic"));
         assert!(!serialized.contains("fake-host"));
+        assert!(!serialized.contains("fixture-user"));
+        assert!(!serialized.contains("Permission denied"));
+        let pid: i32 = std::fs::read_to_string(tmp.path("pid"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_process_gone(pid);
     }
 }
 

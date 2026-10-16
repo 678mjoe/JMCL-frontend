@@ -316,6 +316,28 @@ fn protocol_corruption_failure() -> TransportFailure {
     )
 }
 
+fn has_authentication_denial(text: &str) -> bool {
+    text.lines().any(|line| {
+        let Some((_, tail)) = line.trim().rsplit_once("permission denied (") else {
+            return false;
+        };
+        let Some(methods) = tail.strip_suffix(").").or_else(|| tail.strip_suffix(')')) else {
+            return false;
+        };
+        methods.split(',').all(|method| {
+            matches!(
+                method,
+                "publickey"
+                    | "password"
+                    | "keyboard-interactive"
+                    | "hostbased"
+                    | "gssapi-keyex"
+                    | "gssapi-with-mic"
+            )
+        })
+    })
+}
+
 pub fn classify_ssh_failure(stderr: &str, nonzero: bool) -> TransportFailure {
     let text = stderr.to_ascii_lowercase();
     if text.contains("remote host identification has changed")
@@ -332,7 +354,7 @@ pub fn classify_ssh_failure(stderr: &str, nonzero: bool) -> TransportFailure {
             "The SSH host key is not verified. Verify it and add it to known_hosts with OpenSSH.",
         );
     }
-    if text.contains("permission denied (publickey")
+    if has_authentication_denial(&text)
         || text.contains("no supported authentication methods")
         || text.contains("read_passphrase")
     {
@@ -455,5 +477,47 @@ impl Drop for SshProcessTransport {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_ssh_failure;
+
+    #[test]
+    fn standard_authentication_denial_lists_are_classified_without_raw_diagnostics() {
+        for diagnostic in [
+            "fixture-user@fixture.invalid: Permission denied (password).",
+            "Permission denied (keyboard-interactive,password).",
+            "Permission denied (password,publickey).",
+            "Permission denied (publickey,password).",
+            "Permission denied (gssapi-with-mic,publickey).",
+            "Permission denied (hostbased).",
+            "  PERMISSION DENIED (KEYBOARD-INTERACTIVE).\r\n",
+        ] {
+            let error = classify_ssh_failure(diagnostic, true);
+            assert_eq!(error.code, "SSH_AUTH_REQUIRED_OR_FAILED", "{diagnostic}");
+            assert!(!error.message.contains("fixture-user"));
+            assert!(!error.message.contains("Permission denied"));
+        }
+    }
+
+    #[test]
+    fn filesystem_and_malformed_denials_are_not_authentication_failures() {
+        for diagnostic in [
+            "ssh: Permission denied",
+            "Permission denied (os error 13)",
+            "Permission denied (publickey_file)",
+            "Permission denied (password) opening a file",
+            "Permission denied ()",
+            "Permission denied (password,)",
+            "Permission denied (password",
+        ] {
+            assert_eq!(
+                classify_ssh_failure(diagnostic, true).code,
+                "SSH_CONNECTION_FAILED",
+                "{diagnostic}"
+            );
+        }
     }
 }
