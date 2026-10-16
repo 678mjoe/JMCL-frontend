@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-30
 
-**Last evidence update:** 2026-10-15
+**Last evidence update:** 2026-10-16
 
 **Status:** Partial verification; macOS and Windows desktop acceptance remains **PENDING**. Stage 2 is not marked complete, and the Stage 3 gate is not open.
 
@@ -42,7 +42,21 @@ These results support the Pi-side TypeScript, Rust, fake-SSH, and local-core che
 - A temporary endpoint was added through the native JMCL dialog; its stored type, destination, and empty-directory path were read back. Native Test Connection reported success with core `0.1.0-dev`. The real server page selected this endpoint and displayed the empty-list state without a transport/list error or visible clipping. A live process-path read confirmed the GUI used `/usr/bin/ssh` and its existing Access proxy, not a mock transport.
 - Switching back to Local restored the local page state and removed the recorded SSH/proxy and Pi RPC PIDs. After selecting the remote endpoint again and quitting the app, independent reads confirmed that the recorded app, local core, SSH, Access proxy, and Pi RPC PIDs had all exited. The empty directory remained empty throughout.
 - Cleanup was verified: the temporary endpoint was deleted through its named confirmation dialog, its cache scope was absent, selection fell back to Local, and the native endpoint config returned to its original absence. The app and CuaDriver lifecycle session were closed. The Pi PATH block and symlink were removed; `.bashrc` matched its original SHA-256 byte-for-byte. The empty directory, rollback backup/manifest, and this batch's screenshots were removed. The CuaDriver daemon was left available.
-- Existing noninteractive authentication succeeded, but key-file versus agent/Keychain behavior was not isolated. Real unknown/changed-host-key refusal, interactive-auth failure, disconnect/reconnect, and Windows acceptance remain unverified. This is transport and empty-list evidence, not Minecraft lifecycle proof.
+- At this successful-transport checkpoint, key-file versus agent/Keychain behavior, negative host-key/auth cases, disconnect/reconnect, and Windows acceptance had not been isolated. Subsequent negative-case evidence is recorded below. This is transport and empty-list evidence, not Minecraft lifecycle proof.
+
+## macOS negative SSH probes (2026-10-16)
+
+- Three narrowly scoped temporary aliases used isolated known_hosts files: an empty file for unknown trust, a deliberately different existing public key for changed trust, and a trusted-key file with both identity files and the agent disabled for unavailable authentication. Connection sharing was disabled so an existing SSH session could not bypass each check. The real known_hosts file and existing aliases were not modified.
+- With the production fixed remote command and strict/batch SSH flags, the Mac CLI refused every case with exit 255 and the expected diagnostic. These failures occur before RPC establishment; Pi's temporary core/PATH setup remained absent, and no Minecraft/Java lifecycle action was requested.
+
+| Case | CLI result | Native Test Connection AX readback |
+|---|---|---|
+| Unknown host key | Explicit unknown-key refusal | First attempt: generic connection-test failure. One controlled repeat with unchanged SSH configuration: dedicated unknown-key guidance. The first result's cause was not established. |
+| Changed host key | Explicit changed-key refusal | Dedicated changed-key/refused message observed. |
+| No usable noninteractive credential | Permission denied, no prompt | Dedicated SSH-authentication-required guidance observed. This does not prove locked-key, password-only, or agent/Keychain-specific behavior. |
+
+- Native tests persisted and read back one temporary endpoint at a time, then deleted it through its named confirmation. The dedicated AX messages were observed in the real Tauri app, not the Mock. However, background captures still showed retained edit/delete dialogs while AX/configuration state had advanced. Therefore this batch does **not** establish visual correctness of the final messages/dialog transitions; a foreground or independent human check is still needed. No cause was assigned to the capture/rendering discrepancy, and no speculative production fix was made.
+- Cleanup was verified after app exit: all temporary endpoints and cache scopes were absent, the endpoint-config file returned to its original absence, the SSH config matched its original SHA-256 and permissions, and the real known_hosts hash was unchanged. The isolated configuration, public-key test files, backups, helper, screenshots, and CuaDriver lifecycle session were removed/ended. The user's VS Code setup was not changed.
 
 ## Human acceptance procedure
 
@@ -61,7 +75,7 @@ bun run tauri:build:sidecar
 
 Before any real SSH attempt, the tester must decide to proceed and arrange a preconfigured trusted test host with a compatible `jmcl-core` available through that host's remote `PATH`. Do not invent or assume a working host or core binary. Use a disposable test host/configuration for unknown-key and changed-key refusal checks. Configure trust through the tester's normal OpenSSH workflow; the app must not accept keys. Do not put hostnames, usernames, addresses, fingerprints, credentials, or other secrets in this document or repository.
 
-For each platform, record OS version and architecture, local core version if used, OpenSSH version, tester, date, run type (`tauri dev` or packaged), and evidence location. Mark each item `PASS`, `FAIL`, or `BLOCKED`, with a short note and evidence reference. Unverified entries remain **PENDING**.
+For each platform, record OS version and architecture, local core version if used, OpenSSH version, tester, date, run type (`tauri dev` or packaged), and evidence location. Mark each item `PASS`, `PARTIAL`, `FAIL`, or `BLOCKED`, with a short note and evidence reference. Unverified entries remain **PENDING**.
 
 ### macOS
 
@@ -73,10 +87,11 @@ Record: macOS 26.5; arm64; core 0.1.0-dev / protocol v1; OpenSSH 10.2p1; automat
 | Native Tauri app launches and exits | PASS | Exact build executable/window verified; app exited in both local and remote-selected probes. |
 | App resolves system `ssh` and inherited SSH configuration | PASS | Live `/usr/bin/ssh` and existing Access proxy process paths verified during native GUI transport. |
 | SSH agent / Keychain-specific environment behavior | PENDING | Existing noninteractive authentication worked, but the credential source was not isolated. |
-| Disposable unknown-host-key attempt is refused; no automatic trust is added | PENDING | |
-| Disposable changed-host-key attempt is refused | PENDING | |
+| Disposable unknown-host-key attempt is refused; no automatic trust is added | PARTIAL | CLI refused; native AX showed correct guidance on controlled repeat, but first attempt was generic and its cause is unconfirmed. Final-message visual check pending; real trust remained unchanged. |
+| Disposable changed-host-key attempt is refused | PASS (transport + AX scope) | CLI refusal and dedicated native AX message observed. Final-message visual check remains pending. |
 | Key or agent authentication succeeds against the trusted test host | PASS (existing noninteractive configuration) | Native Test Connection and empty-list RPC succeeded without an application credential prompt; key-file versus agent not isolated. |
-| Interactive password/passphrase authentication fails promptly; no askpass prompt or hang | PENDING | |
+| No usable noninteractive credential fails with safe guidance | PASS (transport + AX scope) | CLI denied authentication and native AX requested SSH authentication; no prompt. Final-message visual check pending. |
+| Interactive password/passphrase authentication fails promptly; no askpass prompt or hang | PENDING | Unavailable-key/agent case tested, but password-only and locked-passphrase cases were not isolated. |
 | Remote `core.version`, `ping`, and `server.list` succeed | PASS (empty-directory scope) | Exact fixed command, native connection test, and server page verified over real SSH. No Minecraft server ran. |
 | Switching back to Local returns to local server state | PASS | Local selection and its expected platform-limited state returned; former remote PIDs exited. |
 | Exiting the app cleans up its SSH child process | PASS | Recorded SSH/proxy and Pi RPC PIDs were absent after app exit with the remote endpoint selected. |
