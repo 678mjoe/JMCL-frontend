@@ -59,6 +59,14 @@ These results support the Pi-side TypeScript, Rust, fake-SSH, and local-core che
 - A user-approved foreground follow-up on the same date was **BLOCKED**, not a visual pass: exact-window activation was only partially accepted, and independent console flags reported `IOConsoleLocked=true` / `CGSSessionScreenIsLocked=true`. No GUI input or unlock was attempted. Fresh Mac-to-target SSH probes also timed out/closed before host-key checking; their cause was not established. The newly launched test app/owned core children exited, the temporary SSH configuration was rolled back with original hash/mode and unchanged trust verified, and the test lifecycle session ended; no endpoint configuration was changed.
 - Cleanup was verified after app exit: all temporary endpoints and cache scopes were absent, the endpoint-config file returned to its original absence, the SSH config matched its original SHA-256 and permissions, and the real known_hosts hash was unchanged. The isolated configuration, public-key test files, backups, helper, screenshots, and CuaDriver lifecycle session were removed/ended. The user's VS Code setup was not changed.
 
+## Foreground visual follow-up (2026-10-16)
+
+- With explicit user permission and an unlocked desktop, the exact newly built app process/window was independently confirmed focused and frontmost. The check paused when the screen session locked again and resumed only after the user restored the desktop; no unlock or security-setting changes were attempted.
+- A separate reserved-invalid-DNS endpoint exercised local UI and the real generic connection-failure path without depending on the unavailable trusted-host route. Its saved ID/type/destination were read back from native configuration. Screenshots independently confirmed that the add dialog closed, the endpoint and generic failure message were visible without an overlay, and the displayed result matched AX readback.
+- Deletion used the confirmation naming that endpoint. The following screenshot showed only Local, an endpoint-deleted notice, and no retained edit/delete dialog or overlay; a separate configuration read confirmed the temporary ID was absent. This establishes the tested **foreground add/delete transitions and generic failure presentation**, not visual acceptance of dedicated unknown-key, changed-key, or authentication messages, nor the cause of the earlier background-capture discrepancy.
+- Fresh trusted-target baselines were still unavailable: the Access proxy reported a TCP connection reset before SSH handshake/key checking, and the existing LAN route timed out. No new trust was accepted, no network configuration was changed, and no missing core entry was recreated. These current diagnostics do not establish the cause of the earlier intermittent generic unknown-key result.
+- After returning to Instances and quitting, independent reads confirmed the app and both recorded local core children exited. Native endpoint configuration returned to its original absence, the temporary cache scope was absent, SSH configuration/trust hashes were unchanged, screenshots/backups were removed, and the GUI lifecycle ended. The original Hermes window was explicitly restored and independently read back as active. No Minecraft/Java lifecycle action ran on Pi.
+
 ## Human acceptance procedure
 
 Complete the checklist independently on macOS and Windows. A desktop development run and a packaged sidecar build are separate checks: `bun run tauri dev` uses the development config and core lookup; a package built with the default Tauri config declares `binaries/jmcl-core` as an external sidecar. Packaging therefore needs a compatible local core binary staged first. Do not assume either binary is present.
@@ -80,12 +88,15 @@ For each platform, record OS version and architecture, local core version if use
 
 ### macOS
 
-Record: macOS 26.5; arm64; core 0.1.0-dev / protocol v1; OpenSSH 10.2p1; automated CLI/build check on 2026-09-30 and CuaDriver-scoped local GUI plus trusted-Pi transport checks on 2026-10-15; run type: ad-hoc packaged build.
+Record: macOS 26.5; arm64; core 0.1.0-dev / protocol v1; OpenSSH 10.2p1; automated CLI/build check on 2026-09-30, CuaDriver-scoped local GUI plus trusted-Pi transport checks on 2026-10-15, and refusal/foreground-visual follow-ups on 2026-10-16; run type: ad-hoc packaged build.
 
 | Check | Result | Notes / evidence |
 |---|---|---|
 | Native Tauri app builds with the matching platform core/sidecar | PASS (local ad-hoc build only) | `.app` and `.dmg` created; embedded ARM64 core; strict bundle signature verification passed. Not notarized. |
 | Native Tauri app launches and exits | PASS | Exact build executable/window verified; app exited in both local and remote-selected probes. |
+| Foreground add/delete dialogs close and agree with native persistence | PASS | Independent screenshots and stored-ID readbacks; after deletion only Local remained, with no old dialog/overlay. |
+| Generic connection-failure result is visible and agrees with AX | PASS | Real reserved-invalid-DNS connection attempt; foreground screenshot showed the fixed generic failure and no modal overlay. |
+| Dedicated host-key/auth failure messages are visually verified | PENDING | Prior real CLI/native AX evidence remains valid within its scope; trusted-host network baselines currently fail before key checking. The generic visual check does not substitute for these cases. |
 | App resolves system `ssh` and inherited SSH configuration | PASS | Live `/usr/bin/ssh` and existing Access proxy process paths verified during native GUI transport. |
 | SSH agent / Keychain-specific environment behavior | PENDING | Existing noninteractive authentication worked, but the credential source was not isolated. |
 | Disposable unknown-host-key attempt is refused; no automatic trust is added | PARTIAL | CLI refused; native AX showed correct guidance on controlled repeat, but first attempt was generic and its cause is unconfirmed. Final-message visual check pending; real trust remained unchanged. |
