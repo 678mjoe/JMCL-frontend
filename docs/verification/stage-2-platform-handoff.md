@@ -1,5 +1,7 @@
 # Stage 2E platform handoff
 
+> Historical evidence: the Pi/personal-macOS setup and tools below describe the original runs, not the current development environment. Use [Devin Cloud development](../development.md) for setup. Preserve these results as historical evidence; new Cloud runs must record their own platform, revisions, and outcomes. Existing acceptance gates remain unchanged.
+
 **Date:** 2026-09-30
 
 **Last evidence update:** 2026-10-16
@@ -129,4 +131,4 @@ Record: Windows version/build ______; architecture ______; core/version ______; 
 
 Keep every unverified macOS and Windows item pending until there is actual evidence. The macOS ad-hoc build alone does not finish Stage 2 or open Stage 3. Do not begin the Stage 3 real server lifecycle acceptance on the strength of Pi fake-SSH/local-core results or a desktop build without native GUI/transport verification.
 
-The current Pi must not host a full Minecraft server instance. Even after the remaining Stage 2 gates pass, real Stage 3 lifecycle testing requires a separately selected, adequately resourced Linux host; that host is currently undecided.
+Even after the remaining Stage 2 gates pass, real Stage 3 lifecycle testing requires a separately approved, adequately resourced Linux environment. The historical Pi restrictions above do not describe Cloud VM resources; Cloud provisioning alone does not select or approve a lifecycle test target.

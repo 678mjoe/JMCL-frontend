@@ -1,5 +1,7 @@
 # JMCL Frontend Stage 2: system OpenSSH transport
 
+> Historical implementation plan. Use [Devin Cloud development](../development.md) for current setup and [CONTRIBUTING](../../CONTRIBUTING.md) for roadmap ownership. The environment wording below no longer assumes a personal Pi/Mac; implementation scope and acceptance gates are unchanged. See [verification records](../verification/stage-2-platform-handoff.md) for actual results.
+
 **Goal:** connect the existing Stage 1 server UI to a remote `jmcl-core rpc` process through the user's system OpenSSH client, while keeping the local sidecar session and its client features unchanged.
 
 **Baseline inspected:** `5591d7ed780cda1e0289420438f3c219e5904cd1` (clean worktree at inspection). This plan does not claim SSH implementation or host connectivity has been tested.
@@ -47,7 +49,7 @@ Server management needs a remote `directory`, while current `settings.serversDir
 
 ### SSH argv and child process
 
-Spawn `Command::new(resolved_ssh_executable).args(argv)`; never `sh -c`, command-string concatenation, or shell interpolation. For destination `pi-mc`, expected argv is exactly:
+Spawn `Command::new(resolved_ssh_executable).args(argv)`; never `sh -c`, command-string concatenation, or shell interpolation. For example destination `test-server`, expected argv is exactly:
 
 ```text
 -T
@@ -56,7 +58,7 @@ Spawn `Command::new(resolved_ssh_executable).args(argv)`; never `sh -c`, command
 -o ConnectTimeout=10
 -o ServerAliveInterval=15
 -o ServerAliveCountMax=3
-pi-mc
+test-server
 exec jmcl-core rpc
 ```
 
@@ -100,7 +102,7 @@ Each batch is a separate commit boundary. Write and run the named failing tests 
 
 ### 2B — Rust OpenSSH transport and fake executable contract
 
-**Create:** `src-tauri/src/ssh_transport.rs`, `src-tauri/tests/ssh_transport.rs`, `src-tauri/tests/fixtures/fake-ssh` (or platform-specific fixture wrapper needed by the Pi tests).
+**Create:** `src-tauri/src/ssh_transport.rs`, `src-tauri/tests/ssh_transport.rs`, `src-tauri/tests/fixtures/fake-ssh` (or platform-specific fixture wrapper needed by the automated tests).
 
 **Modify:** `src-tauri/src/transport.rs` to share line-reader/child cleanup helpers and add an abort-capable transport contract without changing observable local behavior; `src-tauri/src/session.rs` to add lock-independent cancellation plus bounded establishment; `src-tauri/src/pool.rs` to select a `LineTransport` factory; `src-tauri/src/lib.rs` to map safe errors/commands; `src-tauri/Cargo.toml` only if an existing Tokio feature is insufficient (do not add an SSH protocol crate).
 
@@ -108,7 +110,7 @@ Each batch is a separate commit boundary. Write and run the named failing tests 
 
 **RED first:** fake ssh records argv in a file and asserts exact token vector and exactly one final remote-command argument; independently assert no `sh`/`cmd.exe` spawn. Fake modes emulate a valid handshake/ping, malformed stdout, stderr then valid stdout, unknown/changed host key, interactive-auth diagnostic, nonzero remote-command exit, delayed/no handshake, abrupt disconnect after handshake, and child liveness after close/drop. Add a never-responding fake request proving `Session::close` completes within a bounded test deadline despite the request holding the transport mutex in the baseline design. Assert stderr is drained without forwarding raw lines, diagnostics are bounded, timeout kills the fake child, close kills only its child, and normal local transport tests remain unchanged.
 
-**Acceptance:** `cargo test --manifest-path src-tauri/Cargo.toml ssh_transport`; `cargo test --manifest-path src-tauri/Cargo.toml --test rpc_smoke` when `backend-binaries/jmcl-core` is present; `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`; `git diff --check`. An optional loopback OpenSSH check is allowed only if ssh/sshd are already available and it needs no root or host-key/config changes; fake executable tests are required and sufficient for Pi.
+**Acceptance:** `cargo test --manifest-path src-tauri/Cargo.toml ssh_transport`; `cargo test --manifest-path src-tauri/Cargo.toml --test rpc_smoke` when `backend-binaries/jmcl-core` is present; `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`; `git diff --check`. An optional loopback OpenSSH check is allowed only if ssh/sshd are already available and it needs no root or host-key/config changes; fake executable tests establish only the automated transport layer, not native platform acceptance.
 
 **Non-goals:** changing JMCLCore RPC, adding password protocol, PTY, key storage, known-host UI/acceptance, agent forwarding, remote arbitrary commands, changing local `LocalProcessTransport` behavior.
 
@@ -162,11 +164,11 @@ Update cache reducers/controller calls from hard-coded `SERVER_SCOPE` to capture
 
 **Create/modify:** `docs/plans/2026-09-27-stage-2-ssh-transport.md` implementation record or a short Stage 2 completion record only after the work is actually complete; update `ROADMAP.md` status in the Stage 2 completion commit. No production code batch belongs here.
 
-**RED/acceptance evidence:** Pi runs TypeScript tests/build, Rust unit/integration tests including fake ssh argv and process lifecycle, Rust formatting and diff checks. Optionally exercise loopback OpenSSH only if preinstalled and safe without root changes. Do not launch Tauri GUI on Pi. macOS and Windows each build/run the real Tauri GUI, verify native `ssh` discovery and child termination, environment/agent integration, unknown/changed known_hosts refusal, key/agent authentication, interactive-auth structured failure, remote `core.version`/`ping`/`server.list`, endpoint switch and app exit cleanup. Windows specifically verifies `ssh.exe`, executable lookup, WebView child lifetime and key/agent behavior; macOS verifies system OpenSSH, `SSH_AUTH_SOCK`/Keychain/agent behavior. Record versions and which platform performed each check. Real host connection tests require an explicitly configured, trusted test host; no credentials are entered or saved in JMCL.
+**RED/acceptance evidence:** Cloud automated checks run TypeScript tests/build, Rust unit/integration tests including fake ssh argv and process lifecycle, Rust formatting and diff checks, recording the actual OS/architecture. Optionally exercise loopback OpenSSH only if preinstalled and safe without root changes. macOS and Windows each build/run the real Tauri GUI, verify native `ssh` discovery and child termination, environment/agent integration, unknown/changed known_hosts refusal, key/agent authentication, interactive-auth structured failure, remote `core.version`/`ping`/`server.list`, endpoint switch and app exit cleanup. Windows specifically verifies `ssh.exe`, executable lookup, WebView child lifetime and key/agent behavior; macOS verifies system OpenSSH, `SSH_AUTH_SOCK`/Keychain/agent behavior. Record versions and which platform performed each check. Real host connection tests require an explicitly configured, trusted test host; no credentials are entered or saved in JMCL.
 
-**Stage 3 handoff gate:** only after target desktop proof of Stage 2 should Stage 3 run the real server lifecycle on a separately approved, adequately resourced Linux test host (currently undecided): list/create, checked EULA install, start, explicit status, logs/cursor resume, command, stop/restart/delete, disconnect/reconnect, and detached-server survival after GUI close. The user's current Pi is resource-constrained and must not run a full Minecraft server instance; its real acceptance RPCs are limited to `core.version`, `ping`, and `server.list` against a dedicated empty directory, with no server creation/installation/start or Java workload. Stage 3 owns real Minecraft server lifecycle acceptance; Stage 2 proves transport and endpoint isolation, not lifecycle correctness. Maintain no status polling/N+1 regression and never infer server stopped from SSH loss.
+**Stage 3 handoff gate:** only after target desktop proof of Stage 2 should Stage 3 run the real server lifecycle on a separately approved, adequately resourced Linux test environment (target still requires confirmation): list/create, checked EULA install, start, explicit status, logs/cursor resume, command, stop/restart/delete, disconnect/reconnect, and detached-server survival after GUI close. Stage 2 transport-only real acceptance RPCs remain limited to `core.version`, `ping`, and `server.list` against a dedicated empty directory, with no server creation/installation/start or Java workload. Stage 3 owns real Minecraft server lifecycle acceptance; Stage 2 proves transport and endpoint isolation, not lifecycle correctness. Maintain no status polling/N+1 regression and never infer server stopped from SSH loss.
 
-**Non-goals:** Pi desktop/Tauri GUI, changing Pi into a user-facing desktop target, root installation/config changes for OpenSSH, real Minecraft lifecycle work folded into Stage 2.
+**Non-goals:** adding desktop product targets through environment setup, root installation/config changes for OpenSSH, real Minecraft lifecycle work folded into Stage 2.
 
 **Commit:** `docs: record Stage 2 platform verification and Stage 3 gate`.
 
@@ -182,7 +184,7 @@ Update cache reducers/controller calls from hard-coded `SERVER_SCOPE` to capture
 | SSH process leaks or one request blocks all sessions | Sessions are synchronous, and SSH transports own child processes. | Per-operation/log/control/test child sessions; bounded startup; child kill-on-drop; endpoint index with independent session IDs and Arc lifetimes; exercise cancellation/disconnect. |
 | Stage 1 cache appears lost when selecting SSH | Current UI hardcodes `local`; cache already has endpoint scopes. | Keep endpoint ID `local` and same v1 cache bytes/key; add migration regression fixture and select Local after remote use. |
 | Local `serversDir` is invalid on remote Linux | Setting is currently a local Tauri app-data directory. | Optional per-SSH `serversDirectory`, required before server RPC; never default/copy local path. |
-| Platform executable/agent behavior differs | Pi cannot prove Tauri/WebView process env, macOS provider, or Windows OpenSSH install. | Pi fake executable coverage only; mandatory macOS and Windows native acceptance before Stage 3. |
+| Platform executable/agent behavior differs | Linux automated tests cannot prove macOS/Windows Tauri/WebView process env, macOS provider, or Windows OpenSSH install. | Fake executable coverage proves only the automated layer; mandatory macOS and Windows native acceptance before Stage 3. |
 | Endpoint metadata leaks host information | Labels and destinations identify infrastructure though they are not credentials. | Fixed app-data, bounded validated schema, no telemetry/logging of endpoint values, normal user-scoped file protections. |
 
 ## Decisions and user input

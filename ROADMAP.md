@@ -2,6 +2,8 @@
 
 本文记录 JMCL-frontend 的长期目标、当前实现状态、平台分工、阶段划分和验收标准。它用于跨日续作、任务委派和阶段复盘。
 
+规划的范围、优先级、阶段顺序与验收门槛由用户和专门规划 agent 商定；其他贡献者只能提出建议或征求批准，不得擅自规划。可以依据代码和证据更新实现状态。详见 [开发规范](./CONTRIBUTING.md)。
+
 `gui-handoff.md` 是从 JMCLCore 复制的权威 RPC 契约。路线图描述 GUI 的实施顺序，不替代契约；两者冲突时，应先核对 JMCLCore，再同步契约副本。
 
 ## 1. 项目目标
@@ -43,7 +45,7 @@ jmcl-core rpc
 
 本地模式使用 `LocalProcessTransport` 启动 `jmcl-core rpc`。
 
-远端服务器模式计划增加 SSH transport，第一版优先复用系统 OpenSSH：
+远端服务器模式已实现 SSH transport，复用系统 OpenSSH：
 
 ```text
 ssh user@host jmcl-core rpc
@@ -53,11 +55,11 @@ ssh user@host jmcl-core rpc
 
 ## 3. 平台与测试分工
 
-### Raspberry Pi
+### Devin Cloud Linux
 
-Pi 是无头开发、core 和轻量传输测试节点，不是最终桌面 UI 运行目标，也不承担完整 Minecraft Server 实例运行。
+当前开发环境为 Devin Cloud；每个会话按实际 OS 和架构选择工具链与 core。可复现配置和操作说明见[环境指南](./docs/development.md)。旧 Pi 和个人 Mac 工作区不再是当前开发前提。
 
-Pi 负责：
+Linux Cloud 可用于：
 
 - 源码编辑与 Git；
 - Bun/TypeScript 测试；
@@ -66,14 +68,14 @@ Pi 负责：
 - 浏览器自动化、截图和控制台检查；
 - Rust 格式检查和可独立执行的纯逻辑测试；
 - JMCLCore 编译和测试；
-- 轻量真实 RPC 验收：`core.version`、`ping`、专用空目录的 `server.list`；
-- SSH 远端目标。
+- 经批准的轻量真实 RPC 验收：`core.version`、`ping`、专用空目录的 `server.list`；
+- 经批准且已确认可达的 Linux SSH 测试目标。
 
-性能边界：不得在 Pi 上创建、安装或启动完整 Minecraft 服务器来做生命周期验收，不触发 Java/服务器负载。后续真实生命周期使用另行选定、性能足够的 Linux 主机（目标未定）；Mock、fake-SSH 和不启动真实服务器的纯逻辑测试不受此限制。
+真实服务器生命周期仍需另行批准、资源足够的 Linux 测试环境，并遵守既有阶段验收门槛。不能把旧 Pi 的资源限制套用到 Cloud VM，也不能仅凭 Cloud 平台名称推定资源足够。
 
-Pi 不为完整 Tauri GUI 安装 GTK/WebKit 开发依赖。
+Linux 原生编译需要对应 Tauri 依赖，其结果不能代替 macOS/Windows 原生验证。
 
-### macOS
+### Devin Cloud macOS
 
 macOS 是主要桌面集成与 UI 验收平台，负责：
 
@@ -82,11 +84,11 @@ macOS 是主要桌面集成与 UI 验收平台，负责：
 - Microsoft Device Code 登录；
 - 原生文件对话框；
 - macOS `jmcl-core` sidecar；
-- SSH transport 连接 Pi；
+- SSH transport 连接经批准的 Linux 测试目标；
 - Minecraft 客户端实际启动；
 - 应用打包和交互验收。
 
-### Windows
+### Devin Cloud Windows
 
 Windows 负责兼容性和发布验证：
 
@@ -102,11 +104,11 @@ Windows 负责兼容性和发布验证：
 
 每项功能应明确通过了哪一层验证：
 
-1. **Pi 自动验证**：类型检查、测试、Vite build、core/RPC 测试；
+1. **Cloud 自动验证**：类型检查、测试、Vite build、core/RPC 测试，记录实际 OS 与架构；
 2. **桌面编译验证**：macOS/Windows Tauri、sidecar、keychain、原生 API；
 3. **真实 UI 验收**：实际点击、长任务反馈、重连、游戏或服务器运行。
 
-Pi 上的 Vite build 不能被描述为完整桌面验收。
+任意平台的 Vite build 都不能被描述为完整桌面验收。
 
 ## 4. 当前状态
 
@@ -143,18 +145,19 @@ Pi 上的 Vite build 不能被描述为完整桌面验收。
 
 ### 服务器 GUI
 
-阶段 1A、1B 和 1C Batch 2–5 已完成：Vite Mock 已具备可变服务器状态、完整 `server.*` dispatcher、生命周期、日志游标、properties、世界和服务端内容 fixtures；GUI 已具备服务器导航、目录设置、无轮询列表与状态缓存、创建、详情生命周期操作、EULA 安装/修复、删除、可恢复日志控制台和运行中命令面板。Batch 5 使用专用会话读取日志与发送命令，缓冲有界；SSH transport 尚未完成。
+阶段 1A、1B 和 1C Batch 2–5 已完成：Vite Mock 已具备可变服务器状态、完整 `server.*` dispatcher、生命周期、日志游标、properties、世界和服务端内容 fixtures；GUI 已具备服务器导航、目录设置、无轮询列表与状态缓存、创建、详情生命周期操作、EULA 安装/修复、删除、可恢复日志控制台和运行中命令面板。Batch 5 使用专用会话读取日志与发送命令，缓冲有界。
+
+阶段 2 的 SSH transport、连接配置、端点选择、按端点隔离的会话/状态缓存及远端日志/命令接入已实现；平台验收尚未全部完成，不能据此开启阶段 3。既有验证范围见[阶段 2 验收记录](./docs/verification/stage-2-platform-handoff.md)，历史平台证据不等于 Cloud 环境已验收。
 
 JMCLCore 已实现主要 `server.*` 能力，JMCL-frontend 仍未实现：
 
-- SSH transport；
-- 连接配置；
-- SSH 状态刷新与远端日志/命令接入；
-- RCON 和 Query；
-- properties；
+- RCON 和 Query UI；
+- properties UI；
 - 服务端世界、Mod 和数据包 UI。
 
 ## 5. 已完成：阶段 0——稳定开发基线
+
+本节记录原环境的历史基线，不是当前 Cloud 安装指令或测试结果。
 
 基线提交：
 
@@ -201,7 +204,7 @@ git diff --check: pass
 
 - production JS 主 chunk 约 612 kB，Vite 提示超过 500 kB；
 - Vite HTTP readiness 已验证，但仍应补一次 default/empty/errors 的真实浏览器视觉走查；
-- Pi 不执行完整 Tauri 编译，原生验证留给 macOS/Windows。
+- 当时的 Pi 环境未执行完整 Tauri 编译，原生验证留给 macOS/Windows。
 
 ## 6. 阶段 1——服务器领域模型、RPC、状态机和 Mock UI
 
@@ -265,7 +268,7 @@ server.datapacks.*
 
 core 始终进行最终校验；GUI 状态机只负责正确启用控件和提供恢复操作。
 
-状态：1B 状态机与 1C Mock/GUI 基础能力已完成；尚未完成 SSH、RCON、Query 和高级服务器管理页。
+状态：1B 状态机与 1C Mock/GUI 基础能力已完成；SSH 已实现但平台验收未收口，RCON、Query 和高级服务器管理页尚未完成。
 
 ### 1C. Mock 与基础 UI
 
@@ -341,15 +344,15 @@ Mock 场景至少包含：
 
 ### 阶段 2 验收
 
-- macOS/Windows GUI 能通过 SSH 对 Pi 调用 `core.version` 和 `ping`；
-- 能读取 Pi 上的 `server.list`；
+- macOS/Windows GUI 能通过 SSH 对经批准的 Linux 测试目标调用 `core.version` 和 `ping`；
+- 能读取该目标上的 `server.list`；
 - 连接失败和协议不兼容有明确错误；
 - SSH 断开不会被误判为服务器停止；
 - 本地客户端 transport 不受影响。
 
 ## 8. 阶段 3——真实服务器生命周期闭环
 
-把基础服务器页面接到性能足够的 Linux 测试主机上的真实 core（主机未定，不使用当前 Pi 运行完整服务器）：
+把基础服务器页面接到经批准、性能足够的 Linux 测试环境上的真实 core（目标需另行确认，不由开发环境配置自动决定）：
 
 ```text
 添加已批准的 Linux 测试主机连接
@@ -476,11 +479,13 @@ Mock 场景至少包含：
 - 不记录 access token、refresh token、API key、RCON 密码或未脱敏请求；
 - 结构化处理稳定错误码，不解析可变 message；
 - “测试通过”必须注明测试层级和平台；
-- Pi 上不以安装图形依赖换取虚假的桌面验证；
+- 不以某一 Cloud 平台的编译或图形依赖安装代替其他目标平台的原生验证；
 - macOS/Windows 原生行为必须在目标平台验证；
 - 每个阶段形成独立提交和可复现验收记录。
 
 ## 15. 最近下一步
+
+以下为原阶段 0 检查点的历史计划，其中阶段 1 与 SSH 实现已落地；保留原顺序供追溯，不作为当前待执行任务。后续规划仍由用户与专门规划 agent 商定，本次环境迁移不新增或重排任务。
 
 1. 对阶段 0 的 `default`、`empty`、`errors` 页面做一次真实浏览器视觉走查；
 2. 推送本地已验证提交，形成远端检查点；
