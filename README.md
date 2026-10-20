@@ -17,7 +17,7 @@ The GUI currently supports:
 - installation progress plus stdout, stderr, and core diagnostics;
 - Chinese/English UI, themes, official/BMCLAPI sources, and configurable directories.
 
-The GUI includes local server management and endpoint-scoped remote sessions through the system OpenSSH client. SSH uses strict `known_hosts` checking, a fixed remote `exec jmcl-core rpc` command, and the user's inherited SSH configuration/agent; JMCL does not store SSH credentials. Pi fake-SSH tests cover transport behavior, but the real macOS and Windows Tauri GUI, system SSH, host-key behavior, and native child-process cleanup still need platform verification. Client data packs, full modpack/CurseForge support, and advanced launch options are outside the current scope.
+The GUI includes local server management and endpoint-scoped remote sessions through the system OpenSSH client. SSH uses strict `known_hosts` checking, a fixed remote `exec jmcl-core rpc` command, and the user's inherited SSH configuration/agent; JMCL does not store SSH credentials. Fake-SSH tests cover transport behavior; native macOS/Windows verification is tracked separately and remains incomplete. Client data packs, full modpack/CurseForge support, and advanced launch options are outside the current scope.
 
 ## Technology stack and dependencies
 
@@ -50,6 +50,8 @@ flowchart LR
 Server endpoints use separate sessions, so selecting an SSH endpoint does not redirect local instance, account, or Java operations. SSH destinations and optional remote server directories are endpoint metadata; authentication remains with the user's system OpenSSH setup. `StrictHostKeyChecking=yes` refuses unknown or changed host keys, and `BatchMode=yes` disables interactive password/passphrase prompts. See [`gui-handoff.md`](./gui-handoff.md) for the RPC contract and [`stage-2-platform-handoff.md`](./docs/verification/stage-2-platform-handoff.md) for the remaining desktop checks.
 
 ## Development requirements and core lookup
+
+Development uses Devin Cloud environments. See the [current environment guide](./docs/development.md) for platform-specific setup and blueprint boundaries, and [contributor rules](./CONTRIBUTING.md) before changing the roadmap. Historical machine-specific verification records are not current setup instructions.
 
 You need Bun, Rust stable, the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for the target platform, and a compatible `jmcl-core` binary.
 
@@ -120,7 +122,7 @@ The `backend-binaries/` binary is the development input. The target-triple-named
 bun run tauri:build:sidecar
 ```
 
-Normal browser Vite tests cannot verify native window, filesystem, keychain, process, or packaged-sidecar behavior. This Raspberry Pi/headless workspace can run Vite, Bun tests, TypeScript, Rust formatting, and core-side tests; full native Tauri acceptance belongs on macOS or Windows with matching prerequisites and a matching core binary.
+Normal browser Vite tests cannot verify native window, filesystem, keychain, process, or packaged-sidecar behavior. Run these checks on the relevant Devin Cloud platform with matching prerequisites and a matching core binary. Linux Cloud checks do not establish macOS or Windows native acceptance.
 
 ## Commands and verification
 

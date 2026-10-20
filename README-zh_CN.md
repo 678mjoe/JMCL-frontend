@@ -17,7 +17,7 @@ JMCL 是 Minecraft: Java Edition 的桌面启动器。本仓库包含 React/Type
 - 安装进度以及 stdout、stderr、core 诊断日志；
 - 中英文界面、主题、官方/BMCLAPI 源和可配置目录。
 
-GUI 已支持本地服务器管理，以及通过系统 OpenSSH 建立按 endpoint 隔离的远程会话。SSH 使用严格的 `known_hosts` 校验、固定远程命令 `exec jmcl-core rpc`，并继承用户的 SSH 配置和 agent；JMCL 不保存 SSH 凭据。Pi 上的 fake-ssh 测试覆盖了 transport 行为，但真实 macOS/Windows Tauri GUI、系统 SSH、主机密钥行为和原生子进程清理仍待平台验收。客户端数据包、完整整合包/CurseForge 支持及高级启动选项不在当前范围内。
+GUI 已支持本地服务器管理，以及通过系统 OpenSSH 建立按 endpoint 隔离的远程会话。SSH 使用严格的 `known_hosts` 校验、固定远程命令 `exec jmcl-core rpc`，并继承用户的 SSH 配置和 agent；JMCL 不保存 SSH 凭据。fake-SSH 测试覆盖了 transport 行为；macOS/Windows 原生验证单独记录，目前尚未全部完成。客户端数据包、完整整合包/CurseForge 支持及高级启动选项不在当前范围内。
 
 ## 技术栈与开发依赖
 
@@ -50,6 +50,8 @@ flowchart LR
 服务器 endpoint 使用独立 session，因此选择 SSH endpoint 不会把本地实例、账户或 Java 操作重定向到远端。SSH destination 和可选的远程服务器目录属于 endpoint 元数据；认证由用户的系统 OpenSSH 配置处理。`StrictHostKeyChecking=yes` 会拒绝未知或已变更的主机密钥，`BatchMode=yes` 会禁用交互式密码/口令提示。RPC 契约见 [`gui-handoff.md`](./gui-handoff.md)，尚待完成的桌面检查见 [`stage-2-platform-handoff.md`](./docs/verification/stage-2-platform-handoff.md)。
 
 ## 开发环境与 core 查找顺序
+
+开发使用 Devin Cloud 环境。各平台配置与 blueprint 边界见[当前环境指南](./docs/development.md)；修改 roadmap 前请阅读[开发规范](./CONTRIBUTING.md)。历史验收记录中的机器信息不是当前环境配置指令。
 
 需要 Bun、Rust stable、目标平台的 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) 以及匹配的 `jmcl-core` 二进制。
 
@@ -120,7 +122,7 @@ bun run tauri build
 bun run tauri:build:sidecar
 ```
 
-普通浏览器 Vite 测试不能验证原生窗口、文件系统、keychain、进程或打包 sidecar。本 Raspberry Pi/headless 工作区可以运行 Vite、Bun 测试、TypeScript、Rust 格式检查和 core 侧测试；完整 Tauri 原生验收应在具备对应 prerequisites 的 macOS 或 Windows 上，使用匹配的 core 二进制完成。
+普通浏览器 Vite 测试不能验证原生窗口、文件系统、keychain、进程或打包 sidecar。应在对应 Devin Cloud 平台上使用匹配的依赖与 core 二进制完成这些检查；Linux Cloud 的检查不能证明 macOS 或 Windows 原生验收通过。
 
 ## 命令与验证
 

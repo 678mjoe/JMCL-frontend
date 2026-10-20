@@ -1,6 +1,6 @@
 # Server Stage 1C Implementation Plan
 
-> **For Hermes:** Execute each batch with a fresh Codex worker, then independently verify contract semantics, tests, and browser behavior before committing.
+> Historical implementation plan. Current environment instructions are in [Devin Cloud development](../development.md); contributor and roadmap-ownership rules are in [CONTRIBUTING](../../CONTRIBUTING.md). This plan does not select a personal machine or agent runtime.
 
 **Goal:** Build the Vite-mock server-management lifecycle from cached list state through create, EULA-gated install, start/stop/restart, resumable logs, console commands, and delete—without SSH or real server installation.
 
@@ -152,7 +152,7 @@ bun run build
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 git diff --check
-zig-0.16 build test  # /home/mjoe/projects/JMCLCore, read/test only
+zig build test  # Run with Zig 0.16.0 in the matching JMCLCore checkout; read/test only.
 ```
 
-Document Stage 1C completion without claiming SSH or native macOS/Windows integration was tested on the Pi.
+Document Stage 1C completion without treating Mock or local automated tests as real SSH or native macOS/Windows acceptance.
