@@ -4,9 +4,48 @@
 
 **Date:** 2026-09-30
 
-**Last evidence update:** 2026-10-16
+**Last evidence update:** 2026-10-21
 
 **Status:** Partial verification; macOS and Windows desktop acceptance remains **PENDING**. Stage 2 is not marked complete, and the Stage 3 gate is not open.
+
+## Devin Cloud closeout evidence
+
+The following is new Cloud evidence, separate from the historical Pi/personal-macOS runs below. The existing acceptance gates are unchanged. Evidence and build logs are available in the [Cloud session](https://app.devin.ai/sessions/0932d3724a184bc4b93ccdb0c3dac3ea).
+
+### Linux automated regression, 2026-10-21
+
+- Frontend: base `824422e29fdabd1cf7d2a55bd017c21082b868b8`, with the SSH UTF-8 fix and regression tests in `4b1d3d368859ebc03a0bd5869442dd3d18cbc72c`.
+- Core: `97b65186d7882c415220969d8dcd264b6c3353bd`, built with Zig 0.16.0 / `ReleaseSafe`; matching Linux sidecar staged.
+- Platform: Ubuntu 22.04.5 LTS, x86_64; Bun 1.4.3; Rust 1.97.1; OpenJDK 17.0.19.
+- Reproduced before the fix: both new fake-SSH tests failed because invalid UTF-8 inside a JSON string was silently replaced with U+FFFD. A corrupted identity could establish a session and a corrupted RPC result could be returned as successful data.
+- After the fix: invalid UTF-8 uses the existing redacted `SSH_PROTOCOL_ERROR` path, aborts the session and reaps the fake SSH child. Reader tests preserve valid Chinese, emoji and literal U+FFFD across one-byte reads, CRLF and consecutive frames.
+
+| Command | Result |
+| --- | --- |
+| `bun run test` | PASS: 212 tests, 0 failures, 29 files; frontend unchanged by the Rust fix |
+| `bun run build` | PASS: TypeScript and Vite production build |
+| `cargo test --manifest-path src-tauri/Cargo.toml --lib --test ssh_transport --test rpc_smoke` | PASS: 28 library, 22 fake-SSH and 7 real local-core RPC tests; no skips |
+| `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` | PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | PASS |
+| `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets` | PASS with existing redundant-guard, while-let-loop and test-module-order warnings; not a warnings-as-errors result |
+| `sh -n src-tauri/tests/fixtures/fake-ssh` and `git diff --check` | PASS |
+
+React `act(...)` and Vite chunk-size warnings remain non-blocking. Fake-SSH process tests are Unix-only; their Linux pass is not Windows process evidence. No native GUI, real SSH target, authentication/trust configuration, account login or Minecraft workload was used in this regression run.
+
+### Platform status matrix
+
+The 2026-10-20 Cloud toolchain runs used frontend `824422e` and pinned core `97b6518`, before the UTF-8 fix. macOS arm64 and Windows x64 each passed 212 frontend tests, the frontend build, Rust formatting/checking and `bun run tauri build --no-bundle`. These are compile/build results, not GUI or SSH acceptance. Neither target platform has revalidated the UTF-8 fix yet.
+
+| Layer | Linux Cloud | macOS Cloud | Windows Cloud |
+| --- | --- | --- | --- |
+| SSH implementation | Present; UTF-8 response validation fixed | Same implementation; new fix not revalidated here | Same implementation; new fix not revalidated here |
+| Automated frontend / Rust checks | PASS as recorded above | PASS on pre-fix `824422e`; Rust tests not rerun | PASS on pre-fix `824422e`; Rust tests not run |
+| Native release compilation | Not run in this closeout | PASS, pre-fix no-bundle build | PASS, pre-fix no-bundle build |
+| Native GUI / sidecar runtime | Not run | PENDING new Cloud acceptance; historical evidence below remains scoped to its original run | PENDING |
+| System SSH, authentication source, refusal messages, endpoint switching and exit cleanup | Fake-SSH/local-core tests only; no real SSH attempt | PENDING new Cloud acceptance; historical partial results below | PENDING |
+| Real Minecraft server lifecycle | Not run; Stage 3, not a Stage 2 acceptance item | Not run | Not run |
+
+Stage 2's remaining work is native macOS/Windows GUI and system-SSH acceptance against an explicitly approved Linux test target: successful `core.version`, `ping` and empty-directory `server.list`, safe error/refusal behavior, endpoint isolation/local switching and child cleanup. New Cloud GUI/SSH runs and isolated test trust/credential setup await explicit authorization. Do not substitute command-line builds or fake SSH for these checks, and do not add Minecraft lifecycle work to Stage 2.
 
 ## Evidence recorded on Raspberry Pi
 
@@ -116,7 +155,7 @@ Record: Windows version/build ______; architecture ______; core/version ______; 
 
 | Check | Result | Notes / evidence |
 |---|---|---|
-| Native Tauri app builds with the matching platform core/sidecar | PENDING | |
+| Native Tauri app builds with the matching platform core/sidecar | PASS (Cloud no-bundle compile only, pre-fix) | 2026-10-20: frontend `824422e`, core `97b6518`, Windows Server 2022 Standard 10.0.20348 x64; authoring run `run-0dd9b5b531bd` succeeded. Not an installer, UI or post-fix build result. |
 | Native Tauri app launches and exits | PENDING | |
 | App resolves system `ssh.exe` from inherited `PATH`; inherited SSH environment and agent are usable | PENDING | |
 | Disposable unknown-host-key attempt is refused; no automatic trust is added | PENDING | |
