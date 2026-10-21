@@ -338,6 +338,62 @@ async fn partial_stdout_at_eof_is_protocol_corruption_and_reaped() {
 }
 
 #[tokio::test]
+async fn invalid_utf8_identity_is_protocol_corruption_and_reaped() {
+    let tmp = TempFiles::new();
+    let result = tokio::time::timeout(
+        Duration::from_secs(3),
+        Session::establish(Box::new(spawn_fake(&tmp, "invalid_utf8_identity").await)),
+    )
+    .await
+    .expect("invalid UTF-8 is rejected promptly");
+    let error = match result {
+        Ok(session) => {
+            session.close().await;
+            panic!("invalid UTF-8 identity must not establish a session");
+        }
+        Err(error) => error,
+    };
+    assert!(matches!(&error, SessionError::Transport { code, .. } if code == "SSH_PROTOCOL_ERROR"));
+    assert!(!serde_json::to_string(&error)
+        .unwrap()
+        .contains("DESTINATION_SECRET"));
+    let pid: i32 = std::fs::read_to_string(tmp.path("pid"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert_process_gone(pid);
+}
+
+#[tokio::test]
+async fn invalid_utf8_result_is_not_returned_as_replacement_text() {
+    let tmp = TempFiles::new();
+    let session = Session::establish(Box::new(spawn_fake(&tmp, "invalid_utf8_result").await))
+        .await
+        .unwrap();
+    let result = tokio::time::timeout(
+        Duration::from_secs(3),
+        session.request("ping", json!({}), |_| {
+            panic!("invalid data must not be forwarded")
+        }),
+    )
+    .await
+    .expect("invalid UTF-8 is rejected promptly");
+    session.close().await;
+    let error = result.expect_err("invalid UTF-8 result must not be silently repaired");
+    assert!(matches!(&error, SessionError::Transport { code, .. } if code == "SSH_PROTOCOL_ERROR"));
+    assert!(!serde_json::to_string(&error)
+        .unwrap()
+        .contains("DESTINATION_SECRET"));
+    let pid: i32 = std::fs::read_to_string(tmp.path("pid"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert_process_gone(pid);
+}
+
+#[tokio::test]
 async fn oversized_stdout_is_protocol_corruption_and_reaped() {
     let tmp = TempFiles::new();
     let error = tokio::time::timeout(

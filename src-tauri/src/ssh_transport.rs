@@ -67,11 +67,12 @@ enum ReaderEvent {
 }
 
 enum BoundedLine {
-    Line(Vec<u8>),
+    Line(String),
     Eof,
     PartialEof,
     ReadError,
     TooLong,
+    InvalidUtf8,
 }
 
 async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R) -> BoundedLine {
@@ -97,7 +98,10 @@ async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R) -
             if bytes.last() == Some(&b'\r') {
                 bytes.pop();
             }
-            return BoundedLine::Line(bytes);
+            return match String::from_utf8(bytes) {
+                Ok(line) => BoundedLine::Line(line),
+                Err(_) => BoundedLine::InvalidUtf8,
+            };
         }
         if bytes.len().saturating_add(available.len()) > MAX_SSH_STDOUT_LINE_BYTES {
             return BoundedLine::TooLong;
@@ -170,13 +174,12 @@ impl SshProcessTransport {
                         let _ = stdout_tx.send(ReaderEvent::Eof).await;
                         break;
                     }
-                    BoundedLine::Line(bytes) => {
-                        let line = String::from_utf8_lossy(&bytes).into_owned();
+                    BoundedLine::Line(line) => {
                         if stdout_tx.send(ReaderEvent::Line(line)).await.is_err() {
                             break;
                         }
                     }
-                    BoundedLine::PartialEof | BoundedLine::TooLong => {
+                    BoundedLine::PartialEof | BoundedLine::TooLong | BoundedLine::InvalidUtf8 => {
                         reader_protocol_corruption.store(true, Ordering::SeqCst);
                         let _ = stdout_tx.send(ReaderEvent::ProtocolCorruption).await;
                         break;
@@ -482,7 +485,46 @@ impl Drop for SshProcessTransport {
 
 #[cfg(test)]
 mod tests {
-    use super::classify_ssh_failure;
+    use super::{classify_ssh_failure, read_bounded_line, BoundedLine};
+    use tokio::io::BufReader;
+
+    #[tokio::test]
+    async fn bounded_reader_rejects_invalid_utf8() {
+        for bytes in [
+            b"{\"message\":\"\xff\"}\n".as_slice(),
+            b"{\"message\":\"\xc3\"}\n".as_slice(),
+            b"{\"message\":\"\xed\xa0\x80\"}\n".as_slice(),
+        ] {
+            for capacity in [1, 8, 1024] {
+                let mut reader = BufReader::with_capacity(capacity, bytes);
+                assert!(matches!(
+                    read_bounded_line(&mut reader).await,
+                    BoundedLine::InvalidUtf8
+                ));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn bounded_reader_preserves_unicode_across_read_boundaries() {
+        let expected = r#"{"message":"测试世界 🌍 �"}"#;
+        let input = format!("{expected}\r\n{{\"pong\":true}}\n");
+        for capacity in [1, 2, 3, 8, 1024] {
+            let mut reader = BufReader::with_capacity(capacity, input.as_bytes());
+            let BoundedLine::Line(line) = read_bounded_line(&mut reader).await else {
+                panic!("valid UTF-8 must be preserved");
+            };
+            assert_eq!(line, expected);
+            let BoundedLine::Line(line) = read_bounded_line(&mut reader).await else {
+                panic!("the following frame must remain readable");
+            };
+            assert_eq!(line, r#"{"pong":true}"#);
+            assert!(matches!(
+                read_bounded_line(&mut reader).await,
+                BoundedLine::Eof
+            ));
+        }
+    }
 
     #[test]
     fn standard_authentication_denial_lists_are_classified_without_raw_diagnostics() {
