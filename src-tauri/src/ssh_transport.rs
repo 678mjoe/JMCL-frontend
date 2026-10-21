@@ -151,6 +151,8 @@ impl SshProcessTransport {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        #[cfg(windows)]
+        crate::transport::hide_child_console(&mut command);
         command.envs(extra_env);
         let mut child = command.spawn().map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
