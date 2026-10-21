@@ -15,6 +15,11 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
 
+#[cfg(windows)]
+pub(crate) fn hide_child_console(command: &mut Command) {
+    command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+}
+
 /// Safe, serializable classification for transport failures. Messages are
 /// suitable for the UI and must never contain process output or destinations.
 #[derive(Debug, Clone)]
@@ -139,6 +144,8 @@ impl LocalProcessTransport {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(windows)]
+        hide_child_console(&mut command);
         if let Some(dir) = working_dir {
             command.current_dir(dir);
         }

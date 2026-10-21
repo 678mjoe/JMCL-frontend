@@ -18,6 +18,59 @@ fn core_path() -> PathBuf {
         })
 }
 
+#[cfg(windows)]
+#[test]
+fn local_child_has_no_console_and_keeps_rpc_pipes() {
+    use jmcl_lib::transport::{LineTransport, TransportEvent};
+    use std::path::Path;
+    use std::time::Duration;
+
+    runtime().block_on(async {
+        let script = r#"
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ConsoleProbe {
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+}
+'@
+[Console]::WriteLine("console=" + [ConsoleProbe]::GetConsoleWindow().ToInt64());
+[Console]::Out.Flush();
+[Console]::WriteLine("echo=" + [Console]::ReadLine());
+"#;
+        let mut transport = LocalProcessTransport::spawn(
+            Path::new("powershell.exe"),
+            &[
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+            ],
+            None,
+        )
+        .await
+        .expect("spawn a console-subsystem probe through the local RPC transport");
+        let result = tokio::time::timeout(Duration::from_secs(30), async {
+            let event = transport.next_event().await;
+            assert!(
+                matches!(event, TransportEvent::Line(ref line) if line == "console=0"),
+                "{event:?}"
+            );
+            transport.write_line("pipe-check").await.unwrap();
+            let event = transport.next_event().await;
+            assert!(
+                matches!(event, TransportEvent::Line(ref line) if line == "echo=pipe-check"),
+                "{event:?}"
+            );
+        })
+        .await;
+        transport.close().await.unwrap();
+        result.expect("console probe and piped echo complete promptly");
+    });
+}
+
 fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
