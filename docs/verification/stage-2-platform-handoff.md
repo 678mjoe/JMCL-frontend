@@ -32,20 +32,30 @@ The following is new Cloud evidence, separate from the historical Pi/personal-ma
 
 React `act(...)` and Vite chunk-size warnings remain non-blocking. Fake-SSH process tests are Unix-only; their Linux pass is not Windows process evidence. No native GUI, real SSH target, authentication/trust configuration, account login or Minecraft workload was used in this regression run.
 
+### Authorized native attempts and isolated SSH lab, 2026-10-21
+
+The user approved Cloud native GUI recordings and an isolated Linux SSH target, using temporary keys and separate SSH configuration/trust files. The scope remains read-only `core.version`, `ping`, dedicated empty-directory `server.list`, connection/refusal errors, endpoint switching and child cleanup; no real user hosts/accounts or Minecraft workloads.
+
+- The [macOS Cloud attempt](https://app.devin.ai/sessions/aa19fe64d45b459694c2756794387fcc) and [Windows Cloud attempt](https://app.devin.ai/sessions/64681a391c8a41ef93ad309e996398e7) targeted frontend `61be61bdf41e2701f89b7d096085b5f85c9b8dff` and core `97b6518`. Both suspended with `chatgpt_subscription_limit_reached` before delivering a completed acceptance recording/report. They are not running or passing acceptance gates; resume only after the usage limit is resolved.
+- Windows completed a native release build and reached a real local-core UI. The testing agent observed visible console windows from local core children obscuring the app. This is a startup defect, not a successful GUI/exit acceptance result. The fix in `8b613157b6a45c54fd7f2f0bbc4c44c148f9dd57` applies Windows `CREATE_NO_WINDOW` to both local-core and SSH transport children, retaining piped stdin/stdout/stderr. Its Windows build and native GUI recheck remain **PENDING**.
+- A Windows-only local-transport regression uses a no-profile, noninteractive PowerShell console probe: `GetConsoleWindow()` must return zero, and a line must round-trip through the existing pipes. It is excluded on Linux and has **not run on Windows yet**. The Linux rerun at `8b61315` passes 212 frontend tests, TypeScript/Vite build, the existing 28 library, 22 fake-SSH and 7 local-core tests, Rust fmt/check and Clippy (existing warnings); it does not verify console suppression.
+- On Ubuntu 22.04.5 x86_64, system OpenSSH connected over loopback to a separate temporary `sshd` and pinned Linux core. Sequential protocol-v1 `core.version`, `ping` and empty-directory `server.list` passed, with core child cleanup after disconnect. Independent trust files correctly refused unknown/changed host keys; unauthorized and locked private keys failed noninteractively. A forced-command guard rejected arbitrary remote shell commands, methods outside the three allowed RPCs, and other list directories. No user SSH configuration/trust files were used.
+- The daemon was configured for loopback only and stopped after the probes; no logged test-core children remain. Cross-VM access from macOS/Windows has **not been established**. The Linux probe is real local OpenSSH evidence, not desktop-to-Linux GUI acceptance. No public listener, third-party relay or new account/API credential was configured.
+
 ### Platform status matrix
 
-The 2026-10-20 Cloud toolchain runs used frontend `824422e` and pinned core `97b6518`, before the UTF-8 fix. macOS arm64 and Windows x64 each passed 212 frontend tests, the frontend build, Rust formatting/checking and `bun run tauri build --no-bundle`. These are compile/build results, not GUI or SSH acceptance. Neither target platform has revalidated the UTF-8 fix yet.
+The 2026-10-20 Cloud toolchain runs used frontend `824422e` and pinned core `97b6518`, before the UTF-8 fix. macOS arm64 and Windows x64 each passed 212 frontend tests, the frontend build, Rust formatting/checking and `bun run tauri build --no-bundle`. Windows subsequently compiled `61be61b`, including the UTF-8 fix, during the attempt above. These are compile/build results, not completed GUI or SSH acceptance. The console-window fix has not been built or run on Windows yet.
 
 | Layer | Linux Cloud | macOS Cloud | Windows Cloud |
 | --- | --- | --- | --- |
-| SSH implementation | Present; UTF-8 response validation fixed | Same implementation; new fix not revalidated here | Same implementation; new fix not revalidated here |
+| SSH implementation | Present; UTF-8 response validation fixed | Same implementation; runtime revalidation pending | Same implementation; runtime revalidation pending |
 | Automated frontend / Rust checks | PASS as recorded above | PASS on pre-fix `824422e`; Rust tests not rerun | PASS on pre-fix `824422e`; Rust tests not run |
-| Native release compilation | Not run in this closeout | PASS, pre-fix no-bundle build | PASS, pre-fix no-bundle build |
-| Native GUI / sidecar runtime | Not run | PENDING new Cloud acceptance; historical evidence below remains scoped to its original run | PENDING |
-| System SSH, authentication source, refusal messages, endpoint switching and exit cleanup | Fake-SSH/local-core tests only; no real SSH attempt | PENDING new Cloud acceptance; historical partial results below | PENDING |
+| Native release compilation | Not run in this closeout | PASS, pre-fix no-bundle build | PASS at `61be61b`; console-window fix not built here |
+| Native GUI / sidecar runtime | Not run | BLOCKED by usage limit; no completed new Cloud acceptance | Startup console defect observed; full acceptance/exit check BLOCKED by usage limit |
+| System SSH, authentication source, refusal messages, endpoint switching and exit cleanup | Loopback OpenSSH/core and refusal/guard probes PASS; cross-VM pending | PENDING new Cloud acceptance; historical partial results below | PENDING |
 | Real Minecraft server lifecycle | Not run; Stage 3, not a Stage 2 acceptance item | Not run | Not run |
 
-Stage 2's remaining work is native macOS/Windows GUI and system-SSH acceptance against an explicitly approved Linux test target: successful `core.version`, `ping` and empty-directory `server.list`, safe error/refusal behavior, endpoint isolation/local switching and child cleanup. New Cloud GUI/SSH runs and isolated test trust/credential setup await explicit authorization. Do not substitute command-line builds or fake SSH for these checks, and do not add Minecraft lifecycle work to Stage 2.
+Stage 2's remaining work is native macOS/Windows GUI and system-SSH acceptance against the approved isolated Linux test target: successful `core.version`, `ping` and empty-directory `server.list`, safe error/refusal behavior, endpoint isolation/local switching and child cleanup. Authorization is recorded above; usage limits and cross-VM connectivity currently block completion. Do not substitute command-line builds, loopback-only probes or fake SSH for these checks, and do not add Minecraft lifecycle work to Stage 2.
 
 ## Evidence recorded on Raspberry Pi
 
