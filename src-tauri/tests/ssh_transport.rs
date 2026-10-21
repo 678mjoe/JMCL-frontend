@@ -82,6 +82,9 @@ impl TempFiles {
 }
 impl Drop for TempFiles {
     fn drop(&mut self) {
+        if let Ok(pid) = std::fs::read_to_string(self.path("pid.holder")) {
+            let _ = std::process::Command::new("kill").arg(pid.trim()).status();
+        }
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
@@ -127,6 +130,11 @@ async fn spawn_fake<'a>(tmp: &'a TempFiles, mode: &'a str) -> SshProcessTranspor
     )
     .await
     .unwrap()
+}
+
+fn assert_stderr_holder_alive(tmp: &TempFiles) {
+    let pid = std::fs::read_to_string(tmp.path("pid.holder")).unwrap();
+    assert!(process_is_alive(pid.trim().parse().unwrap()));
 }
 
 #[tokio::test]
@@ -193,6 +201,67 @@ async fn stderr_flood_is_drained_and_never_reaches_events_or_errors() {
         jmcl_lib::transport::TransportEvent::Line(_)
     ));
     transport.abort().await.unwrap();
+}
+
+#[tokio::test]
+async fn inherited_stderr_does_not_block_failure_classification() {
+    let tmp = TempFiles::new();
+    let mut transport = spawn_fake(&tmp, "inherited_stderr_failed").await;
+    let result = tokio::time::timeout(Duration::from_millis(800), transport.next_event()).await;
+    transport.abort().await.unwrap();
+    assert!(matches!(
+        result.expect("failure classification must not wait for inherited stderr EOF"),
+        jmcl_lib::transport::TransportEvent::Closed(error)
+            if error.code == "SSH_AUTH_REQUIRED_OR_FAILED"
+    ));
+    assert_eq!(transport.diagnostic_tail_len(), 0);
+    assert_stderr_holder_alive(&tmp);
+    let pid = std::fs::read_to_string(tmp.path("pid")).unwrap();
+    assert_process_gone(pid.trim().parse().unwrap());
+}
+
+#[tokio::test]
+async fn inherited_stderr_does_not_block_close() {
+    let tmp = TempFiles::new();
+    let mut transport = spawn_fake(&tmp, "inherited_stderr_close").await;
+    transport
+        .write_line(r#"{"protocol":1,"id":"req-0","method":"core.version","params":{}}"#)
+        .await
+        .unwrap();
+    assert!(matches!(
+        transport.next_event().await,
+        jmcl_lib::transport::TransportEvent::Line(_)
+    ));
+    tokio::time::timeout(Duration::from_millis(800), transport.close())
+        .await
+        .expect("close must not wait for inherited stderr EOF")
+        .unwrap();
+    assert_eq!(transport.diagnostic_tail_len(), 0);
+    assert_stderr_holder_alive(&tmp);
+    let pid = std::fs::read_to_string(tmp.path("pid")).unwrap();
+    assert_process_gone(pid.trim().parse().unwrap());
+}
+
+#[tokio::test]
+async fn inherited_stderr_does_not_block_abort() {
+    let tmp = TempFiles::new();
+    let mut transport = spawn_fake(&tmp, "inherited_stderr_abort").await;
+    transport
+        .write_line(r#"{"protocol":1,"id":"req-0","method":"core.version","params":{}}"#)
+        .await
+        .unwrap();
+    assert!(matches!(
+        transport.next_event().await,
+        jmcl_lib::transport::TransportEvent::Line(_)
+    ));
+    tokio::time::timeout(Duration::from_millis(800), transport.abort())
+        .await
+        .expect("abort must not wait for inherited stderr EOF")
+        .unwrap();
+    assert_eq!(transport.diagnostic_tail_len(), 0);
+    assert_stderr_holder_alive(&tmp);
+    let pid = std::fs::read_to_string(tmp.path("pid")).unwrap();
+    assert_process_gone(pid.trim().parse().unwrap());
 }
 
 #[tokio::test]
