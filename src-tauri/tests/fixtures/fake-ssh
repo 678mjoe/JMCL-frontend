@@ -23,6 +23,10 @@ respond() {
   id=$(printf '%s' "$request" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   method=$(printf '%s' "$request" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
   if [ "$method" = core.version ]; then
+    if [ "$FAKE_SSH_MODE" = invalid_utf8_identity ]; then
+      printf '{"id":"%s","event":"result","result":{"name":"jmcl-core","version":"DESTINATION_SECRET\377","protocol":1}}\n' "$id"
+      return
+    fi
     if [ "$FAKE_SSH_MODE" = malformed_identity ]; then
       printf '{"id":"%s","event":"result","result":{"version":"fake"}}%b' "$id" "$ending"
       return
@@ -31,6 +35,10 @@ respond() {
     [ "$FAKE_SSH_MODE" != wrong_protocol ] || protocol=2
     printf '{"id":"%s","event":"result","result":{"name":"jmcl-core","version":"fake","protocol":%s}}%b' "$id" "$protocol" "$ending"
   else
+    if [ "$FAKE_SSH_MODE" = invalid_utf8_result ]; then
+      printf '{"id":"%s","event":"result","result":{"message":"DESTINATION_SECRET\377"}}\n' "$id"
+      return
+    fi
     if [ "$FAKE_SSH_MODE" = null_error ]; then
       printf '{"id":null,"event":"error","error":{"message":"DESTINATION_SECRET"}}%b' "$ending"
       return
