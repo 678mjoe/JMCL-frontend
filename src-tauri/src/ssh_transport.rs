@@ -28,6 +28,7 @@ const SSH_KILL_REAP_GRACE: Duration = Duration::from_secs(1);
 /// Give an EOF reader one bounded scheduling window to record protocol
 /// corruption before cleanup aborts a sender blocked on the bounded channel.
 const SSH_STDOUT_SETTLE_GRACE: Duration = Duration::from_millis(100);
+const SSH_STDERR_SETTLE_GRACE: Duration = Duration::from_millis(100);
 
 /// Build the full OpenSSH argument list. The destination is validated as one
 /// token and the remote command is a private fixed constant.
@@ -255,6 +256,20 @@ impl SshProcessTransport {
         }
     }
 
+    async fn finish_stderr_reader(&mut self, drain: bool) {
+        if let Some(reader) = self.stderr_reader.as_mut() {
+            // A ProxyCommand descendant may retain stderr after SSH exits.
+            if drain && timeout(SSH_STDERR_SETTLE_GRACE, &mut *reader).await.is_ok() {
+                self.stderr_reader.take();
+                return;
+            }
+            reader.abort();
+        }
+        if let Some(reader) = self.stderr_reader.take() {
+            let _ = reader.await;
+        }
+    }
+
     async fn reap_and_classify(&mut self) -> TransportFailure {
         if self.terminal {
             return TransportFailure::new("SSH_DISCONNECTED", "The SSH connection is closed.");
@@ -274,14 +289,7 @@ impl SshProcessTransport {
             }
         };
         self.settle_or_stop_stdout_reader().await;
-        if let Some(reader) = self.stderr_reader.take() {
-            if status.is_some() {
-                let _ = reader.await;
-            } else {
-                reader.abort();
-                let _ = reader.await;
-            }
-        }
+        self.finish_stderr_reader(status.is_some()).await;
         self.terminal = status.is_some();
         let failure = if self.protocol_corruption.load(Ordering::SeqCst) {
             protocol_corruption_failure()
@@ -426,9 +434,7 @@ impl LineTransport for SshProcessTransport {
         match timeout(Duration::from_secs(1), self.child.wait()).await {
             Ok(Ok(_)) => {
                 self.stop_stdout_reader().await;
-                if let Some(reader) = self.stderr_reader.take() {
-                    let _ = reader.await;
-                }
+                self.finish_stderr_reader(true).await;
                 self.terminal = true;
             }
             Ok(Err(_)) | Err(_) => self.abort().await?,
@@ -452,14 +458,7 @@ impl LineTransport for SshProcessTransport {
             Ok(Ok(_))
         );
         self.stop_stdout_reader().await;
-        if let Some(reader) = self.stderr_reader.take() {
-            if reaped {
-                let _ = reader.await;
-            } else {
-                reader.abort();
-                let _ = reader.await;
-            }
-        }
+        self.finish_stderr_reader(reaped).await;
         self.stderr_tail
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -477,6 +476,12 @@ impl Drop for SshProcessTransport {
     fn drop(&mut self) {
         if !self.terminal {
             let _ = self.child.start_kill();
+        }
+        if let Some(reader) = &self.stdout_reader {
+            reader.abort();
+        }
+        if let Some(reader) = &self.stderr_reader {
+            reader.abort();
         }
         self.stderr_tail
             .lock()

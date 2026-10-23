@@ -3,6 +3,13 @@ set -eu
 printf '%s\n' "$@" > "$FAKE_SSH_ARGV_FILE"
 printf '%s\n' "$$" > "$FAKE_SSH_PID_FILE"
 case "$FAKE_SSH_MODE" in
+  inherited_stderr_*)
+    sleep 60 </dev/null >/dev/null &
+    printf '%s\n' "$!" > "$FAKE_SSH_PID_FILE.holder"
+    ;;
+esac
+case "$FAKE_SSH_MODE" in
+  inherited_stderr_failed) echo 'Permission denied (publickey).' >&2; exit 255 ;;
   host_unknown) echo 'No ED25519 host key is known for fake.invalid and you have requested strict checking.' >&2; exit 255 ;;
   host_changed) echo 'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!' >&2; exit 255 ;;
   auth) echo 'Permission denied (publickey,password).' >&2; exit 255 ;;
