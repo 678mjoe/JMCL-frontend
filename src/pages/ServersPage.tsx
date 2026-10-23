@@ -45,6 +45,7 @@ export function ServersPage({ onOpenDetail, onOpenSettings }: ServersPageProps) 
   const missingRemoteDirectory = selectedEndpoint?.kind === "ssh" && !selectedEndpoint.serversDirectory;
   const safeCoreErrorKey = safeServerErrorKey(coreError, endpointId === "local" ? "core.error" : "servers.connectionFailed");
   const safeListErrorKey = safeServerErrorKey(listError, "servers.listError");
+  const localServerUnsupported = endpointId === "local" && listError?.startsWith("UNSUPPORTED_PLATFORM:");
 
   return (
     <div className="mx-auto min-w-0 max-w-6xl p-6">
@@ -69,7 +70,7 @@ export function ServersPage({ onOpenDetail, onOpenSettings }: ServersPageProps) 
         </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="icon" title={t("servers.refresh")} onClick={() => void refreshList()} disabled={coreStatus !== "ready" || loading}>
+          <Button variant="ghost" size="icon" title={t("servers.refresh")} onClick={() => void refreshList()} disabled={coreStatus !== "ready" || loading || !!localServerUnsupported}>
             <RefreshCw className={loading ? "animate-spin" : undefined} />
           </Button>
           <Button onClick={() => setDialogOpen(true)} disabled={coreStatus !== "ready" || !!listError || missingRemoteDirectory}>
@@ -91,6 +92,13 @@ export function ServersPage({ onOpenDetail, onOpenSettings }: ServersPageProps) 
           <p role="alert" className="text-sm font-medium">{t(endpointId === "local" ? "core.error" : safeCoreErrorKey)}</p>
           {endpointId === "local" && coreError && <p className="max-w-xl break-words text-sm text-muted-foreground">{coreError}</p>}
         </div>
+      ) : localServerUnsupported ? (
+        <section role="status" className="flex flex-col items-center gap-3 py-20 text-center">
+          <ServerIcon className="size-10 text-muted-foreground" />
+          <p className="text-sm font-medium">{t("servers.localUnsupportedPlatform")}</p>
+          <p className="max-w-lg text-sm text-muted-foreground">{t("servers.localUnsupportedPlatformHint")}</p>
+          <Button variant="outline" onClick={onOpenSettings}>{t("servers.openSettings")}</Button>
+        </section>
       ) : listError ? (
         <div className="flex flex-col items-center gap-3 py-24 text-center">
           <ServerIcon className="size-10 text-destructive" />

@@ -187,6 +187,18 @@ Record: Windows version/build ______; architecture ______; core/version ______; 
 
 ## Gate
 
+### Owner-authorized development exception — 2026-10-23
+
+The owner explicitly authorized later-stage development and executable automated
+tests while environment-blocked native, visual and real-scenario acceptance
+remains pending. This supersedes the historical restriction on **starting later
+stage development only**; it does not change acceptance criteria, promote any
+unverified result, or mark Stage 2 or Stage 3 accepted. Historical gates and
+evidence below remain the acceptance record. Real accounts, SSH/server targets,
+Minecraft workloads, security changes, spending and formal releases still need
+separate authorization.
+
+
 Keep every unverified macOS and Windows item pending until there is actual evidence. The macOS ad-hoc build alone does not finish Stage 2 or open Stage 3. Do not begin the Stage 3 real server lifecycle acceptance on the strength of Pi fake-SSH/local-core results or a desktop build without native GUI/transport verification.
 
 Even after the remaining Stage 2 gates pass, real Stage 3 lifecycle testing requires a separately approved, adequately resourced Linux environment. The historical Pi restrictions above do not describe Cloud VM resources; Cloud provisioning alone does not select or approve a lifecycle test target.

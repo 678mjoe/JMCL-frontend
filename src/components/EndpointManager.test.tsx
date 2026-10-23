@@ -94,6 +94,69 @@ describe("EndpointManager", () => {
     expect(stored.endpoints).toContainEqual(created);
   });
 
+  test("empty submission shows field errors inside the dialog, writes nothing, and cancellation clears them", async () => {
+    let writes = 0;
+    const repository = { read: async () => initial, write: async () => { writes++; } };
+    await renderManager(repository);
+    await clickButton("Add Endpoint");
+    await clickButton("Confirm");
+    await clickButton("Confirm");
+    expect(writes).toBe(0);
+    const dialog = dom.document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelectorAll('[role="alert"]')).toHaveLength(2);
+    for (const field of ["label", "destination"]) {
+      const input = dialog.querySelector(`#endpoint-${field}`)!;
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(input.getAttribute("aria-describedby")).toContain(`endpoint-${field}-error`);
+      expect(dialog.querySelector(`#endpoint-${field}-error`)?.textContent).toBeTruthy();
+    }
+    expect(dialog.querySelector('#endpoint-directory')?.getAttribute("aria-invalid")).toBe("false");
+    await clickButton("Cancel");
+    expect(dom.document.querySelector('[role="dialog"]')).toBeNull();
+    expect(dom.document.querySelector('[role="alert"]')).toBeNull();
+    await clickButton("Add Endpoint");
+    expect(dom.document.querySelector('[role="alert"]')).toBeNull();
+    expect((dom.document.querySelector('#endpoint-label') as unknown as HTMLInputElement).value).toBe("");
+  });
+
+  test("field correction permits a single save with an optional empty directory", async () => {
+    let stored = initial;
+    let writes = 0;
+    const repository = { read: async () => stored, write: async (value: EndpointConfigV1) => { writes++; stored = value; } };
+    await renderManager(repository);
+    await clickButton("Add Endpoint");
+    await fill("endpoint-label", "New remote");
+    await fill("endpoint-destination", "bad host");
+    await fill("endpoint-directory", "relative/path");
+    await clickButton("Confirm");
+    expect(writes).toBe(0);
+    expect(dom.document.querySelector('#endpoint-destination-error')).not.toBeNull();
+    expect(dom.document.querySelector('#endpoint-directory-error')).not.toBeNull();
+    await fill("endpoint-destination", "mock-alias");
+    await fill("endpoint-directory", "");
+    expect(dom.document.querySelector('[role="alert"]')).toBeNull();
+    await clickButton("Confirm");
+    expect(writes).toBe(1);
+    expect(dom.document.querySelector('[role="dialog"]')).toBeNull();
+    expect(stored.endpoints.at(-1)).toMatchObject({ label: "New remote", destination: "mock-alias" });
+    expect(stored.endpoints.at(-1)).not.toHaveProperty("serversDirectory");
+  });
+
+  test("save failure stays in the dialog without raw diagnostics and clears on cancel", async () => {
+    const repository = { read: async () => initial, write: async () => { throw new Error("private storage diagnostic"); } };
+    await renderManager(repository);
+    await clickButton("Edit");
+    await clickButton("Confirm");
+    const dialog = dom.document.querySelector('[role="dialog"]')!;
+    expect(dialog).not.toBeNull();
+    expect(dialog.querySelector('[role="alert"]')).not.toBeNull();
+    expect(dom.document.body.textContent).not.toContain("private storage diagnostic");
+    await clickButton("Cancel");
+    expect(dom.document.querySelector('[role="alert"]')).toBeNull();
+    await clickButton("Edit");
+    expect(dom.document.querySelector('[role="alert"]')).toBeNull();
+  });
+
   test("delete requires explicit confirmation and does not offer Local deletion", async () => {
     let stored = initial;
     const repository = { read: async () => stored, write: async (value: EndpointConfigV1) => { stored = value; } };

@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { generateEndpointUuid, type SshEndpoint } from "@/lib/endpoints";
+import { generateEndpointUuid, validateEndpointLabel, validateDestination, validateServersDirectory, type SshEndpoint } from "@/lib/endpoints";
 import { useEndpointContext } from "@/lib/endpointContext";
 import { runEndpointConnectionTest, type EndpointConnectionState } from "@/lib/endpointConnectionTest";
 import { closeEndpointSessions, endpointRepository } from "@/lib/native";
@@ -34,6 +34,8 @@ export function EndpointManager({
   const { prepareEndpointDeletion, cleanupEndpointCache } = useServers();
   const [editing, setEditing] = useState<SshEndpoint | null | "new">(null);
   const [form, setForm] = useState<EndpointForm>(blankForm);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof EndpointForm, string>>>({});
+  const [saveFailed, setSaveFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<SshEndpoint | null>(null);
@@ -65,9 +67,17 @@ export function EndpointManager({
     });
   };
 
-  const openAdd = () => { setFeedback(null); setForm(blankForm()); setEditing("new"); };
+  const clearFormErrors = () => { setFieldErrors({}); setSaveFailed(false); };
+  const dismissForm = () => { setEditing(null); clearFormErrors(); };
+  const changeField = (field: keyof EndpointForm, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
+    setSaveFailed(false);
+  };
+  const openAdd = () => { clearFormErrors(); setFeedback(null); setForm(blankForm()); setEditing("new"); };
   const openEdit = (endpoint: SshEndpoint) => {
     cancelTest(endpoint.id);
+    clearFormErrors();
     setFeedback(null);
     setForm({ label: endpoint.label, destination: endpoint.destination, serversDirectory: endpoint.serversDirectory ?? "" });
     setEditing(endpoint);
@@ -75,6 +85,13 @@ export function EndpointManager({
 
   const saveEndpoint = async () => {
     if (!config || (editing !== "new" && !editing) || saving) return;
+    const errors: Partial<Record<keyof EndpointForm, string>> = {};
+    try { validateEndpointLabel(form.label); } catch { errors.label = "endpoint.labelInvalid"; }
+    try { validateDestination(form.destination); } catch { errors.destination = "endpoint.destinationInvalid"; }
+    try { validateServersDirectory(form.serversDirectory); } catch { errors.serversDirectory = "endpoint.directoryInvalid"; }
+    setFieldErrors(errors);
+    setSaveFailed(false);
+    if (Object.keys(errors).length) return;
     setSaving(true);
     setFeedback(null);
     try {
@@ -87,10 +104,10 @@ export function EndpointManager({
         });
         replaceConfig(next);
       });
-      setEditing(null);
+      dismissForm();
       setFeedback({ kind: "status", key: "endpoint.saved" });
     } catch {
-      setFeedback({ kind: "error", key: "endpoint.validationOrSaveFailed" });
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -192,19 +209,20 @@ export function EndpointManager({
       )}
       {feedback && <p role={feedback.kind === "status" ? "status" : "alert"} className={feedback.kind === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{t(feedback.key as Parameters<typeof t>[0])}</p>}
 
-      <Dialog open={editing !== null} onOpenChange={(open) => { if (!open && !saving) setEditing(null); }}>
+      <Dialog open={editing !== null} onOpenChange={(open) => { if (!open && !saving) dismissForm(); }}>
         <DialogContent aria-describedby="endpoint-form-description">
           <DialogHeader>
             <DialogTitle>{t(editing === "new" ? "endpoint.addTitle" : "endpoint.editTitle")}</DialogTitle>
             <DialogDescription id="endpoint-form-description">{t("endpoint.formHelp")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1.5"><Label htmlFor="endpoint-label">{t("endpoint.label")}</Label><Input id="endpoint-label" autoFocus maxLength={80} value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} aria-describedby="endpoint-label-help" /><p id="endpoint-label-help" className="text-xs text-muted-foreground">{t("endpoint.labelHelp")}</p></div>
-            <div className="space-y-1.5"><Label htmlFor="endpoint-destination">{t("endpoint.destination")}</Label><Input id="endpoint-destination" autoComplete="off" spellCheck={false} value={form.destination} onChange={(event) => setForm({ ...form, destination: event.target.value })} aria-describedby="endpoint-destination-help" /><p id="endpoint-destination-help" className="text-xs text-muted-foreground">{t("endpoint.destinationHelp")}</p></div>
-            <div className="space-y-1.5"><Label htmlFor="endpoint-directory">{t("endpoint.directory")}</Label><Input id="endpoint-directory" autoComplete="off" spellCheck={false} value={form.serversDirectory} onChange={(event) => setForm({ ...form, serversDirectory: event.target.value })} aria-describedby="endpoint-directory-help" /><p id="endpoint-directory-help" className="text-xs text-muted-foreground">{t("endpoint.directoryHelp")}</p></div>
+            <div className="space-y-1.5"><Label htmlFor="endpoint-label">{t("endpoint.label")}</Label><Input id="endpoint-label" autoFocus maxLength={80} value={form.label} onChange={(event) => changeField("label", event.target.value)} aria-invalid={!!fieldErrors.label} aria-describedby={`endpoint-label-help${fieldErrors.label ? " endpoint-label-error" : ""}`} /><p id="endpoint-label-help" className="text-xs text-muted-foreground">{t("endpoint.labelHelp")}</p>{fieldErrors.label && <p id="endpoint-label-error" role="alert" className="text-sm text-destructive">{t(fieldErrors.label as Parameters<typeof t>[0])}</p>}</div>
+            <div className="space-y-1.5"><Label htmlFor="endpoint-destination">{t("endpoint.destination")}</Label><Input id="endpoint-destination" autoComplete="off" spellCheck={false} value={form.destination} onChange={(event) => changeField("destination", event.target.value)} aria-invalid={!!fieldErrors.destination} aria-describedby={`endpoint-destination-help${fieldErrors.destination ? " endpoint-destination-error" : ""}`} /><p id="endpoint-destination-help" className="text-xs text-muted-foreground">{t("endpoint.destinationHelp")}</p>{fieldErrors.destination && <p id="endpoint-destination-error" role="alert" className="text-sm text-destructive">{t(fieldErrors.destination as Parameters<typeof t>[0])}</p>}</div>
+            <div className="space-y-1.5"><Label htmlFor="endpoint-directory">{t("endpoint.directory")}</Label><Input id="endpoint-directory" autoComplete="off" spellCheck={false} value={form.serversDirectory} onChange={(event) => changeField("serversDirectory", event.target.value)} aria-invalid={!!fieldErrors.serversDirectory} aria-describedby={`endpoint-directory-help${fieldErrors.serversDirectory ? " endpoint-directory-error" : ""}`} /><p id="endpoint-directory-help" className="text-xs text-muted-foreground">{t("endpoint.directoryHelp")}</p>{fieldErrors.serversDirectory && <p id="endpoint-directory-error" role="alert" className="text-sm text-destructive">{t(fieldErrors.serversDirectory as Parameters<typeof t>[0])}</p>}</div>
           </div>
+          {saveFailed && <p role="alert" className="text-sm text-destructive">{t("endpoint.saveFailed")}</p>}
           <DialogFooter>
-            <Button variant="outline" disabled={saving} onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
+            <Button variant="outline" disabled={saving} onClick={dismissForm}>{t("common.cancel")}</Button>
             <Button disabled={saving} onClick={() => void saveEndpoint()}>{saving ? t("endpoint.saving") : t("common.confirm")}</Button>
           </DialogFooter>
         </DialogContent>
