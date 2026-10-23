@@ -51,6 +51,22 @@ export function validateDestination(value: unknown): string {
   return destination;
 }
 
+export function validateEndpointLabel(value: unknown): string {
+  if (!text(value)) return fail();
+  const label = value.trim();
+  if (!label || [...label].length > 80 || /\p{Cc}/u.test(label)) return fail();
+  return label;
+}
+
+export function validateServersDirectory(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (!text(value)) return fail();
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!trimmed.startsWith("/") || new TextEncoder().encode(trimmed).length > 4096 || /[\0\r\n]/.test(trimmed)) return fail();
+  return trimmed;
+}
+
 export function validateEndpoint(value: unknown): Endpoint {
   if (!plainObject(value)) return fail();
   if (value.id === "local" && value.kind === "local") {
@@ -59,19 +75,9 @@ export function validateEndpoint(value: unknown): Endpoint {
   }
   if (value.kind !== "ssh" || Object.keys(value).some((key) => !SSH_KEYS.has(key)) ||
       !text(value.id) || !UUID.test(value.id)) return fail();
-  if (!text(value.label)) return fail();
-  const label = value.label.trim();
-  if (!label || [...label].length > 80 || /\p{Cc}/u.test(label)) return fail();
+  const label = validateEndpointLabel(value.label);
   const destination = validateDestination(value.destination);
-  let serversDirectory: string | undefined;
-  if (value.serversDirectory !== undefined) {
-    if (!text(value.serversDirectory)) return fail();
-    const trimmed = value.serversDirectory.trim();
-    if (trimmed) {
-      if (!trimmed.startsWith("/") || new TextEncoder().encode(trimmed).length > 4096 || /[\0\r\n]/.test(trimmed)) return fail();
-      serversDirectory = trimmed;
-    }
-  }
+  const serversDirectory = validateServersDirectory(value.serversDirectory);
   return { id: value.id, kind: "ssh", label, destination, ...(serversDirectory ? { serversDirectory } : {}) };
 }
 

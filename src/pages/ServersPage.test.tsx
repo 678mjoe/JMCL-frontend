@@ -72,6 +72,39 @@ describe("ServersPage states", () => {
     expect(error).not.toContain("还没有服务器");
   });
 
+  test("explains unsupported local server management and offers SSH settings without retry or raw diagnostics", () => {
+    const markup = pageMarkup({ listError: "UNSUPPORTED_PLATFORM: private platform diagnostic" });
+    expect(markup).toContain("服务器管理仅支持 Linux");
+    expect(markup).toContain("SSH 端点");
+    expect(markup).toContain("打开设置");
+    expect(markup).toContain('role="status"');
+    expect(markup).not.toContain("private platform diagnostic");
+    expect(markup).not.toContain("UNSUPPORTED_PLATFORM");
+    expect(markup).not.toContain("服务器列表加载失败");
+    expect(markup).not.toContain("还没有服务器");
+    expect(markup).not.toContain("重试");
+    const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+    expect(buttons.find((button) => button.includes('title="刷新服务器列表"'))).toContain('disabled=""');
+    expect(buttons.find((button) => button.includes("新建服务器"))).toContain('disabled=""');
+    expect(buttons.find((button) => button.includes("打开设置"))).not.toContain('disabled=""');
+  });
+
+  test("does not infer local platform restrictions from message text, other codes, or remote errors", () => {
+    for (const listError of ["diagnostic mentions UNSUPPORTED_PLATFORM: elsewhere", "UNSUPPORTED_PLATFORM_OTHER: other error", "SERVER_IO_ERROR: UNSUPPORTED_PLATFORM"]) {
+      const markup = pageMarkup({ listError });
+      expect(markup).toContain("服务器列表加载失败");
+      expect(markup).not.toContain("服务器管理仅支持 Linux");
+      expect(markup).toContain("重试");
+    }
+    const remote = pageMarkup({ endpointId: "ssh-remote", listError: "UNSUPPORTED_PLATFORM: unsafe remote diagnostic" });
+    expect(remote).toContain("服务器列表加载失败");
+    expect(remote).not.toContain("服务器管理仅支持 Linux");
+    expect(remote).not.toContain("unsafe remote diagnostic");
+    const coreFailure = pageMarkup({ coreStatus: "error", coreError: "connection failed", listError: "UNSUPPORTED_PLATFORM: stale list error" });
+    expect(coreFailure).toContain("核心连接失败");
+    expect(coreFailure).not.toContain("服务器管理仅支持 Linux");
+  });
+
   test("does not mislabel ordinary local, SSH or status errors as a connection test", () => {
     const local = pageMarkup({ coreStatus: "error", coreError: "unsafe diagnostic" });
     expect(local).toContain("核心连接失败");
