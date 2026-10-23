@@ -29,3 +29,46 @@ describe("server error presentation", () => {
     expect(safeServerOperationError("detail: /safe/local/path", "local", (key) => key)).toBe("detail: /safe/local/path");
   });
 });
+
+describe("server lifecycle recovery guidance", () => {
+  test("uses distinct fixed local/remote Java and explicit EULA guidance", () => {
+    const categories = [
+      ["JAVA_NOT_FOUND", "servers.javaMissingLocal", "servers.javaMissingRemote"],
+      ["JAVA_INCOMPATIBLE", "servers.javaIncompatibleLocal", "servers.javaIncompatibleRemote"],
+      ["EULA_NOT_ACCEPTED", "servers.eulaRequired", "servers.eulaRequired"],
+    ] as const;
+    for (const [code, local, remote] of categories) {
+      for (const raw of [code, `${code}: PRIVATE_HOST /private/java --token=PRIVATE_SECRET`]) {
+        expect(safeServerOperationError(raw, "local", (key) => key)).toBe(local);
+        expect(safeServerOperationError(raw, "ssh-remote", (key) => key)).toBe(remote);
+        expect(safeServerErrorKey(raw, "servers.operationFailed")).toBe(remote);
+      }
+    }
+  });
+
+  test("both languages have sanitized actionable guidance on the correct host", () => {
+    for (const language of ["en", "zh"] as const) {
+      const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+      const missing = safeServerOperationError("JAVA_NOT_FOUND: PRIVATE_SECRET", "ssh-host", t);
+      const incompatible = safeServerOperationError("JAVA_INCOMPATIBLE: PRIVATE_SECRET", "ssh-host", t);
+      const local = safeServerOperationError("JAVA_NOT_FOUND: PRIVATE_SECRET", "local", t);
+      const eula = safeServerOperationError("EULA_NOT_ACCEPTED: PRIVATE_SECRET", "ssh-host", t);
+      for (const text of [missing, incompatible, local, eula]) {
+        expect(text).not.toContain("PRIVATE_SECRET");
+        expect(text).not.toContain("servers.");
+        expect(text).not.toBe(t("servers.operationFailed"));
+      }
+      expect(missing).not.toBe(incompatible);
+      expect(missing).not.toBe(local);
+      expect(missing).toContain(language === "en" ? "remote host" : "远端主机");
+      expect(incompatible).toContain(language === "en" ? "remote host" : "远端主机");
+      expect(eula).toContain(language === "en" ? "explicitly" : "明确");
+    }
+  });
+
+  test("does not infer recovery codes from diagnostic content", () => {
+    for (const raw of ["diagnostic JAVA_NOT_FOUND: private", "JAVA_NOT_FOUND_EXTRA: private", "java_not_found: private"]) {
+      expect(safeServerOperationError(raw, "ssh-host", (key) => key)).toBe("servers.operationFailed");
+    }
+  });
+});

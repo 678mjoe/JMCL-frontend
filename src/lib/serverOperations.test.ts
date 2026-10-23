@@ -38,12 +38,13 @@ function harness(overrides: Partial<ServerOperationsRpc> = {}) {
     recordDeleted: async (_id: string) => { records.push("deleted"); return true; },
   };
   let closeCount = 0;
-  const controller = new ServerOperationsController({
-    openSession: async () => ({ ...rpc, close: async () => { closeCount += 1; } }),
+  const createController = () => new ServerOperationsController({
+    openSession: async () => ({ ...rpc, close: async () => { closeCount += 1; await overrides.close?.(); } }),
     directory,
     storeDirectory: "/store",
   });
-  return { controller, calls, installParams, records, setScope: (scope: TestScope) => { currentScope = scope; forcedCurrent = null; }, setScopeCurrent: (current: boolean) => { forcedCurrent = current; }, get closeCount() { return closeCount; }, cache: () => cache };
+  const controller = createController();
+  return { controller, createController, calls, installParams, records, setScope: (scope: TestScope) => { currentScope = scope; forcedCurrent = null; }, setScopeCurrent: (current: boolean) => { forcedCurrent = current; }, get closeCount() { return closeCount; }, cache: () => cache };
 }
 
 describe("ServerOperationsController", () => {
@@ -225,4 +226,65 @@ describe("ServerOperationsController", () => {
     expect(h.records).toEqual(["started"]);
     expect(h.controller.operationFor("alpha")).toMatchObject({ pending: false, error: null });
   });
+
+  test.each([false, true])("away/back retains physical target exclusivity across revisions (replace controller: %s)", async (replaceController) => {
+    const result = deferred<ServerLifecycleStartResult>();
+    let starts = 0;
+    const h = harness({ start: async () => { starts++; return result.promise; } });
+    const oldAction = h.controller.start(installed);
+    await Promise.resolve(); await Promise.resolve();
+    h.setScope({ endpointId: "ssh-other", kind: "ssh", directory: "/servers", sourceRevision: 2 });
+    h.setScope({ endpointId: "local", kind: "local", directory: "/servers", sourceRevision: 3 });
+    const current = replaceController ? h.createController() : h.controller;
+    expect(current.operationFor("alpha")).toBeUndefined();
+    // Use a different mutation so a broken lock cannot hang this regression test.
+    const duplicate = await current.stop(installed);
+    result.resolve({ stage: "server.start", id: "alpha", running: true, pid: 1, supervisor_pid: 2, started_at_ms: 3, java_path: "/old" });
+    await oldAction;
+    expect(duplicate).toBe(false);
+    expect(starts).toBe(1);
+    expect(h.calls).toEqual([]);
+    expect(h.records).toEqual([]);
+    expect(current.operationFor("alpha")).toBeUndefined();
+    // Only settlement releases the lock; the newer scope can now act and record.
+    expect(await current.stop(installed)).toBe(true);
+    expect(h.records).toEqual(["stopped"]);
+  });
+
+  test("replacement controllers share locks but different endpoints remain independent", async () => {
+    const result = deferred<ServerLifecycleStartResult>();
+    const h = harness({ start: async () => result.promise });
+    const oldAction = h.controller.start(installed);
+    await Promise.resolve(); await Promise.resolve();
+    const replacement = h.createController();
+    const duplicate = await replacement.stop(installed);
+    h.setScope({ endpointId: "ssh-other", kind: "ssh", directory: "/servers", sourceRevision: 2 });
+    const other = await replacement.stop(installed);
+    result.resolve({ stage: "server.start", id: "alpha", running: true, pid: 1, supervisor_pid: 2, started_at_ms: 3, java_path: "/old" });
+    await oldAction;
+    expect(duplicate).toBe(false);
+    expect(other).toBe(true);
+    expect(h.calls).toEqual(["stop:alpha"]);
+    expect(h.records).toEqual(["stopped"]);
+  });
+
+
+  test("physical lock remains through asynchronous session cleanup and releases after failure", async () => {
+    const closing = deferred<void>();
+    const h = harness({
+      start: async () => { throw new Error("failed start"); },
+      close: async () => closing.promise,
+    });
+    const oldAction = h.controller.start(installed).catch(() => false);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    const replacement = h.createController();
+    const duplicate = await replacement.stop(installed);
+    closing.resolve();
+    await oldAction;
+    expect(duplicate).toBe(false);
+    expect(h.calls).toEqual([]);
+    expect(await replacement.stop(installed)).toBe(true);
+    expect(h.calls).toEqual(["stop:alpha"]);
+  });
+
 });

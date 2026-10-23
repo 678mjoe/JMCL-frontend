@@ -43,6 +43,12 @@ function stableCode(error: unknown): string {
     ? error.code : "UNKNOWN";
 }
 
+function isTransportFailure(error: unknown): boolean {
+  const code = stableCode(error);
+  return (typeof error === "object" && error !== null && "kind" in error && error.kind === "transport")
+    || code.startsWith("SSH_") || code.startsWith("SESSION_") || code === "TRANSPORT_ERROR";
+}
+
 export function isNearLogBottom(element: { scrollTop: number; scrollHeight: number; clientHeight: number }, threshold = 48): boolean {
   return element.scrollHeight - element.clientHeight - element.scrollTop <= threshold;
 }
@@ -102,6 +108,17 @@ export class ServerLogController {
     for (const listener of this.listeners) listener();
     await Promise.resolve().then(() => session?.close()).catch(() => undefined);
   }
+  /** Retire only this failed transport; keep the last acknowledged log cursor. */
+  private retireSession(session: ServerLogSession, generation: number): void {
+    if (generation !== this.generation || this.session !== session) return;
+    this.session = null;
+    this.requestId++;
+    this.inFlight = null;
+    this.clearTimer();
+    this.finalReadPending = false;
+    this.closePromise = Promise.resolve().then(() => session.close()).catch(() => undefined);
+    this.update({ sessionReady: false, commandPending: false, loading: false, inFlight: false }, generation);
+  }
   private clearTimer(): void {
     if (this.timer === null) return;
     if (this.options.clearTimer) this.options.clearTimer(this.timer);
@@ -110,7 +127,7 @@ export class ServerLogController {
   }
   private schedulePoll(generation: number, scope: ServerOperationScope): void {
     this.clearTimer();
-    if (!this.snapshot.open || !this.snapshot.running || !this.current(generation, scope)) return;
+    if (!this.session || !this.snapshot.open || !this.snapshot.running || !this.current(generation, scope)) return;
     this.timer = (this.options.setTimer ?? setTimeout)(() => {
       this.timer = null;
       if (this.current(generation, scope) && this.snapshot.running && this.snapshot.open) void this.read(generation, scope);
@@ -184,21 +201,29 @@ export class ServerLogController {
     if (!scope || !this.snapshot.open) return;
     if (!this.current(this.generation, scope)) { await this.close(); return; }
     if (this.opening) { await this.opening; return; }
+    const generation = this.generation;
     this.clearTimer();
-    if (!this.session) {
-      const generation = this.generation;
-      this.update({ loading: true, error: null }, generation);
-      try {
-        const session = await this.options.openSession();
-        if (!this.current(generation, scope) || !this.snapshot.open) { await session.close(); return; }
-        this.session = session;
-        this.update({ sessionReady: true }, generation);
-      } catch (error) {
-        if (this.current(generation, scope)) this.update({ loading: false, error: stableCode(error) }, generation);
-        return;
+    // Publish the opening promise before any awaited close/open, so repeated Retry
+    // clicks share one reconnect and one resumed read.
+    const operation = Promise.resolve().then(async () => {
+      if (!this.session) {
+        this.update({ loading: true, error: null }, generation);
+        await this.closePromise;
+        if (!this.current(generation, scope) || !this.snapshot.open) return;
+        try {
+          const session = await this.options.openSession();
+          if (!this.current(generation, scope) || !this.snapshot.open) { await session.close(); return; }
+          this.session = session;
+          this.update({ sessionReady: true }, generation);
+        } catch (error) {
+          if (this.current(generation, scope)) this.update({ loading: false, error: stableCode(error) }, generation);
+          return;
+        }
       }
-    }
-    await this.read(this.generation, scope);
+      await this.read(generation, scope);
+    });
+    this.opening = operation;
+    try { await operation; } finally { if (generation === this.generation) this.opening = null; }
   }
 
   private async read(generation: number, scope: ServerOperationScope): Promise<void> {
@@ -236,7 +261,10 @@ export class ServerLogController {
           this.cursor = null; this.fileId = null;
           this.update({ text: "", empty: true, notFound: true, hasLogs: false, truncated: false, localOmission: false, error: null }, generation);
         }
-        else this.update({ error: code, empty: this.snapshot.text.length === 0, notFound: false }, generation);
+        else {
+          if (isTransportFailure(error)) this.retireSession(session, generation);
+          this.update({ error: code, empty: this.snapshot.text.length === 0, notFound: false }, generation);
+        }
       } finally {
         if (this.current(generation, scope) && id === this.requestId && this.snapshot.open) {
           this.inFlight = null;
@@ -264,11 +292,15 @@ export class ServerLogController {
     this.update({ commandPending: true, commandError: null, validationError: null, acceptedNotice: false, commandAccepted: false });
     try {
       const result = await session.serverCommand(scope.directory, this.options.serverId, command);
-      if (!this.current(generation, scope) || !this.snapshot.open) return false;
+      if (!this.current(generation, scope) || !this.snapshot.open || this.session !== session) return false;
       this.update({ commandPending: false, commandAccepted: true, acceptedNotice: result.accepted });
       return true;
     } catch (error) {
-      if (!this.current(generation, scope) || !this.snapshot.open) return false;
+      if (!this.current(generation, scope) || !this.snapshot.open || this.session !== session) return false;
+      if (isTransportFailure(error)) {
+        this.retireSession(session, generation);
+        this.update({ error: stableCode(error) }, generation);
+      }
       this.update({ commandPending: false, commandError: stableCode(error) });
       return false;
     }

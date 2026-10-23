@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ServerLogController, MAX_SERVER_LOG_BUFFER_CHARS, isNearLogBottom } from "./serverLogController";
+import { ServerLogController, MAX_SERVER_LOG_BUFFER_CHARS, isNearLogBottom, type ServerLogSession } from "./serverLogController";
 import type { ServerLogResult } from "./types";
 import { translate } from "./i18n";
 
@@ -227,6 +227,82 @@ describe("ServerLogController", () => {
     const textBefore = h.controller.getSnapshot().text;
     expect(await h.controller.submitCommand("say hi")).toBe(false);
     expect(h.controller.getSnapshot()).toMatchObject({ commandPending: false, commandError: "COMMAND_REJECTED", text: textBefore });
+  });
+
+  test("transport loss retires the dead session; repeated retry resumes once without replaying a command", async () => {
+    const h = harness({ reads: [async () => result("old", { next_cursor: 91, file_id: 42 }), async () => { throw { code: "SSH_DISCONNECTED" }; }, async () => result("new", { next_cursor: 94, file_id: 42 })], commands: [async () => { throw { code: "SSH_DISCONNECTED" }; }] });
+    h.controller.setRunning(true);
+    await h.controller.open();
+    expect(await h.controller.submitCommand("say once")).toBe(false);
+    // A failed command is never retried by reconnecting the log session.
+    await Promise.all([h.controller.retry(), h.controller.retry()]);
+    await Promise.all([h.controller.retry(), h.controller.retry()]);
+    expect(h.opens()).toBeGreaterThan(1);
+    expect(h.calls.filter((call) => call.method === "command")).toHaveLength(1);
+    expect(h.calls.filter((call) => call.method === "logs")[2]?.args[2]).toMatchObject({ cursor: 91, file_id: 42 });
+    expect(h.controller.getSnapshot().text).toBe("oldnew");
+    await h.controller.close();
+  });
+
+  test("read transport failure pauses polling and retry retires once, preserving rotation semantics", async () => {
+    const h = harness({ reads: [async () => result("old", { next_cursor: 88, file_id: 9 }), async () => { throw { kind: "transport", code: "PIPE_CLOSED" }; }, async () => result("rotated", { reset: true, next_cursor: 7, file_id: 10 }), async () => result("!")] });
+    h.controller.setRunning(true); await h.controller.open();
+    await h.controller.retry();
+    expect(h.controller.getSnapshot()).toMatchObject({ sessionReady: false, error: "PIPE_CLOSED", text: "old" });
+    expect(h.timerCount()).toBe(0);
+    await Promise.all([h.controller.retry(), h.controller.retry(), h.controller.retry()]);
+    expect(h.opens()).toBe(2); expect(h.closes()).toBe(1);
+    expect(h.calls).toHaveLength(3);
+    expect(h.calls[2]?.args[2]).toMatchObject({ cursor: 88, file_id: 9 });
+    expect(h.controller.getSnapshot().text).toBe("rotated");
+    await h.controller.retry();
+    expect(h.calls[3]?.args[2]).toMatchObject({ cursor: 7, file_id: 10 });
+    await h.controller.close();
+  });
+
+  test.each(["close", "scope"] as const)("%s during reconnect closes late sessions without reading", async (interrupt) => {
+    let resolveOpen!: (session: ServerLogSession) => void;
+    let current: Scope = { endpointId: "local", kind: "local", directory: "/a", sourceRevision: 1 };
+    let opens = 0, closes = 0, reads = 0;
+    const session = { close: async () => { closes++; }, serverLogs: async () => { reads++; throw { code: "SSH_DISCONNECTED" }; }, serverCommand: async () => { throw new Error("must not replay"); } };
+    const controller = new ServerLogController({ serverId: "demo", captureScope: () => current, isScopeCurrent: (scope) => scope.sourceRevision === current.sourceRevision, openSession: () => ++opens === 1 ? Promise.resolve(session) : new Promise((resolve) => { resolveOpen = resolve; }) });
+    await controller.open();
+    const retry = controller.retry(); const repeated = controller.retry();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(opens).toBe(2);
+    if (interrupt === "close") await controller.close();
+    else current = { ...current, sourceRevision: 2 };
+    resolveOpen(session);
+    await Promise.all([retry, repeated]);
+    expect(reads).toBe(1); expect(closes).toBe(2);
+    expect(controller.getSnapshot()).toMatchObject({ open: false, sessionReady: false, loading: false });
+  });
+
+  test("close while a failed session is retiring cancels retry before open", async () => {
+    let finishClose!: () => void;
+    let opens = 0;
+    const scope: Scope = { endpointId: "local", kind: "local", directory: "/a", sourceRevision: 1 };
+    const controller = new ServerLogController({ serverId: "demo", captureScope: () => scope, isScopeCurrent: () => true,
+      openSession: async () => { opens++; return { close: () => new Promise<void>((resolve) => { finishClose = resolve; }), serverLogs: async () => { throw { code: "SSH_DISCONNECTED" }; }, serverCommand: async () => { throw new Error("must not replay"); } }; } });
+    await controller.open();
+    const retry = controller.retry(); await Promise.resolve();
+    await controller.close(); finishClose(); await retry;
+    expect(opens).toBe(1); expect(controller.getSnapshot().open).toBe(false);
+  });
+
+  test("a command transport failure invalidates a concurrent old log read without replay", async () => {
+    let finishRead!: (value: ServerLogResult) => void;
+    const h = harness({ reads: [async () => result("first", { next_cursor: 17 }), () => new Promise((resolve) => { finishRead = resolve; }), async () => result("resumed")], commands: [async () => { throw { code: "SSH_DISCONNECTED" }; }] });
+    h.controller.setRunning(true); await h.controller.open();
+    h.tick();
+    expect(await h.controller.submitCommand("say once")).toBe(false);
+    await h.controller.retry();
+    finishRead(result("stale"));
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(h.controller.getSnapshot().text).toBe("firstresumed");
+    expect(h.calls.filter((call) => call.method === "logs")[2]?.args[2]).toMatchObject({ cursor: 17, file_id: 7 });
+    expect(h.calls.filter((call) => call.method === "command")).toHaveLength(1);
+    await h.controller.close();
   });
 
   test("near-bottom helper distinguishes follow from user scrollback", () => {

@@ -49,10 +49,15 @@ export function canInstallServer(manifest: ServerManifest, consent: boolean): bo
   return manifest.accept_eula || consent;
 }
 
+// Physical mutations outlive the view/controller that started them. Keep this
+// registry outside React/provider instances and exclude sourceRevision: revisiting
+// an endpoint must not allow a second mutation before the original session settles.
+// Presentation and cache writes remain guarded by the revision-specific scope.
+const activeServerTargets = new Set<string>();
+
 export class ServerOperationsController {
   private operations: Record<string, { id: string; scope: ServerOperationScope; operation: ServerOperation }> = {};
   private readonly listeners = new Set<() => void>();
-  private readonly active = new Set<string>();
   constructor(private options: {
     openSession: () => Promise<ServerOperationsRpc>;
     directory: DirectoryController;
@@ -88,8 +93,9 @@ export class ServerOperationsController {
     if (!scope) return false;
     this.pruneSettled(scope);
     const key = this.operationKey(id, scope);
-    if (this.active.has(key)) return false;
-    this.active.add(key);
+    const target = JSON.stringify([scope.endpointId, scope.kind, scope.directory, id]);
+    if (activeServerTargets.has(target)) return false;
+    activeServerTargets.add(target);
     this.update(key, id, scope, { kind, pending: true, stage: "opening", progress: null, error: null });
     let actionInvoked = false;
     let actionCompleted = false;
@@ -115,7 +121,7 @@ export class ServerOperationsController {
       if (current) this.update(key, id, scope, { ...current, pending: false, error: errorText(error) });
       throw error;
     } finally {
-      this.active.delete(key);
+      activeServerTargets.delete(target);
       const current = this.operations[key]?.operation;
       if (current && current.pending) this.update(key, id, scope, { ...current, pending: false });
       if (!this.options.directory.isOperationScopeCurrent(scope)) {
