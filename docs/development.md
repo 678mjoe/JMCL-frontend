@@ -1,14 +1,15 @@
-# Devin Cloud development
+# Development environments
 
-This is the current environment guide for JMCL-frontend. Development runs in
-Devin Cloud, not in a fixed Raspberry Pi or personal macOS workspace. Determine
-the actual session OS and architecture before choosing setup commands or a core
-binary. This guide changes environment instructions only, not the roadmap's
-product scope, stage order, or acceptance gates.
+This is the current environment guide for JMCL-frontend. Contributors and
+assistants can use an authorized cloud, remote, or local workspace; no particular
+provider, Raspberry Pi, or personal macOS workspace is assumed. Verify the
+selected environment is available and determine its actual OS and architecture
+before choosing setup commands or a core binary. This guide changes environment
+instructions only, not the roadmap's product scope, stage order, or acceptance gates.
 
 ## Platform boundaries
 
-| Cloud platform | What it can establish |
+| Platform | What it can establish |
 | --- | --- |
 | Linux | Frontend tests/builds, browser Mock interactions, Rust/core checks with the required native dependencies, and Linux server behavior when explicitly authorized |
 | macOS | The same frontend checks plus native macOS Tauri, Keychain, dialogs, sidecar and system OpenSSH behavior |
@@ -19,12 +20,17 @@ build does not establish macOS or Windows behavior. Preparing or compiling an
 environment does not establish UI acceptance, authentication, or game launch.
 Cloud desktop availability does not by itself prove Minecraft graphics support.
 
-## Blueprint and snapshots
+## Provisioning and snapshots
 
-The repository-scoped Devin blueprint is the source for Cloud provisioning.
-Read the effective blueprint in Devin before changing it. Each platform has its
-own `runs-on` block and snapshot; changing the repository setup does not require
-changing the organization's default platform.
+Use the selected environment's supported setup workflow. A connected machine
+must be explicitly available and authorized; historical instructions do not
+select it. If no connected machine is available, an authorized cloud workspace
+can establish only the checks supported by its actual platform and dependencies.
+
+For Devin sessions, the repository-scoped Devin blueprint is the source for
+provisioning. Read the effective blueprint in Devin before changing it. Each
+platform has its own `runs-on` block and snapshot; changing the repository setup
+does not require changing the organization's default platform. In that workflow:
 
 - `initialize` installs toolchains and prepares required local artifacts without
   starting long-lived processes or contacting game servers.
@@ -43,8 +49,16 @@ with rustfmt, and the target platform's
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 Building JMCLCore requires Zig 0.16.0. Use a pinned compatible core revision,
 and build for the current platform/architecture rather than reusing another
-platform's executable. Keep an environment-managed core checkout separate from
-any editable JMCLCore checkout.
+platform's executable. Pin the frontend and core commits before verification,
+and use a separate checkout or worktree for a PR comparison. Keep an
+environment-managed core checkout separate from any editable JMCLCore checkout.
+
+Toolchains and caches may be isolated inside a writable workspace rather than
+installed globally. Where system packages cannot be installed, a workspace-local
+sysroot from verified official packages may support native compilation; record
+its provenance and required environment variables. This is not evidence that
+Rust checks, linking, or native UI behavior passed. Do not bypass network or
+filesystem restrictions to provision dependencies.
 
 Development core input:
 
@@ -79,9 +93,9 @@ For native development, first prepare the matching core/sidecar, then run:
 bun run tauri dev
 ```
 
-Use a browser preview to try the web Mock, or the Cloud desktop to inspect the
-native app. Start servers in the active session, not during snapshot creation.
-Check for an existing process before starting another copy.
+Use a browser preview to try the web Mock, or an available authorized desktop
+to inspect the native app. Start servers in the active session, not during
+snapshot creation. Check for an existing process before starting another copy.
 
 Common checks:
 
@@ -99,7 +113,7 @@ claim native tests passed just because frontend tests or formatting passed.
 
 ## Real services and historical evidence
 
-Cloud setup does not configure real SSH endpoints, accept host keys, supply
+Environment setup does not configure real SSH endpoints, accept host keys, supply
 account credentials, or authorize Minecraft installation/launch. Real-server
 tests need an approved target, known connectivity, sufficient resources, and a
 cleanup plan. A Cloud VM is not implicitly a persistent server host. Historical
@@ -107,9 +121,11 @@ restrictions on a particular Pi are not resource measurements of a Cloud VM.
 
 Existing plans and verification records retain their original evidence and
 stage gates. Their machine names, old worker instructions, local paths, and
-desktop tools do not select today's environment. Record new Cloud evidence
-separately with the frontend/core revisions and actual OS/architecture.
+desktop tools do not select today's environment. Record new verification evidence
+separately with the frontend/core revisions and actual OS/architecture. See the
+[2026-10-23 Linux handoff](verification/2026-10-23-linux-handoff.md) for that
+session's results and remaining verification limits.
 
 See [contributor rules](../CONTRIBUTING.md) for roadmap ownership and
 [Devin environment documentation](https://docs.devin.ai/onboard-devin/environment)
-for snapshot configuration.
+for Devin-specific snapshot configuration.

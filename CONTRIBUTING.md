@@ -14,12 +14,13 @@ changing product plans or declaring an acceptance gate complete.
 
 ## Development environment
 
-Use [Devin Cloud development](docs/development.md) for current setup and platform
+Use [Development environments](docs/development.md) for current setup and platform
 boundaries. Older plans and verification records describe the environment used
 at the time; they are not instructions to access a personal machine or Pi.
 
-Use repository-scoped Devin blueprints for reproducible setup. Do not put real
-hosts, credentials, SSH trust entries, or personal filesystem paths in repository
+Use the selected environment's supported provisioning workflow for reproducible
+setup; Devin blueprints apply only to Devin sessions. Do not put real hosts,
+credentials, SSH trust entries, or personal filesystem paths in repository
 configuration. Generated core binaries and staged sidecars remain untracked.
 
 ## Verification
