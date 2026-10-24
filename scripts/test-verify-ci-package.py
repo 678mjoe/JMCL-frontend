@@ -6,6 +6,7 @@ import struct
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location('verify_package', Path(__file__).with_name('verify-ci-package.py'))
 verify = importlib.util.module_from_spec(spec)
@@ -55,6 +56,23 @@ class PackageInspectorTests(unittest.TestCase):
         for paths in [[], [Path('first'), Path('second')]]:
             with self.assertRaises(ValueError):
                 verify.only(paths)
+
+    def test_opt_in_core_smoke_requires_matching_result(self):
+        directory = self.root / 'payload'
+        directory.mkdir()
+        for name in ['jmcl', 'jmcl-core']:
+            (directory / name).write_bytes(b'binary')
+        staged = self.root / 'src-tauri/binaries'
+        staged.mkdir(parents=True)
+        (staged / 'jmcl-core-x86_64-unknown-linux-gnu').write_bytes(b'binary')
+        valid = '{"protocol":1,"id":"package-smoke","event":"result","result":{"name":"jmcl-core"}}\n'
+        with patch.object(verify, 'ROOT', self.root), patch.object(verify, 'SMOKE_CORE', True), patch.object(verify, 'architecture'), patch.object(verify.subprocess, 'run', return_value=SimpleNamespace(stdout=valid)) as runner:
+            verify.payload(directory, 'x86_64-unknown-linux-gnu')
+            self.assertEqual(runner.call_args.args[0][1], 'rpc')
+            self.assertEqual(runner.call_args.kwargs['timeout'], 15)
+            runner.return_value = SimpleNamespace(stdout=valid.replace('"result","result"', '"error","result"'))
+            with self.assertRaisesRegex(ValueError, 'Core version RPC failed'):
+                verify.payload(directory, 'x86_64-unknown-linux-gnu')
 
     def test_sidecar_hash_mismatch_rejected_before_architecture_check(self):
         directory = self.root / 'payload'

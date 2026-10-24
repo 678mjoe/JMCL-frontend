@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect CI-only debug bundles. Never execute an app, sidecar or installer."""
+"""Inspect bundles; optionally smoke-test only the bundled Core with core.version."""
 import argparse
 import hashlib
 import json
@@ -16,6 +16,8 @@ CONFIG = json.loads((ROOT / 'src-tauri/tauri.conf.json').read_text())
 # Match Cargo's optional target-dir override; CI uses the default workspace path.
 TARGET_DIR = Path(os.environ.get('CARGO_TARGET_DIR', ROOT / 'src-tauri/target'))
 BUNDLE = TARGET_DIR / 'debug/bundle'
+SMOKE_CORE = False
+PAYLOAD = {}
 
 
 def run(*args):
@@ -68,6 +70,16 @@ def payload(directory, target):
     require(digest(core) == digest(staged), 'Packaged sidecar differs from pinned staged Core')
     architecture(core, target)
     architecture(host, target)
+    PAYLOAD.update(core_sha256=digest(core), desktop_sha256=digest(host))
+    if SMOKE_CORE:
+        with tempfile.TemporaryDirectory(prefix='jmcl-core-smoke-') as working:
+            request = {'protocol': 1, 'id': 'package-smoke', 'method': 'core.version', 'params': {}}
+            result = subprocess.run([str(core.resolve()), 'rpc'], input=json.dumps(request) + '\n',
+                text=True, capture_output=True, cwd=working, timeout=15, check=True)
+            replies = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+            reply = only(reply for reply in replies if reply.get('id') == 'package-smoke')
+            require(reply.get('protocol') == 1 and reply.get('event') == 'result' and isinstance(reply.get('result'), dict) and reply['result'].get('name') == 'jmcl-core', 'Core version RPC failed')
+            PAYLOAD['core_version_smoke'] = 'passed'
     print(f'Payload target={target}; sidecar sha256={digest(core)}')
 
 
@@ -118,8 +130,14 @@ def inspect_nsis(directory, target):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
+    parser.add_argument('--output-dir', type=Path)
+    parser.add_argument('--smoke-core', action='store_true')
     parser.add_argument('--target', required=True, choices=['x86_64-unknown-linux-gnu', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-pc-windows-msvc'])
     args = parser.parse_args()
+    global BUNDLE, SMOKE_CORE
+    BUNDLE = TARGET_DIR / args.profile / 'bundle'
+    SMOKE_CORE = args.smoke_core
     require(CONFIG['bundle']['createUpdaterArtifacts'] is False, 'Updater artifacts must stay disabled')
     with tempfile.TemporaryDirectory(prefix='jmcl-package-check-') as temporary:
         directory = Path(temporary)
@@ -129,8 +147,22 @@ def main():
             package = inspect_dmg(directory, args.target)
         else:
             package = inspect_nsis(directory, args.target)
-        print(f'Inspected debug package {package.name}; sha256={digest(package)}')
-        print('No installation, app launch, distribution or release-signature acceptance performed.')
+        package_hash = digest(package)
+        print(f'Inspected {args.profile} package {package.name}; sha256={package_hash}')
+        if args.output_dir:
+            args.output_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(package, args.output_dir / package.name)
+            manifest = {
+                'frontend_revision': run('git', '-C', ROOT, 'rev-parse', 'HEAD').decode().strip(),
+                'core_revision': run('git', '-C', ROOT / '.ci-core', 'rev-parse', 'HEAD').decode().strip(),
+                'target': args.target, 'profile': args.profile,
+                'package': package.name, 'package_sha256': package_hash,
+                'signed': False, 'notarized': False, **PAYLOAD,
+                'not_tested': ['native GUI', 'real login', 'Minecraft launch', 'installer execution'],
+            }
+            (args.output_dir / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+            (args.output_dir / 'SHA256SUMS.txt').write_text(f'{package_hash}  {package.name}\n')
+        print('No installation, GUI launch, real login or release-signature acceptance performed.')
 
 
 if __name__ == '__main__':
