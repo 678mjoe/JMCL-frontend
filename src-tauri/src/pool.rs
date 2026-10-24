@@ -49,11 +49,12 @@ impl SessionPool {
 
     /// Spawn a core process and open a session on it.
     pub async fn open(&self, binary_path: Option<&str>) -> Result<SessionInfo, SessionError> {
-        let binary = resolve_core_binary(binary_path).map_err(SessionError::transport)?;
+        let binary = resolve_core_binary(binary_path)
+            .map_err(|message| SessionError::coded("CORE_BINARY_UNAVAILABLE", message))?;
         let transport =
             LocalProcessTransport::spawn(&binary, &["rpc"], self.working_dir.as_deref())
                 .await
-                .map_err(SessionError::transport)?;
+                .map_err(|message| SessionError::coded("CORE_SPAWN_FAILED", message))?;
         let session = Session::establish(Box::new(transport)).await?;
         self.insert_established(session, "local").await
     }

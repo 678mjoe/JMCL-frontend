@@ -70,85 +70,196 @@ pub enum Method {
     Java,
     Other,
 }
+// A closed wire-name vocabulary: unknown renderer method strings are never persisted.
+macro_rules! operations {
+    ($( $variant:ident => ($wire:literal, $family:ident) ),+ $(,)?) => {
+        #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+        pub enum OperationName {
+            $( #[serde(rename = $wire)] $variant, )+
+            #[serde(rename = "other")] Other,
+        }
+        impl OperationName {
+            fn classify(value: &str) -> Self { match value { $( $wire => Self::$variant, )+ _ => Self::Other } }
+            fn family(self) -> Method { match self { $( Self::$variant => Method::$family, )+ Self::Other => Method::Other } }
+        }
+    };
+}
+operations! {
+    AccountMicrosoftDelete => ("account.microsoft.delete", Account),
+    AccountMicrosoftGet => ("account.microsoft.get", Account),
+    AccountMicrosoftList => ("account.microsoft.list", Account),
+    AccountMicrosoftSave => ("account.microsoft.save", Account),
+    AuthMicrosoftDeviceBegin => ("auth.microsoft.device.begin", Auth),
+    AuthMicrosoftDevicePoll => ("auth.microsoft.device.poll", Auth),
+    AuthMicrosoftRefresh => ("auth.microsoft.refresh", Auth),
+    AuthMinecraftExchange => ("auth.minecraft.exchange", Auth),
+    AuthMinecraftRefresh_Exchange => ("auth.minecraft.refresh_exchange", Auth),
+    CoreVersion => ("core.version", Core),
+    DatapacksAdopt => ("datapacks.adopt", Content),
+    DatapacksDisable => ("datapacks.disable", Content),
+    DatapacksEnable => ("datapacks.enable", Content),
+    DatapacksInstall => ("datapacks.install", Content),
+    DatapacksList => ("datapacks.list", Content),
+    DatapacksRemove => ("datapacks.remove", Content),
+    DatapacksSetVersion => ("datapacks.set-version", Content),
+    InstallExecute => ("install.execute", Instance),
+    InstallPlan => ("install.plan", Instance),
+    InstallPrepare => ("install.prepare", Instance),
+    InstanceCreate => ("instance.create", Instance),
+    InstanceDelete => ("instance.delete", Instance),
+    InstanceGet => ("instance.get", Instance),
+    InstanceList => ("instance.list", Instance),
+    JavaDetect => ("java.detect", Java),
+    JavaRuntimeInstall => ("java.runtime.install", Java),
+    JavaRuntimeList => ("java.runtime.list", Java),
+    JavaRuntimeRemove => ("java.runtime.remove", Java),
+    JavaSelect => ("java.select", Java),
+    LaunchExecute => ("launch.execute", Instance),
+    LaunchPlan => ("launch.plan", Instance),
+    ModpackInstall => ("modpack.install", Content),
+    ModsAdopt => ("mods.adopt", Content),
+    ModsDisable => ("mods.disable", Content),
+    ModsEnable => ("mods.enable", Content),
+    ModsInstall => ("mods.install", Content),
+    ModsList => ("mods.list", Content),
+    ModsRemove => ("mods.remove", Content),
+    ModsSetVersion => ("mods.set-version", Content),
+    Ping => ("ping", Core),
+    ResourcepacksAdopt => ("resourcepacks.adopt", Content),
+    ResourcepacksDisable => ("resourcepacks.disable", Content),
+    ResourcepacksEnable => ("resourcepacks.enable", Content),
+    ResourcepacksInstall => ("resourcepacks.install", Content),
+    ResourcepacksList => ("resourcepacks.list", Content),
+    ResourcepacksRemove => ("resourcepacks.remove", Content),
+    ResourcepacksSetVersion => ("resourcepacks.set-version", Content),
+    ServerCommand => ("server.command", Server),
+    ServerCreate => ("server.create", Server),
+    ServerDatapacksAdopt => ("server.datapacks.adopt", Server),
+    ServerDatapacksDisable => ("server.datapacks.disable", Server),
+    ServerDatapacksEnable => ("server.datapacks.enable", Server),
+    ServerDatapacksInstall => ("server.datapacks.install", Server),
+    ServerDatapacksList => ("server.datapacks.list", Server),
+    ServerDatapacksRemove => ("server.datapacks.remove", Server),
+    ServerDatapacksSetVersion => ("server.datapacks.set-version", Server),
+    ServerDelete => ("server.delete", Server),
+    ServerGet => ("server.get", Server),
+    ServerInstall => ("server.install", Server),
+    ServerList => ("server.list", Server),
+    ServerLogs => ("server.logs", Server),
+    ServerModsAdopt => ("server.mods.adopt", Server),
+    ServerModsDisable => ("server.mods.disable", Server),
+    ServerModsEnable => ("server.mods.enable", Server),
+    ServerModsInstall => ("server.mods.install", Server),
+    ServerModsList => ("server.mods.list", Server),
+    ServerModsRemove => ("server.mods.remove", Server),
+    ServerModsSetVersion => ("server.mods.set-version", Server),
+    ServerPropertiesGet => ("server.properties.get", Server),
+    ServerPropertiesSet => ("server.properties.set", Server),
+    ServerQuery => ("server.query", Server),
+    ServerRconCommand => ("server.rcon.command", Server),
+    ServerRestart => ("server.restart", Server),
+    ServerStart => ("server.start", Server),
+    ServerStatus => ("server.status", Server),
+    ServerStop => ("server.stop", Server),
+    ServerWorldsBackup => ("server.worlds.backup", Server),
+    ServerWorldsBackups => ("server.worlds.backups", Server),
+    ServerWorldsBackupsDelete => ("server.worlds.backups.delete", Server),
+    ServerWorldsDelete => ("server.worlds.delete", Server),
+    ServerWorldsGet => ("server.worlds.get", Server),
+    ServerWorldsList => ("server.worlds.list", Server),
+    ServerWorldsRename => ("server.worlds.rename", Server),
+    ServerWorldsRestore => ("server.worlds.restore", Server),
+    ShaderpacksAdopt => ("shaderpacks.adopt", Content),
+    ShaderpacksDisable => ("shaderpacks.disable", Content),
+    ShaderpacksEnable => ("shaderpacks.enable", Content),
+    ShaderpacksInstall => ("shaderpacks.install", Content),
+    ShaderpacksList => ("shaderpacks.list", Content),
+    ShaderpacksRemove => ("shaderpacks.remove", Content),
+    ShaderpacksSetVersion => ("shaderpacks.set-version", Content),
+    StoreGc => ("store.gc", Content),
+    VersionGet => ("version.get", Instance),
+    VersionList => ("version.list", Instance),
+    VersionResolve => ("version.resolve", Instance),
+    WorldsBackup => ("worlds.backup", Content),
+    WorldsBackups => ("worlds.backups", Content),
+    WorldsBackupsDelete => ("worlds.backups.delete", Content),
+    WorldsDelete => ("worlds.delete", Content),
+    WorldsDuplicate => ("worlds.duplicate", Content),
+    WorldsExport => ("worlds.export", Content),
+    WorldsGet => ("worlds.get", Content),
+    WorldsImport => ("worlds.import", Content),
+    WorldsList => ("worlds.list", Content),
+    WorldsRename => ("worlds.rename", Content),
+    WorldsRestore => ("worlds.restore", Content),
+}
 impl Method {
-    // Exact names only. Prefix matching would accidentally promote arbitrary input.
     fn classify(value: &str) -> Self {
-        match value {
-            "core.version" => Self::Core,
-            "install.execute" | "install.plan" | "install.prepare" | "instance.create"
-            | "instance.delete" | "instance.get" | "instance.list" | "launch.execute"
-            | "launch.plan" | "version.get" | "version.list" | "version.resolve" => Self::Instance,
-            "server.command"
-            | "server.create"
-            | "server.datapacks.adopt"
-            | "server.datapacks.disable"
-            | "server.datapacks.enable"
-            | "server.datapacks.install"
-            | "server.datapacks.list"
-            | "server.datapacks.remove"
-            | "server.datapacks.set-version"
-            | "server.delete"
-            | "server.get"
-            | "server.install"
-            | "server.list"
-            | "server.logs"
-            | "server.mods.adopt"
-            | "server.mods.disable"
-            | "server.mods.enable"
-            | "server.mods.install"
-            | "server.mods.list"
-            | "server.mods.remove"
-            | "server.mods.set-version"
-            | "server.properties.get"
-            | "server.properties.set"
-            | "server.query"
-            | "server.rcon.command"
-            | "server.restart"
-            | "server.start"
-            | "server.status"
-            | "server.stop"
-            | "server.worlds.backup"
-            | "server.worlds.backups"
-            | "server.worlds.backups.delete"
-            | "server.worlds.delete"
-            | "server.worlds.get"
-            | "server.worlds.list"
-            | "server.worlds.rename"
-            | "server.worlds.restore" => Self::Server,
-            "datapacks.adopt"
-            | "datapacks.disable"
-            | "datapacks.enable"
-            | "datapacks.install"
-            | "datapacks.list"
-            | "datapacks.remove"
-            | "datapacks.set-version"
-            | "modpack.install"
-            | "store.gc"
-            | "worlds.backup"
-            | "worlds.backups"
-            | "worlds.backups.delete"
-            | "worlds.delete"
-            | "worlds.duplicate"
-            | "worlds.export"
-            | "worlds.get"
-            | "worlds.import"
-            | "worlds.list"
-            | "worlds.rename"
-            | "worlds.restore" => Self::Content,
-            "account.microsoft.delete"
-            | "account.microsoft.get"
-            | "account.microsoft.list"
-            | "account.microsoft.save" => Self::Account,
-            "auth.microsoft.device.begin"
-            | "auth.microsoft.device.poll"
-            | "auth.minecraft.exchange"
-            | "auth.minecraft.refresh_exchange" => Self::Auth,
-            "java.detect"
-            | "java.runtime.install"
-            | "java.runtime.list"
-            | "java.runtime.remove"
-            | "java.select" => Self::Java,
-            _ => Self::Other,
+        OperationName::classify(value).family()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Failure {
+    CoreUnavailable,
+    SpawnFailed,
+    RpcRejected,
+    InvalidParams,
+    Network,
+    RateLimited,
+    SessionClosed,
+    Cancelled,
+    Eof,
+    ReadFailed,
+    WriteFailed,
+    ReadersStopped,
+    Protocol,
+    IncompatibleVersion,
+    SshAuth,
+    SshHostKey,
+    SshTimeout,
+    SshConnection,
+    Credentials,
+    Transport,
+}
+impl Failure {
+    fn classify(error: &crate::session::SessionError) -> Self {
+        use crate::session::SessionError;
+        match error {
+            SessionError::Rpc { code, .. } => match code.as_str() {
+                "INVALID_PARAMS" => Self::InvalidParams,
+                "HTTP_STATUS_ERROR"
+                | "HTTP_REQUEST_FAILED"
+                | "NETWORK_ERROR"
+                | "AUTH_NETWORK_ERROR" => Self::Network,
+                "RATE_LIMITED" => Self::RateLimited,
+                _ => Self::RpcRejected,
+            },
+            SessionError::Transport { code, .. } => match code.as_str() {
+                "CORE_BINARY_UNAVAILABLE" => Self::CoreUnavailable,
+                "CORE_SPAWN_FAILED" => Self::SpawnFailed,
+                "SESSION_CLOSED" => Self::SessionClosed,
+                "SESSION_CANCELLED" => Self::Cancelled,
+                "CORE_RPC_EOF" => Self::Eof,
+                "CORE_RPC_READ_FAILED" => Self::ReadFailed,
+                "CORE_RPC_WRITE_FAILED" => Self::WriteFailed,
+                "CORE_RPC_READERS_STOPPED" => Self::ReadersStopped,
+                "CORE_PROTOCOL_ERROR" | "SSH_PROTOCOL_ERROR" => Self::Protocol,
+                "INCOMPATIBLE_VERSION" | "UNSUPPORTED_PROTOCOL" => Self::IncompatibleVersion,
+                "SSH_AUTH_REQUIRED_OR_FAILED" => Self::SshAuth,
+                "SSH_HOST_KEY_CHANGED" | "SSH_HOST_KEY_UNKNOWN" => Self::SshHostKey,
+                "SSH_TIMEOUT" => Self::SshTimeout,
+                "SSH_CONNECTION_FAILED"
+                | "SSH_DISCONNECTED"
+                | "SSH_EXECUTABLE_NOT_FOUND"
+                | "SSH_REMOTE_COMMAND_FAILED" => Self::SshConnection,
+                "CURSEFORGE_KEYCHAIN" | "CURSEFORGE_KEY_REQUIRED" | "CURSEFORGE_KEY_INVALID" => {
+                    Self::Credentials
+                }
+                "CURSEFORGE_NETWORK" => Self::Network,
+                "CURSEFORGE_RATE_LIMIT" => Self::RateLimited,
+                _ => Self::Transport,
+            },
         }
     }
 }
@@ -161,6 +272,10 @@ pub struct Record {
     event: Event,
     #[serde(skip_serializing_if = "Option::is_none")]
     method: Option<Method>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    operation: Option<OperationName>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure: Option<Failure>,
     #[serde(skip_serializing_if = "Option::is_none")]
     duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,6 +300,8 @@ impl Record {
             },
             event,
             method: None,
+            operation: None,
+            failure: None,
             duration_ms: None,
             correlation_id: None,
             outcome: None,
@@ -531,6 +648,7 @@ impl Diagnostics {
     pub fn operation(&self, event: Event, method: Option<&str>) -> Operation {
         let mut record = Record::new(event);
         record.method = method.map(Method::classify);
+        record.operation = method.map(OperationName::classify);
         record.correlation_id =
             Some(self.shared.sequence.fetch_add(1, Ordering::Relaxed) % 9_007_199_254_740_991);
         record.outcome = Some(Outcome::Cancelled);
@@ -570,6 +688,10 @@ pub struct Operation {
     start: Instant,
 }
 impl Operation {
+    pub fn finish_session<T>(&mut self, result: &Result<T, crate::session::SessionError>) {
+        self.finish(result);
+        self.record.failure = result.as_ref().err().map(Failure::classify);
+    }
     pub fn finish<T, E>(&mut self, result: &Result<T, E>) {
         self.record.outcome = Some(if result.is_ok() {
             Outcome::Ok
@@ -759,6 +881,84 @@ mod tests {
         assert_eq!(read.skipped, 1);
         write_snapshot(&dir.0.join("sanitized.jsonl"), read).unwrap();
         assert!(fs::read(dir.0.join("sanitized.jsonl")).unwrap().is_empty());
+    }
+    #[test]
+    fn actionable_operations_and_failures_are_closed_and_secret_free() {
+        use crate::session::SessionError;
+        let dir = Temp::new();
+        let logger = Diagnostics::start(dir.0.clone());
+        logger.enable(true).unwrap();
+        let secret = "SENTINEL-token-password-url?account=private";
+        for (method, error) in [
+            (
+                "auth.microsoft.device.begin",
+                SessionError::coded("CORE_RPC_EOF", secret),
+            ),
+            (
+                "auth.microsoft.device.poll",
+                SessionError::Rpc {
+                    code: secret.into(),
+                    message: secret.into(),
+                },
+            ),
+            (secret, SessionError::coded(secret, secret)),
+        ] {
+            let mut op = logger.operation(Event::CoreRequest, Some(method));
+            op.finish_session(&Err::<(), _>(error));
+        }
+        let snapshot = logger.read().unwrap();
+        assert!(matches!(
+            snapshot.records[0].operation,
+            Some(OperationName::AuthMicrosoftDeviceBegin)
+        ));
+        assert!(matches!(snapshot.records[0].failure, Some(Failure::Eof)));
+        assert!(matches!(
+            snapshot.records[1].failure,
+            Some(Failure::RpcRejected)
+        ));
+        assert!(matches!(
+            snapshot.records[2].operation,
+            Some(OperationName::Other)
+        ));
+        assert!(matches!(
+            snapshot.records[2].failure,
+            Some(Failure::Transport)
+        ));
+        let raw = String::from_utf8(fs::read(dir.0.join("diagnostic-0.jsonl")).unwrap()).unwrap();
+        assert!(!raw.contains(secret));
+        write_snapshot(&dir.0.join("export.jsonl"), snapshot).unwrap();
+        assert!(
+            !String::from_utf8(fs::read(dir.0.join("export.jsonl")).unwrap())
+                .unwrap()
+                .contains(secret)
+        );
+        assert!(serde_json::from_str::<OperationName>(&format!("\"{secret}\"")).is_err());
+        assert!(serde_json::from_str::<Failure>(&format!("\"{secret}\"")).is_err());
+        for method in [
+            "ping",
+            "mods.list",
+            "resourcepacks.set-version",
+            "shaderpacks.install",
+            "auth.microsoft.refresh",
+            "auth.minecraft.refresh_exchange",
+        ] {
+            assert!(!matches!(
+                OperationName::classify(method),
+                OperationName::Other
+            ));
+        }
+        assert!(matches!(
+            Failure::classify(&SessionError::coded("CORE_RPC_READ_FAILED", secret)),
+            Failure::ReadFailed
+        ));
+        assert!(matches!(
+            Failure::classify(&SessionError::coded("CORE_RPC_WRITE_FAILED", secret)),
+            Failure::WriteFailed
+        ));
+        assert!(matches!(
+            Failure::classify(&SessionError::coded("CORE_PROTOCOL_ERROR", secret)),
+            Failure::Protocol
+        ));
     }
     #[test]
     fn repaired_storage_recovers_on_refresh_and_can_be_disabled() {

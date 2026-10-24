@@ -82,3 +82,12 @@ test("one refresh rechecks status after a repaired native storage read", async (
   await mount(transport({ status: async () => ({ ...status, available }), read: async () => { reads++; available = true; return { records: [record], skipped: 0 }; } }));
   expect(reads).toBe(1); expect(button("Export logs…").disabled).toBe(false); expect(dom.document.body.textContent).toContain("app_started");
 });
+test("specific login stage and safe failure category render without untrusted details", async () => {
+  const secret = "SECRET_DEVICE_CODE_TOKEN_ENDPOINT";
+  await mount(transport({ read: async () => ({ records: [
+    { ...record, level: "error", event: "core_request", method: "auth", operation: "auth.microsoft.device.begin", failure: "network", outcome: "error", message: secret },
+    { ...record, level: "error", event: "core_request", method: "auth", operation: secret, failure: secret },
+  ], skipped: 0 }) }));
+  expect(dom.document.body.textContent).toContain("auth.microsoft.device.begin · error · network");
+  expect(dom.document.body.textContent).not.toContain(secret);
+});

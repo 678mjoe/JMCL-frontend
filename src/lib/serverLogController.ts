@@ -1,3 +1,4 @@
+import { isLocalCoreTransportFailure } from "./transportFailure";
 import { acquireServerTarget } from "./serverTargetLock";
 import type { ServerCommandResult, ServerLogResult } from "./types";
 import type { ServerOperationScope } from "./servers";
@@ -47,7 +48,7 @@ function stableCode(error: unknown): string {
 function isTransportFailure(error: unknown): boolean {
   const code = stableCode(error);
   return (typeof error === "object" && error !== null && "kind" in error && error.kind === "transport")
-    || code.startsWith("SSH_") || code.startsWith("SESSION_") || code === "TRANSPORT_ERROR";
+    || code.startsWith("SSH_") || code.startsWith("SESSION_") || code === "TRANSPORT_ERROR" || isLocalCoreTransportFailure(code);
 }
 
 export function isNearLogBottom(element: { scrollTop: number; scrollHeight: number; clientHeight: number }, threshold = 48): boolean {

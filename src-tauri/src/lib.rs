@@ -28,9 +28,9 @@ async fn core_open(
     binary_path: Option<String>,
     diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<pool::SessionInfo, SessionError> {
-    let mut operation = diagnostics.operation(diagnostics::Event::CoreOpen, None);
+    let mut operation = diagnostics.operation(diagnostics::Event::CoreOpen, Some("core.version"));
     let result = pool.open(binary_path.as_deref()).await;
-    operation.finish(&result);
+    operation.finish_session(&result);
     result
 }
 
@@ -41,9 +41,10 @@ async fn endpoint_session_open(
     endpoint_id: String,
     diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<pool::SessionInfo, SessionError> {
-    let mut operation = diagnostics.operation(diagnostics::Event::EndpointOpen, None);
+    let mut operation =
+        diagnostics.operation(diagnostics::Event::EndpointOpen, Some("core.version"));
     let result = pool.open_endpoint(&endpoint_id).await;
-    operation.finish(&result);
+    operation.finish_session(&result);
     result
 }
 
@@ -68,7 +69,7 @@ async fn endpoint_sessions_close(
 ) -> Result<(), SessionError> {
     let mut operation = diagnostics.operation(diagnostics::Event::EndpointClose, None);
     let result = pool.close_endpoint(&endpoint_id).await;
-    operation.finish(&result);
+    operation.finish_session(&result);
     result
 }
 
@@ -200,7 +201,7 @@ async fn core_request(
         }
     }
     .await;
-    operation.finish(&result);
+    operation.finish_session(&result);
     result
 }
 

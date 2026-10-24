@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { installDiagnosticCapture, parseDiagnosticRead, parseDiagnosticStatus, recordFrontendEvent } from "./diagnostics";
+import { diagnosticFailures, diagnosticOperations, installDiagnosticCapture, parseDiagnosticRead, parseDiagnosticStatus, recordFrontendEvent } from "./diagnostics";
 const secret = "SECRET_ACCESS_TOKEN_PASSWORD_ENDPOINT";
 test("record parser excludes arbitrary strings and unsupported event/method/outcome", () => {
   const safe = { version: 1, timestamp_ms: 1, level: "info", event: "core_request" } as const;
@@ -24,4 +24,24 @@ test("error capture never accesses event details; cleanup removes listeners", ()
   expect(JSON.stringify(recorded)).not.toContain(secret);
   dispose(); expect(listeners.size).toBe(0);
   expect(() => recordFrontendEvent(secret as never)).not.toThrow();
+});
+test("specific known operations and failure categories survive; raw codes and messages do not", () => {
+  const base = { version: 1, timestamp_ms: 1, level: "error", event: "core_request", method: "auth", outcome: "error" };
+  const result = parseDiagnosticRead({ records: [
+    { ...base, operation: "auth.microsoft.device.begin", failure: "network", code: secret, message: secret, stderr: secret },
+    { ...base, operation: `auth.microsoft.device.begin.${secret}`, failure: secret },
+    { ...base, operation: "other", failure: "rpc_rejected" },
+  ] });
+  expect(result.records[0]?.operation).toBe("auth.microsoft.device.begin"); expect(result.records[0]?.failure).toBe("network");
+  expect(result.records[1]?.operation).toBeUndefined(); expect(result.records[1]?.failure).toBeUndefined();
+  expect(result.records[2]?.operation).toBe("other"); expect(JSON.stringify(result)).not.toContain(secret);
+  expect(JSON.stringify(result)).not.toContain("stderr");
+});
+
+test("all closed operation and failure values round-trip without widening to unknown strings", () => {
+  for (const operation of diagnosticOperations) {
+    const records = diagnosticFailures.map(failure => ({ version: 1, timestamp_ms: 1, level: "error", event: "core_request", operation, failure }));
+    expect(parseDiagnosticRead({ records }).records.map(record => record.failure)).toEqual([...diagnosticFailures]);
+    expect(parseDiagnosticRead({ records }).records.every(record => record.operation === operation)).toBe(true);
+  }
 });

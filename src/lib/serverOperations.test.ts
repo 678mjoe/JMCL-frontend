@@ -1,3 +1,4 @@
+import { localCoreTransportCodes } from "./transportFailure";
 import { describe, expect, test } from "bun:test";
 import { ServerOperationsController, type ServerOperationsRpc } from "./serverOperations";
 import { createEmptyServerStatusCache, type ServerStatusCacheV1 } from "./serverStatusCache";
@@ -288,3 +289,11 @@ describe("ServerOperationsController", () => {
   });
 
 });
+
+for (const code of localCoreTransportCodes) {
+  test(`local transport ${code} does not infer server lifecycle state`, async () => {
+    const h = harness({ start: async () => { throw Object.assign(new Error("link down"), { code }); } });
+    await expect(h.controller.start(installed)).rejects.toThrow("link down");
+    expect(h.records).toEqual([]); expect(h.closeCount).toBe(1);
+  });
+}

@@ -170,13 +170,15 @@ impl LocalProcessTransport {
                         }
                     }
                     Ok(None) => {
-                        let _ = stdout_tx.send(TransportEvent::Closed(TransportFailure::local(
+                        let _ = stdout_tx.send(TransportEvent::Closed(TransportFailure::new(
+                            "CORE_RPC_EOF",
                             "core closed its RPC stream",
                         )));
                         break;
                     }
                     Err(e) => {
-                        let _ = stdout_tx.send(TransportEvent::Closed(TransportFailure::local(
+                        let _ = stdout_tx.send(TransportEvent::Closed(TransportFailure::new(
+                            "CORE_RPC_READ_FAILED",
                             format!("RPC stream read error: {e}"),
                         )));
                         break;
@@ -209,28 +211,34 @@ impl LocalProcessTransport {
 
 #[async_trait]
 impl LineTransport for LocalProcessTransport {
+    fn protocol_error_code(&self) -> &'static str {
+        "CORE_PROTOCOL_ERROR"
+    }
     async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure> {
         let stdin = self
             .stdin
             .as_mut()
-            .ok_or_else(|| TransportFailure::local("session is closed"))?;
+            .ok_or_else(|| TransportFailure::new("SESSION_CLOSED", "session is closed"))?;
         stdin
             .write_all(line.as_bytes())
             .await
-            .map_err(|_| TransportFailure::local("write to core failed"))?;
+            .map_err(|_| TransportFailure::new("CORE_RPC_WRITE_FAILED", "write to core failed"))?;
         stdin
             .write_all(b"\n")
             .await
-            .map_err(|_| TransportFailure::local("write to core failed"))?;
+            .map_err(|_| TransportFailure::new("CORE_RPC_WRITE_FAILED", "write to core failed"))?;
         stdin
             .flush()
             .await
-            .map_err(|_| TransportFailure::local("flush to core failed"))
+            .map_err(|_| TransportFailure::new("CORE_RPC_WRITE_FAILED", "flush to core failed"))
     }
 
     async fn next_event(&mut self) -> TransportEvent {
         self.rx.recv().await.unwrap_or_else(|| {
-            TransportEvent::Closed(TransportFailure::local("reader tasks stopped"))
+            TransportEvent::Closed(TransportFailure::new(
+                "CORE_RPC_READERS_STOPPED",
+                "reader tasks stopped",
+            ))
         })
     }
 
@@ -266,6 +274,30 @@ impl Drop for LocalProcessTransport {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_eof_and_protocol_classification_are_static() {
+        let mut transport =
+            LocalProcessTransport::spawn(Path::new("/bin/sh"), &["-c", "exit 0"], None)
+                .await
+                .unwrap();
+        assert_eq!(transport.protocol_error_code(), "CORE_PROTOCOL_ERROR");
+        let event = timeout(Duration::from_secs(3), transport.next_event())
+            .await
+            .unwrap();
+        assert!(
+            matches!(event, TransportEvent::Closed(TransportFailure {code, ..}) if code == "CORE_RPC_EOF")
+        );
+        transport.close().await.unwrap();
+        assert_eq!(
+            transport
+                .write_line("sentinel-secret")
+                .await
+                .unwrap_err()
+                .code,
+            "SESSION_CLOSED"
+        );
+    }
     #[test]
     fn finds_development_binary_directory() {
         let root = std::env::temp_dir().join(format!("jmcl-core-resolver-{}", std::process::id()));
