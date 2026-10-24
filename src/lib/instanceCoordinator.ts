@@ -6,6 +6,7 @@
  * writes by the normalized instance path. Reads never acquire a lease.
  */
 export type InstanceMutation =
+  | "pack-activation"
   | "create"
   | "validate"
   | "install"

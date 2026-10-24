@@ -58,6 +58,8 @@ export interface ContentSearchDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Called after a successful install/set-version so the list refreshes. */
   onChanged: () => void;
+  /** Explicit verified Modrinth runtime candidate; still requires version selection. */
+  initialProject?: ModrinthProject;
 }
 
 /**
@@ -73,6 +75,7 @@ export function ContentSearchDialog({
   open,
   onOpenChange,
   onChanged,
+  initialProject,
 }: ContentSearchDialogProps) {
   const { openSession } = useLauncher();
   const { settings, t } = useSettings();
@@ -104,8 +107,8 @@ export function ContentSearchDialog({
 
   // Reset to the list level whenever the dialog is (re)opened.
   useEffect(() => {
-    if (open) setDetail(null);
-  }, [open]);
+    if (open) { setDetail(initialProject ?? null); if (initialProject) setProvider("modrinth"); }
+  }, [open, initialProject]);
 
   // Debounced catalog search; empty query browses by downloads.
   useEffect(() => {
@@ -127,7 +130,7 @@ export function ContentSearchDialog({
         });
     }, 350);
     return () => { current = false; clearTimeout(timer); };
-  }, [open, detail, provider, query, kind, instance.version_id, loader, settings.language]);
+  }, [open, detail, provider, query, kind, instance.version_id, loader, settings.language, initialProject]);
 
   // Load the compatible version list when entering a project detail.
   useEffect(() => {
@@ -138,17 +141,20 @@ export function ContentSearchDialog({
     (provider === "curseforge" ? curseForgeVersions(detail.project_id, kind, instance.version_id, loader) : projectVersions(detail.project_id, kind, instance.version_id, loader))
       .then((vs) => {
         if (!current) return;
-        setVersions(vs);
+        setVersions(vs.filter(v => kind !== "mods" || (loader !== null && v.game_versions.includes(instance.version_id) && v.loaders.includes(loader)))
+          .filter(v => !initialProject || v.project_id === initialProject.project_id));
       })
       .catch((e) => {
         if (!current) return;
         setVersionsError(provider === "curseforge" ? (settings.language === "zh" ? "版本请求失败，请检查设置 → CurseForge 中的 API key。" : "Version request failed. Check your API key in Settings → CurseForge.") : errorText(e));
       });
     return () => { current = false; };
-  }, [open, detail, provider, kind, instance.version_id, loader, settings.language]);
+  }, [open, detail, provider, kind, instance.version_id, loader, settings.language, initialProject]);
 
   const install = useCallback(
     async (project: CatalogProject, version: CatalogVersion) => {
+      if (kind === "mods" && (!loader || !version.game_versions.includes(instance.version_id) || !version.loaders.includes(loader))) return;
+      if (initialProject && version.project_id !== initialProject.project_id) return;
       if (installLock.current || project.available === false || version.available === false) return;
       if (installedByProject.has(project.project_id) && hasAmbiguousContentProject(entries, project.project_id)) return;
       installLock.current = true;
@@ -216,6 +222,7 @@ export function ContentSearchDialog({
     },
     [
       provider,
+      initialProject,
       installedByProject,
       entries,
       openSession,
@@ -404,7 +411,7 @@ export function ContentSearchDialog({
       <DialogContent className="flex h-[85vh] flex-col gap-3 sm:max-w-2xl">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            {detail && (
+            {detail && !initialProject && (
               <Button
                 size="icon-sm"
                 variant="ghost"
@@ -421,7 +428,7 @@ export function ContentSearchDialog({
           </DialogTitle>
         </DialogHeader>
         <label className="flex items-center gap-2 text-sm">{settings.language === "zh" ? "内容来源" : "Catalog provider"}
-          <select aria-label="Catalog provider" className="rounded border bg-background p-2" value={provider} disabled={installingId !== null} onChange={event => { setProvider(event.target.value as "modrinth" | "curseforge"); setDetail(null); setResults(null); setVersions(null); setSearchError(null); setVersionsError(null); }}><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select>
+          <select aria-label="Catalog provider" className="rounded border bg-background p-2" value={provider} disabled={installingId !== null || !!initialProject} onChange={event => { setProvider(event.target.value as "modrinth" | "curseforge"); setDetail(null); setResults(null); setVersions(null); setSearchError(null); setVersionsError(null); }}><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select>
         </label>
         {provider === "curseforge" && <p className="text-xs text-muted-foreground">{settings.language === "zh" ? "请先在设置 → CurseForge 保存 API key，保存后重新打开目录。第三方下载被禁用的文件不可安装。最多显示前 500 个匹配文件。" : "Save an API key in Settings → CurseForge, then reopen this catalog. Files with disabled third-party downloads cannot be installed. At most the first 500 matching files are shown."}</p>}
         {detail ? renderDetailLevel(detail) : renderSearchLevel()}

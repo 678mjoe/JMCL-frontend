@@ -1,3 +1,6 @@
+import { ShaderActivation } from "@/components/ShaderActivation";
+import { PackActivation } from "@/components/PackActivation";
+import { ShaderRuntimeGuidance } from "@/components/ShaderRuntimeGuidance";
 import { useCallback, useEffect, useState } from "react";
 import { FolderInput, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -142,6 +145,7 @@ function ContentPanel({
 
   return (
     <div className="space-y-3 pt-2">
+      {kind !== "mods" && <p className="text-sm text-muted-foreground">{t("content.fileStateOnly")}</p>}
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
           {needsLoader ? t("content.needsLoader") : ""}
@@ -302,6 +306,8 @@ export function ContentManager({ instance }: { instance: InstanceManifest }) {
           </TabsList>
           {KINDS.map((kind) => (
             <TabsContent key={kind} value={kind}>
+              {kind === "resourcepacks" && <PackActivation instance={instance} />}
+              {kind === "shaderpacks" && <><ShaderRuntimeGuidance instance={instance} /><ShaderActivation instance={instance} /></>}
               <ContentPanel
                 kind={kind}
                 instance={instance}

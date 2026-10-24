@@ -31,6 +31,8 @@ export interface ModrinthProject {
 
 export interface ModrinthVersion {
   id: string;
+  /** Present on Modrinth version responses; absent in legacy/provider adapters. */
+  project_id?: string;
   /** Display name, e.g. "Sodium 0.6.13". */
   name: string;
   version_number: string;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Gamepad2, RefreshCw } from "lucide-react";
 import { ContentManager } from "@/components/ContentManager";
 import { Badge } from "@/components/ui/badge";
@@ -24,30 +24,38 @@ export function InstanceContentPage({
 }: InstanceContentPageProps) {
   const { session, status } = useLauncher();
   const { settings, t } = useSettings();
+  const scope = `${settings.instancesDir}\0${instanceId}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const request = useRef(0);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; request.current++; }; }, []);
+  const [manifestScope, setManifestScope] = useState("");
   const [manifest, setManifest] = useState<InstanceManifest | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!session || status !== "ready") return;
+    const id = ++request.current;
+    const current = () => alive.current && scopeRef.current === scope && request.current === id;
     setLoading(true);
     setLoadError(null);
     try {
-      setManifest(
-        await session.instanceGet(settings.instancesDir, instanceId),
-      );
+      const value = await session.instanceGet(settings.instancesDir, instanceId);
+      if (current()) { setManifest(value); setManifestScope(scope); }
     } catch (e) {
-      setLoadError(errorText(e));
+      if (current()) { setLoadError(errorText(e)); setManifest(null); }
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
-  }, [session, status, settings.instancesDir, instanceId]);
+  }, [session, status, settings.instancesDir, instanceId, scope]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if ((loading && !manifest && !loadError) || status === "starting") {
+  if (((loading || manifestScope !== scope) && !loadError) || status === "starting") {
     return (
       <div className="mx-auto max-w-6xl space-y-6 p-6">
         <div className="flex items-center gap-3">
@@ -98,7 +106,7 @@ export function InstanceContentPage({
         </p>
       </div>
 
-      <ContentManager instance={manifest} />
+      <ContentManager key={scope} instance={manifest} />
     </div>
   );
 }

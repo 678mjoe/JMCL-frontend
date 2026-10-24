@@ -7,6 +7,7 @@ import { LauncherContext } from "@/lib/launcher";
 import type { CoreSession } from "@/lib/rpc";
 import type { ContentEntry, InstanceManifest } from "@/lib/types";
 import * as cf from "@/lib/curseforge";
+import * as modrinth from "@/lib/modrinth";
 const dom = new Window({ url: "http://localhost/" });
 Object.assign(globalThis, { window: dom, document: dom.document, localStorage: dom.localStorage, HTMLElement: dom.HTMLElement, Element: dom.Element, Node: dom.Node, Event: dom.Event, MouseEvent: dom.MouseEvent, HTMLInputElement: dom.HTMLInputElement, MutationObserver: dom.MutationObserver, requestAnimationFrame: dom.requestAnimationFrame.bind(dom), cancelAnimationFrame: dom.cancelAnimationFrame.bind(dom), getComputedStyle: dom.getComputedStyle.bind(dom), IS_REACT_ACT_ENVIRONMENT: true });
 const { ContentSearchDialog } = await import("./ContentSearchDialog");
@@ -70,4 +71,26 @@ for (const reverse of [false, true]) test(`client content blocks ambiguous cross
   await waitSearch(); const row = [...dom.document.querySelectorAll("button")].find(b => b.textContent?.startsWith("CF fixture"))!; await act(async () => row.click());
   expect(button("Switch version").disabled).toBe(true); expect(dom.document.body.textContent).toContain("version switching is unsafe");
   await click("Switch version"); expect(calls).toBe(0);
+});
+
+test("explicit runtime project opens version selection and rejects mismatched catalog metadata", async () => {
+  const runtimeProject = { ...project, project_id: "YL57xq9U", title: "Iris runtime" };
+  spies.push(spyOn(modrinth, "projectVersions").mockResolvedValue([
+    { ...version, id: "valid", project_id: "YL57xq9U" },
+    { ...version, id: "wrong-project", project_id: "other" },
+    { ...version, id: "wrong-loader", project_id: "YL57xq9U", loaders: ["forge"] },
+    { ...version, id: "wrong-game", project_id: "YL57xq9U", game_versions: ["1.20.1"] },
+  ] as modrinth.ModrinthVersion[]));
+  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: "en", instancesDir: "/fixture", storeDir: "/store" }));
+  const calls: unknown[][] = [];
+  const session = { close: async () => {}, contentInstall: async (...args: unknown[]) => { calls.push(args); } } as unknown as CoreSession;
+  const host = dom.document.createElement("div"); dom.document.body.append(host); root = createRoot(host as unknown as HTMLElement);
+  await act(async () => root!.render(<SettingsProvider><LauncherContext.Provider value={{ status: "ready", core: null, error: null, session, openSession: async () => session }}><ContentSearchDialog kind="mods" instance={instance} entries={[]} open initialProject={runtimeProject} onOpenChange={() => {}} onChanged={() => {}} /></LauncherContext.Provider></SettingsProvider>));
+  expect(calls).toHaveLength(0);
+  expect([...dom.document.querySelectorAll("button")].filter(b => b.textContent?.trim() === "Install")).toHaveLength(1);
+  expect((dom.document.querySelector('[aria-label="Catalog provider"]') as unknown as HTMLSelectElement).disabled).toBe(true);
+  await click("Install");
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.[3]).toBe("YL57xq9U");
+  expect(calls[0]?.[4]).toMatchObject({provider:"modrinth",version_id:"valid",loader:"fabric"});
 });

@@ -134,13 +134,13 @@ Windows 负责兼容性和发布验证：
 - CurseForge 独立 OS 凭据库设置、固定主机原生目录桥接与 Core 调用时注入；
 - 配置存储目录的 dry-run／命名确认 GC UI；
 - 按实例根目录隔离的高级 JVM/游戏 argv、分辨率、试玩和默认 JVM 选项及 Core 脱敏预览；
+- Unix 受限原生资源包选择/顺序及显式 Iris/Oculus 配置编辑，按实际游戏版本/加载器查询的 Shader runtime 指引；
 - stdout、stderr 和 core 诊断日志；
 - 中英文和明暗主题。
 
 ### 尚未实现的客户端能力
 
-- 资源包和光影的游戏内激活顺序；
-- Shader runtime 指引；
+- Windows 安全激活配置写入，以及旧版/未知资源包格式与未验证光影运行时的自动配置；
 - 自动更新。
 
 ### 服务器 GUI
@@ -459,6 +459,8 @@ Mock 场景至少包含：
 阶段 7 前两项的前端实现已落地：世界级数据包及 Modrinth 整合包导入/后续安装准备。该批次当时明确阻止 CurseForge 归档；后续第三项现已实现独立 API key 设置、目录与版本查询、客户端/世界数据包/服务端内容安装和版本切换及 CurseForge 归档导入。密钥由原生层保存和注入，禁止 JS 请求携带密钥；目录仅使用固定官方主机，不推测 CDN 地址。实现与待验收范围见[CurseForge 记录](./docs/verification/2026-10-24-stage-7-curseforge.md)。Linux 自动验证与范围见[阶段 7 首批记录](./docs/verification/2026-10-24-stage-7-client-content.md)；原生文件选择、真实归档/游戏下载及 macOS/Windows/视觉验收仍未完成，不表示整个阶段 7 已验收。
 
 阶段 7 第四至第六项的前端实现已落地：共享存储 GC 的预览与显式目录确认、按实例保存的原样 JVM/游戏参数、分辨率及启动选项。GC 错误不推断删除数量；启动预览只展示 Core 脱敏 argv。Linux 自动验证和边界见[存储与启动选项记录](./docs/verification/2026-10-24-stage-7-store-launch.md)。真实存储删除、游戏启动、视觉及 macOS/Windows 验收仍未完成，不表示整个阶段 7 已验收。
+
+阶段 7 第七、八项已形成有边界的实现：Unix 原生层修改已有现代资源包选择顺序，以及用户明确选择的已有 Iris/Oculus 配置；目录按当前实例的 Minecraft 版本和加载器验证候选运行时版本，不按加载器硬编码推荐。文件可用、配置选择、运行时兼容和实际游戏加载保持独立。Windows 写入、旧版/未知资源包格式、未验证的 OptiFine/其他运行时配置仍不可用；真实游戏和目标平台验收仍待完成，未宣称阶段 7 全部验收。范围与证据见[激活与运行时指引记录](./docs/verification/2026-10-24-stage-7-pack-activation.md)。
 
 ## 13. 阶段 8——质量与发布
 
