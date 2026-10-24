@@ -10,6 +10,7 @@ import shutil
 import struct
 import subprocess
 import tempfile
+import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / 'src-tauri/tauri.conf.json').read_text())
@@ -112,6 +113,27 @@ def inspect_dmg(directory, target):
     return package
 
 
+def inspect_app(directory, target):
+    app = only((BUNDLE / 'macos').glob('*.app'))
+    with (app / 'Contents/Info.plist').open('rb') as source:
+        info = plistlib.load(source)
+    for key, expected in [('CFBundleIdentifier', CONFIG['identifier']), ('CFBundleShortVersionString', CONFIG['version']), ('CFBundleExecutable', CONFIG['productName'])]:
+        require(info.get(key) == expected, f'Unexpected {key}: {info.get(key)!r}')
+    package = directory / f"jmcl_{CONFIG['version']}_{target}.app.tar.gz"
+    with tarfile.open(package, 'w:gz') as archive:
+        archive.add(app, arcname=app.name)
+    # Archive retains bundle symlinks and executable modes, unlike loose artifact upload.
+    with tarfile.open(package, 'r:gz') as archive:
+        for name in ['jmcl', 'jmcl-core']:
+            member = archive.getmember(f'{app.name}/Contents/MacOS/{name}')
+            require(member.isfile() and member.mode & 0o111, f'Missing executable mode: {name}')
+    unpacked = directory / 'unpacked'
+    with tarfile.open(package, 'r:gz') as archive:
+        archive.extractall(unpacked, filter='data')
+    payload(unpacked / app.name / 'Contents/MacOS', target)
+    return package
+
+
 def inspect_nsis(directory, target):
     package = only((BUNDLE / 'nsis').glob('*-setup.exe'))
     expected = f"{CONFIG['productName']}_{CONFIG['version']}_x64-setup.exe"
@@ -130,6 +152,7 @@ def inspect_nsis(directory, target):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--macos-format', choices=['dmg', 'app'], default='dmg')
     parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
     parser.add_argument('--output-dir', type=Path)
     parser.add_argument('--smoke-core', action='store_true')
@@ -144,7 +167,7 @@ def main():
         if args.target.endswith('linux-gnu'):
             package = inspect_deb(directory, args.target)
         elif args.target.endswith('apple-darwin'):
-            package = inspect_dmg(directory, args.target)
+            package = (inspect_app if args.macos_format == 'app' else inspect_dmg)(directory, args.target)
         else:
             package = inspect_nsis(directory, args.target)
         package_hash = digest(package)

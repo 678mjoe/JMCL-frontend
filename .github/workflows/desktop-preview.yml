@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: desktop-preview-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   BUN_VERSION: 1.4.4
@@ -28,10 +28,10 @@ jobs:
         include:
           - os: macos-15
             target: aarch64-apple-darwin
-            bundle: dmg
+            bundle: app
           - os: macos-15-intel
             target: x86_64-apple-darwin
-            bundle: dmg
+            bundle: app
           - os: windows-2025
             target: x86_64-pc-windows-msvc
             bundle: nsis
@@ -81,7 +81,7 @@ jobs:
       - name: Build unsigned complete desktop preview
         run: bun run tauri build --ci --no-sign --bundles '${{ matrix.bundle }}'
       - name: Verify packaged architecture, exact sidecar and Core version RPC
-        run: python scripts/verify-ci-package.py --target '${{ matrix.target }}' --profile release --smoke-core --output-dir packaged-preview
+        run: python scripts/verify-ci-package.py --target '${{ matrix.target }}' --profile release --macos-format app --smoke-core --output-dir packaged-preview
       - name: Upload requested preview package and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
