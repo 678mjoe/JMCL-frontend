@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { CurseForgeSettings } from "@/components/CurseForgeSettings";
 import { EndpointManager } from "@/components/EndpointManager";
 import { useMicrosoftAccounts } from "@/lib/auth";
 import type { Language } from "@/lib/i18n";
@@ -222,6 +223,10 @@ export function SettingsPage() {
         <Separator />
 
         <AccountsSection />
+
+        <Separator />
+
+        <CurseForgeSettings />
 
         <Separator />
 

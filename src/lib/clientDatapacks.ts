@@ -1,3 +1,4 @@
+import { hasAmbiguousContentProject } from "./contentIdentity";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { CoreSession, type InstallEvent, type SessionEvent } from "./rpc";
 import { InstanceBusyError } from "./instanceCoordinator";
@@ -6,7 +7,7 @@ import type { DatapackListResult } from "./types";
 export type ClientDatapackSession = Pick<CoreSession, "close" | "worldsGet" | "datapacksList" | "datapacksInstall" | "datapacksSetVersion" | "datapacksEnable" | "datapacksDisable" | "datapacksRemove" | "datapacksAdopt">;
 export interface ClientDatapackSnapshot { content: DatapackListResult | null; locked: boolean | null; pending: boolean; error: string | null; refreshError: string | null; progress: string | null }
 const empty = (): ClientDatapackSnapshot => ({ content: null, locked: null, pending: false, error: null, refreshError: null, progress: null });
-const codes = new Set(["INVALID_PARAMS", "WORLD_NOT_FOUND", "WORLD_LOCKED", "CONTENT_NOT_FOUND", "NO_COMPATIBLE_VERSION", "INCOMPATIBLE_VERSION", "VERSION_PROJECT_MISMATCH", "CONTENT_CONFLICT", "CONTENT_KIND_MISMATCH", "UNSUPPORTED_PROJECT_TYPE", "DOWNLOAD_UNAVAILABLE", "HTTP_STATUS_ERROR", "RESPONSE_TOO_LARGE", "CONTENT_LIST_FAILED", "CONTENT_INSTALL_FAILED", "CONTENT_SET_VERSION_FAILED", "CONTENT_TOGGLE_FAILED", "CONTENT_REMOVE_FAILED", "CONTENT_ADOPT_FAILED", "STORE_ROOT_ERROR"]);
+const codes = new Set(["CONTENT_PROJECT_AMBIGUOUS", "CURSEFORGE_AUTH", "CURSEFORGE_DOWNLOAD_UNAVAILABLE", "CURSEFORGE_KEYCHAIN", "CURSEFORGE_KEY_INPUT", "CURSEFORGE_KEY_INVALID", "CURSEFORGE_KEY_REQUIRED", "CURSEFORGE_NETWORK", "CURSEFORGE_RATE_LIMIT", "CURSEFORGE_REQUEST_INVALID", "INVALID_PARAMS", "WORLD_NOT_FOUND", "WORLD_LOCKED", "CONTENT_NOT_FOUND", "NO_COMPATIBLE_VERSION", "INCOMPATIBLE_VERSION", "VERSION_PROJECT_MISMATCH", "CONTENT_CONFLICT", "CONTENT_KIND_MISMATCH", "UNSUPPORTED_PROJECT_TYPE", "DOWNLOAD_UNAVAILABLE", "HTTP_STATUS_ERROR", "RESPONSE_TOO_LARGE", "CONTENT_LIST_FAILED", "CONTENT_INSTALL_FAILED", "CONTENT_SET_VERSION_FAILED", "CONTENT_TOGGLE_FAILED", "CONTENT_REMOVE_FAILED", "CONTENT_ADOPT_FAILED", "STORE_ROOT_ERROR"]);
 function safeCode(error: unknown) { if (error instanceof InstanceBusyError) return "BUSY"; const code = typeof error === "object" && error !== null && "code" in error ? error.code : null; return typeof code === "string" && codes.has(code) ? code : "UNKNOWN"; }
 const fail = (code: string): never => { throw { code }; };
 const validId = (value: string) => !!value.trim() && value === value.trim() && value !== "." && value !== ".." && !/[\\/\0\r\n]/.test(value);
@@ -37,7 +38,7 @@ export class ClientDatapackController {
       if (current()) await this.checkWorld(session, current);
     } catch (error) { if (current()) this.update({ refreshError: safeCode(error) }); }
   }
-  private async run(action?: (session: ClientDatapackSession, event: (event: SessionEvent<InstallEvent>) => void) => Promise<unknown>) {
+  private async run(action?: (session: ClientDatapackSession, event: (event: SessionEvent<InstallEvent>) => void) => Promise<unknown>, freshRefresh = false) {
     if (this.pending) return false;
     this.pending = true;
     const generation = ++this.generation;
@@ -75,22 +76,39 @@ export class ClientDatapackController {
       succeeded = true;
     } catch (error) { if (current()) this.update({ error: safeCode(error) }); }
     finally {
-      try { if (session && action && current()) await this.refresh(session, current); }
+      try {
+        if (session && action && current()) {
+          if (freshRefresh) {
+            if (close) await close();
+            this.closeSession = null;
+            if (current()) {
+              session = await this.options.openSession();
+              const refreshed = session; let closing: Promise<void> | null = null;
+              close = () => closing ??= Promise.resolve().then(() => refreshed.close()).catch(() => undefined);
+              this.closeSession = close;
+            }
+          }
+          if (current()) await this.refresh(session, current);
+        }
+      } catch (error) { if (current()) this.update({ refreshError: safeCode(error) }); }
       finally { if (close) await close(); if (this.closeSession === close) this.closeSession = null; this.pending = false; if (current()) this.update({ pending: false }); }
     }
     return succeeded && current();
   }
   load = () => this.run();
-  install = (project: string, version: string) => this.run((session, event) => {
+  install = (project: string, version: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, event) => {
     if (!validId(project) || !validId(version)) fail("INVALID_PARAMS");
+    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(version))) fail("INVALID_PARAMS");
     const o = this.options;
-    return session.datapacksInstall(o.directory, o.world, o.version, project, { provider: "modrinth", version_id: version, with_dependencies: true, store_directory: o.storeDirectory }, event);
-  });
-  setVersion = (project: string, version: string) => this.run((session, event) => {
+    return session.datapacksInstall(o.directory, o.world, o.version, project, { provider, version_id: version, with_dependencies: true, store_directory: o.storeDirectory }, event);
+  }, provider === "curseforge");
+  setVersion = (project: string, version: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, event) => {
+    if (hasAmbiguousContentProject(this.snapshot.content?.entries ?? [], project)) fail("CONTENT_PROJECT_AMBIGUOUS");
     if (!validId(project) || !validId(version)) fail("INVALID_PARAMS");
+    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(version))) fail("INVALID_PARAMS");
     const o = this.options;
-    return session.datapacksSetVersion(o.directory, o.world, o.version, project, version, { store_directory: o.storeDirectory }, event);
-  });
+    return session.datapacksSetVersion(o.directory, o.world, o.version, project, version, { ...(provider === "curseforge" ? { provider } : {}), store_directory: o.storeDirectory }, event);
+  }, provider === "curseforge");
   private selector(target: { file: string }) {
     if (!target.file.startsWith("datapacks/") || !validId(target.file.slice(10))) fail("INVALID_PARAMS");
     return { file: target.file }; // Exact world-relative registry identity, never basename or joined path.

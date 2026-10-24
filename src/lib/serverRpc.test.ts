@@ -179,7 +179,7 @@ describe("server RPC wire shapes", () => {
     await session.serverModsRemove("/srv/servers", "demo", { project: "sodium" });
     await session.serverModsAdopt("/srv/servers", "demo", "/srv/store");
     await session.serverDatapacksList("/srv/servers", "demo");
-    await session.serverDatapacksInstall("/srv/servers", "demo", "terralith", { provider: "curseforge", api_key: "cf-key" });
+    await session.serverDatapacksInstall("/srv/servers", "demo", "terralith", { provider: "curseforge" });
     await session.serverDatapacksSetVersion("/srv/servers", "demo", "terralith", "pack-version");
     await session.serverDatapacksEnable("/srv/servers", "demo", { project: "terralith" });
     await session.serverDatapacksDisable("/srv/servers", "demo", { file: "datapacks/local.zip" });
@@ -218,7 +218,7 @@ describe("server RPC wire shapes", () => {
       { directory: "/srv/servers", id: "demo", project: "sodium" },
       { directory: "/srv/servers", id: "demo", store_directory: "/srv/store" },
       { directory: "/srv/servers", id: "demo" },
-      { directory: "/srv/servers", id: "demo", project: "terralith", provider: "curseforge", api_key: "cf-key" },
+      { directory: "/srv/servers", id: "demo", project: "terralith", provider: "curseforge" },
       { directory: "/srv/servers", id: "demo", project: "terralith", version_id: "pack-version" },
       { directory: "/srv/servers", id: "demo", project: "terralith" },
       { directory: "/srv/servers", id: "demo", file: "datapacks/local.zip" },
@@ -230,7 +230,6 @@ describe("server RPC wire shapes", () => {
       id: "demo",
       project: "terralith",
       provider: "curseforge",
-      api_key: "cf-key",
     });
   });
 });

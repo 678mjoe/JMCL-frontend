@@ -1,6 +1,7 @@
 //! JMCL GUI: Tauri bridge to `jmcl-core` JSON Lines RPC sessions.
 
 pub mod credentials;
+pub mod curseforge;
 pub mod endpoints;
 pub mod pool;
 pub mod server_status_cache;
@@ -117,23 +118,60 @@ async fn core_request(
     params: Option<Value>,
     events: Channel<SessionEvent>,
     compact_events: Option<bool>,
+    curseforge: Option<bool>,
 ) -> Result<Value, SessionError> {
     let session = pool
         .get(session_id)
         .await
         .ok_or_else(|| SessionError::coded("SESSION_CLOSED", "This session is closed."))?;
+    let mut params = params.unwrap_or_else(|| json!({}));
+    let enabled = curseforge.unwrap_or(false);
+    curseforge::validate_injection(&method, &params, enabled)?;
+    let key = if enabled {
+        curseforge::preflight_version_change(&session, &method, &params).await?;
+        Some(curseforge::required_key().await?)
+    } else {
+        None
+    };
+    if let Some(key) = &key {
+        params["api_key"] = Value::String(key.clone());
+    }
     let mut forwarder = CompactEventForwarder::new(compact_events.unwrap_or(false));
-    let result = session
-        .request(&method, params.unwrap_or_else(|| json!({})), |event| {
+    let mut on_event = |event| {
+        let event = match &key {
+            Some(key) => curseforge::scrub_event(event, key),
+            None => Some(event),
+        };
+        if let Some(event) = event {
             forwarder.push(event, |event| {
                 let _ = events.send(event);
             });
-        })
-        .await;
+        }
+    };
+    let result = if enabled {
+        session
+            .request_credentialed(&method, params, &mut on_event)
+            .await
+    } else {
+        session.request(&method, params, &mut on_event).await
+    };
     forwarder.flush(|event| {
         let _ = events.send(event);
     });
-    result
+    if let Some(key) = key {
+        // Credential-bearing sessions cannot be reused. Reap the child and its
+        // diagnostic tail before releasing the in-memory secret.
+        pool.close(session_id).await;
+        match result {
+            Ok(mut value) => {
+                curseforge::scrub_value(&mut value, &key);
+                Ok(value)
+            }
+            Err(error) => Err(curseforge::scrub_error(error, &key)),
+        }
+    } else {
+        result
+    }
 }
 
 #[cfg(test)]
@@ -190,6 +228,10 @@ pub fn run() {
             core_close,
             endpoint_sessions_close,
             core_request,
+            curseforge::curseforge_key_status,
+            curseforge::curseforge_key_set,
+            curseforge::curseforge_key_delete,
+            curseforge::curseforge_catalog,
             credentials::credential_set,
             credentials::credential_get,
             credentials::credential_delete,

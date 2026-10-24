@@ -87,6 +87,7 @@ pub struct Session {
     protocol_error_code: &'static str,
     sequence: AtomicU64,
     closed: AtomicBool,
+    credentialed: AtomicBool,
     cancel: watch::Sender<bool>,
     identity: CoreIdentity,
 }
@@ -121,6 +122,7 @@ impl Session {
             protocol_error_code,
             sequence: AtomicU64::new(0),
             closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
             cancel: watch::channel(false).0,
             identity: CoreIdentity {
                 name: String::new(),
@@ -180,10 +182,42 @@ impl Session {
         &self,
         method: &str,
         params: Value,
+        on_event: impl FnMut(SessionEvent),
+    ) -> Result<Value, SessionError> {
+        self.request_inner(method, params, on_event, false).await
+    }
+
+    /// A credential-bearing session is single-use, including callers already
+    /// queued on its transport. Never let a later request read a secret tail.
+    pub async fn request_credentialed(
+        &self,
+        method: &str,
+        params: Value,
+        on_event: impl FnMut(SessionEvent),
+    ) -> Result<Value, SessionError> {
+        if self.credentialed.swap(true, Ordering::SeqCst) {
+            return Err(SessionError::coded(
+                "SESSION_CLOSED",
+                "This session is closed.",
+            ));
+        }
+        let result = self.request_inner(method, params, on_event, true).await;
+        self.signal_close();
+        result
+    }
+
+    async fn request_inner(
+        &self,
+        method: &str,
+        params: Value,
         mut on_event: impl FnMut(SessionEvent),
+        credentialed: bool,
     ) -> Result<Value, SessionError> {
         let mut cancel = self.cancel.subscribe();
-        if *cancel.borrow() || self.closed.load(Ordering::SeqCst) {
+        if *cancel.borrow()
+            || self.closed.load(Ordering::SeqCst)
+            || (!credentialed && self.credentialed.load(Ordering::SeqCst))
+        {
             return Err(SessionError::coded(
                 "SESSION_CLOSED",
                 "This session is closed.",
@@ -196,7 +230,10 @@ impl Session {
             _ = cancel.changed() => return Err(SessionError::coded("SESSION_CANCELLED", "The session request was cancelled.")),
             transport = self.transport.lock() => transport,
         };
-        if *cancel.borrow() || self.closed.load(Ordering::SeqCst) {
+        if *cancel.borrow()
+            || self.closed.load(Ordering::SeqCst)
+            || (!credentialed && self.credentialed.load(Ordering::SeqCst))
+        {
             return Err(SessionError::coded(
                 "SESSION_CANCELLED",
                 "The session request was cancelled.",
@@ -487,6 +524,7 @@ mod tests {
             protocol_error_code: "TRANSPORT_ERROR",
             sequence: AtomicU64::new(0),
             closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
             cancel: watch::channel(false).0,
             identity: CoreIdentity {
                 name: String::new(),
@@ -519,6 +557,7 @@ mod tests {
             protocol_error_code: "TRANSPORT_ERROR",
             sequence: AtomicU64::new(0),
             closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
             cancel: watch::channel(false).0,
             identity: CoreIdentity {
                 name: String::new(),
@@ -554,6 +593,7 @@ mod tests {
             protocol_error_code: "TRANSPORT_ERROR",
             sequence: AtomicU64::new(0),
             closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
             cancel: watch::channel(false).0,
             identity: CoreIdentity {
                 name: String::new(),
@@ -587,6 +627,7 @@ mod tests {
             protocol_error_code: "TRANSPORT_ERROR",
             sequence: AtomicU64::new(0),
             closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
             cancel: watch::channel(false).0,
             identity: CoreIdentity {
                 name: String::new(),
@@ -601,6 +642,75 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_millis(100), session.close())
             .await
             .expect("close cancels a write that never completes");
+        assert!(request.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn credentialed_session_is_single_use_and_rejects_later_reads() {
+        let session = Session {
+            transport: Mutex::new(Box::new(IdentityTransport { sent: false })),
+            protocol_error_code: "TRANSPORT_ERROR",
+            sequence: AtomicU64::new(0),
+            closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
+            cancel: watch::channel(false).0,
+            identity: CoreIdentity {
+                name: String::new(),
+                version: String::new(),
+                protocol: 1,
+            },
+        };
+        assert!(session
+            .request_credentialed("mods.install", json!({"api_key":"synthetic"}), |_| {})
+            .await
+            .is_ok());
+        assert!(session.closed.load(Ordering::SeqCst));
+        assert!(session
+            .request("ping", json!({}), |_| panic!(
+                "must not read a diagnostic tail"
+            ))
+            .await
+            .is_err());
+        assert!(session
+            .request_credentialed("mods.install", json!({}), |_| {})
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn ordinary_request_cannot_queue_behind_credentialed_request() {
+        let entered = Arc::new(Notify::new());
+        let session = Arc::new(Session {
+            transport: Mutex::new(Box::new(NeverTransport {
+                entered: entered.clone(),
+                block_write: false,
+            })),
+            protocol_error_code: "TRANSPORT_ERROR",
+            sequence: AtomicU64::new(0),
+            closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
+            cancel: watch::channel(false).0,
+            identity: CoreIdentity {
+                name: String::new(),
+                version: String::new(),
+                protocol: 1,
+            },
+        });
+        let running = session.clone();
+        let request = tokio::spawn(async move {
+            running
+                .request_credentialed("mods.install", json!({}), |_| {})
+                .await
+        });
+        entered.notified().await;
+        let other = tokio::time::timeout(
+            Duration::from_millis(100),
+            session.request("ping", json!({}), |_| {}),
+        )
+        .await
+        .unwrap();
+        assert!(other.is_err());
+        session.close().await;
         assert!(request.await.unwrap().is_err());
     }
 

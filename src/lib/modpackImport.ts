@@ -3,7 +3,7 @@ import type { CoreSession, EventHandler, InstallEvent } from "./rpc";
 import type { InstanceManifest } from "./types";
 
 export type ModpackSession = Pick<CoreSession, "close" | "instanceList" | "instanceGet" | "modpackInstall" | "installExecute" | "installPrepare">;
-export interface ModpackImportInput { directory: string; storeDirectory: string; id: string; file: string }
+export interface ModpackImportInput { directory: string; storeDirectory: string; id: string; file: string; provider?: "modrinth" | "curseforge" }
 export interface ModpackImportState {
   phase: "idle" | "checking" | "archive" | "manifest" | "install" | "prepare" | "success" | "error";
   busy: boolean;
@@ -18,7 +18,7 @@ export function validModpackInstanceId(id: string): boolean {
 const errorCode = (error: unknown) => {
   if (error instanceof InstanceBusyError) return "INSTANCE_BUSY";
   const code = error && typeof error === "object" && "code" in error ? String(error.code) : "IMPORT_OUTCOME_UNKNOWN";
-  return new Set(["INVALID_PARAMS", "INSTANCE_EXISTS", "INSTANCE_NOT_FOUND", "UNKNOWN_MODPACK_FORMAT", "UNSUPPORTED_MODPACK_FORMAT", "UNSUPPORTED_LOADER", "LOADER_CONFLICT", "DOWNLOAD_UNAVAILABLE", "UNSUPPORTED_PROJECT_TYPE", "MODPACK_NOT_FOUND", "UNSAFE_MODPACK", "HTTP_STATUS_ERROR", "MODPACK_INSTALL_FAILED", "INSTANCES_ROOT_ERROR", "STORE_ROOT_ERROR", "INSTALL_FAILED", "PREPARE_FAILED", "JAVA_NOT_FOUND", "JAVA_INCOMPATIBLE", "IMPORT_INTERRUPTED", "INVALID_INSTANCE_RESULT"]).has(code) ? code : "IMPORT_OUTCOME_UNKNOWN";
+  return new Set(["CURSEFORGE_KEY_REQUIRED", "CURSEFORGE_KEY_INVALID", "CURSEFORGE_KEYCHAIN", "CURSEFORGE_AUTH", "CURSEFORGE_NETWORK", "CURSEFORGE_RATE_LIMIT", "CURSEFORGE_REQUEST_INVALID", "INVALID_PARAMS", "INSTANCE_EXISTS", "INSTANCE_NOT_FOUND", "UNKNOWN_MODPACK_FORMAT", "UNSUPPORTED_MODPACK_FORMAT", "UNSUPPORTED_LOADER", "LOADER_CONFLICT", "DOWNLOAD_UNAVAILABLE", "UNSUPPORTED_PROJECT_TYPE", "MODPACK_NOT_FOUND", "UNSAFE_MODPACK", "HTTP_STATUS_ERROR", "MODPACK_INSTALL_FAILED", "INSTANCES_ROOT_ERROR", "STORE_ROOT_ERROR", "INSTALL_FAILED", "PREPARE_FAILED", "JAVA_NOT_FOUND", "JAVA_INCOMPATIBLE", "IMPORT_INTERRUPTED", "INVALID_INSTANCE_RESULT"]).has(code) ? code : "IMPORT_OUTCOME_UNKNOWN";
 };
 /** One archive submission only. Only confirmed post-archive stages can resume.
  * Disposal never kills a synchronous core request; it prevents the next stage.
@@ -54,8 +54,15 @@ export class ModpackImportController {
         const list = await session.instanceList(input.directory); this.active();
         if (list.instances.some((instance) => instance.id === input.id)) throw { code: "INSTANCE_EXISTS" };
         this.patch({ phase: "archive" }); this.archiveAttempted = true;
-        await session.modpackInstall(input.directory, input.id, input.file, { store_directory: input.storeDirectory }, this.progress, { coordinate: false });
+        await session.modpackInstall(input.directory, input.id, input.file, { store_directory: input.storeDirectory, ...(input.provider === "curseforge" ? { provider: "curseforge" as const } : {}) }, this.progress, { coordinate: false });
         this.archiveConfirmed = true; this.active();
+        if (input.provider === "curseforge") {
+          // Credentialed native sessions are deliberately single-use. Continue setup
+          // through a fresh uncredentialed session under the same mutation lease.
+          try { await session.close(); } catch { /* Native may already have closed it. */ }
+          session = undefined; this.active();
+          session = await this.open(); this.active();
+        }
       }
       this.patch({ phase: "manifest", progress: null });
       const instance = await session.instanceGet(input.directory, input.id); this.active();

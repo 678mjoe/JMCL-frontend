@@ -557,8 +557,8 @@ export async function mockRequest<T>(
       rpcFailure("INSTANCE_EXISTS", "Mock instance already exists");
     const file = String(params.file);
     // Explicit synthetic archive names only: no filesystem or download work.
-    if (/curseforge|manifest/i.test(file))
-      rpcFailure("INVALID_PARAMS", "CurseForge import requires an application API key; unavailable in this mock");
+    if (/curseforge|manifest/i.test(file) && params.__curseforge_authorized !== true)
+      rpcFailure("INVALID_PARAMS", "CurseForge import requires synthetic credential presence");
     if (!/\.(mrpack|zip)$/i.test(file))
       rpcFailure("UNKNOWN_MODPACK_FORMAT", "Mock archive is not a recognized modpack");
     if (/unsafe/i.test(file)) rpcFailure("UNSAFE_MODPACK", "Mock archive contains unsafe paths");
@@ -677,7 +677,7 @@ export async function mockRequest<T>(
         sha1: "c".repeat(40),
         size: 650000,
         source: {
-          provider: "modrinth",
+          provider: params.provider === "curseforge" ? "curseforge" : "modrinth",
           project_id: project,
           version_id: String(params.version_id ?? "mock-version"),
           slug: project,
@@ -726,7 +726,7 @@ export async function mockRequest<T>(
     if (!params.minecraft_version || !params.project || params.loader != null ||
         (operation === "set-version" && !params.version_id))
       rpcFailure("INVALID_PARAMS", "Datapack version operations require Minecraft version and project, without loader");
-    if (params.provider === "curseforge" || params.api_key != null)
+    if ((params.provider === "curseforge" && params.__curseforge_authorized !== true) || params.api_key != null)
       rpcFailure("INVALID_PARAMS", "CurseForge credentials are unavailable in this mock");
     const project = String(params.project);
     if (!/^[a-zA-Z0-9_-]+$/.test(project)) rpcFailure("INVALID_PARAMS", "Invalid project identifier");
@@ -742,7 +742,7 @@ export async function mockRequest<T>(
       return { ...base, installed: [], skipped: 1 } as T;
     }
     const entry: ContentEntry = { kind: "datapack", file: `datapacks/${project}.zip`, sha1: "f".repeat(40), size: 8192,
-      source: { provider: "modrinth", project_id: project, slug: project, version_id: version }, enabled: true, as_dependency: false };
+      source: { provider: params.provider === "curseforge" ? "curseforge" : "modrinth", project_id: project, slug: project, version_id: version }, enabled: true, as_dependency: false };
     store.entries.push(entry);
     emit(handler, { event: "progress", source: "official", progress: { files_completed: 1, files_total: 1, bytes_processed: 8192, bytes_verified: 8192, bytes_transferred: 8192, bytes_total: 8192 } });
     return { ...base, installed: [installedDatapack(entry)], skipped: 0 } as T;

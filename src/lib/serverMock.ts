@@ -1078,7 +1078,7 @@ function contentInstall(state: ServerMockState, params: Record<string, unknown>,
   optionalIntegerRange(params, "workers", 1, 32);
   optionalIntegerRange(params, "retries", 0, 5);
   const effectiveProvider = provider ?? "modrinth";
-  if (effectiveProvider === "curseforge" && apiKey === undefined) {
+  if (effectiveProvider === "curseforge" && apiKey === undefined && params.__curseforge_authorized !== true) {
     failure("INVALID_PARAMS", "curseforge provider requires a non-empty api_key");
   }
   if (effectiveProvider === "modrinth" && apiKey !== undefined) {
@@ -1091,7 +1091,7 @@ function contentInstall(state: ServerMockState, params: Record<string, unknown>,
   const file = kind === "mods" ? `mods/${project}.jar` : `datapacks/${project}.zip`;
   const entry = existing ?? makeContent(contentKind(kind), project, file, version);
   if (existing) entry.source.version_id = version;
-  else store.entries.push(entry);
+  else { entry.source.provider = effectiveProvider; store.entries.push(entry); }
   return {
     stage: `server.${kind}.install` as const,
     id: server.manifest.id,

@@ -5,10 +5,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLauncher } from "@/lib/launcher";
 import { useSettings } from "@/lib/settings";
+import { curseForgeKeyStatus } from "@/lib/curseforge";
 import { openDialog } from "@/lib/native";
 import { ModpackImportController, validModpackInstanceId } from "@/lib/modpackImport";
 
-interface Props { open: boolean; onOpenChange: (open: boolean) => void; onImported: () => void; pickArchive?: () => Promise<string | string[] | null> }
+interface Props { open: boolean; onOpenChange: (open: boolean) => void; onImported: () => void; pickArchive?: () => Promise<string | string[] | null>; keyStatus?: () => Promise<boolean> }
 const chooseArchive = () => openDialog({ multiple: false, filters: [{ name: "Modpack", extensions: ["mrpack", "zip"] }] });
 const empty = { phase: "idle", busy: false, error: null, progress: null, canResume: false, instance: null } as const;
 const noSubscribe = () => () => {};
@@ -17,14 +18,18 @@ export function ModpackImportDialog(props: Props) {
   const { settings } = useSettings();
   return props.open ? <ImportForm key={`${settings.instancesDir}\0${settings.storeDir}`} {...props} /> : null;
 }
-function ImportForm({ onOpenChange, onImported, pickArchive = chooseArchive }: Props) {
+function ImportForm({ onOpenChange, onImported, pickArchive = chooseArchive, keyStatus = curseForgeKeyStatus }: Props) {
   const { settings } = useSettings();
   const { openSession } = useLauncher();
   const zh = settings.language === "zh";
   const say = (en: string, cn: string) => zh ? cn : en;
   const [id, setId] = useState("");
   const [file, setFile] = useState("");
-  const [provider, setProvider] = useState("modrinth");
+  const [provider, setProvider] = useState<"modrinth" | "curseforge">("modrinth");
+  const [hasKey, setHasKey] = useState(false);
+  const [keyChecking, setKeyChecking] = useState(false);
+  const [keyError, setKeyError] = useState(false);
+  const [keyRevision, setKeyRevision] = useState(0);
   const [picking, setPicking] = useState(false);
   const [pickerError, setPickerError] = useState(false);
   const [controller, setController] = useState<ModpackImportController | null>(null);
@@ -39,6 +44,12 @@ function ImportForm({ onOpenChange, onImported, pickArchive = chooseArchive }: P
       notified.current = true; onImported();
     }
   }, [state.phase, state.busy, onImported]);
+  useEffect(() => {
+    if (provider !== "curseforge") return;
+    let active = true; setHasKey(false); setKeyChecking(true); setKeyError(false);
+    void keyStatus().then((value) => { if (active) setHasKey(value); }).catch(() => { if (active) setKeyError(true); }).finally(() => { if (active) setKeyChecking(false); });
+    return () => { active = false; };
+  }, [provider, keyStatus, keyRevision]);
   const pick = async () => {
     if (pickingRef.current || owned.current) return;
     pickingRef.current = true; setPicking(true); setPickerError(false);
@@ -49,15 +60,18 @@ function ImportForm({ onOpenChange, onImported, pickArchive = chooseArchive }: P
     finally { pickingRef.current = false; if (alive.current) setPicking(false); }
   };
   const start = () => {
-    if (owned.current || pickingRef.current || provider !== "modrinth" || !file || !validModpackInstanceId(id)) return;
-    const next = new ModpackImportController({ directory: settings.instancesDir, storeDirectory: settings.storeDir, id, file }, openSession);
+    if (owned.current || pickingRef.current || (provider === "curseforge" && (!hasKey || keyChecking)) || !file || !validModpackInstanceId(id)) return;
+    const next = new ModpackImportController({ directory: settings.instancesDir, storeDirectory: settings.storeDir, id, file, provider }, openSession);
     owned.current = next; setController(next); void next.run();
   };
   const close = () => { if (!owned.current?.getSnapshot().busy) onOpenChange(false); };
   const errors: Record<string, string> = {
     INSTANCE_BUSY: state.canResume ? say("This instance is busy. No new setup request was submitted; wait for the other operation to finish, then resume game setup.", "此实例正忙，尚未提交新的游戏准备请求；请等待其他操作结束后恢复游戏准备。") : say("This instance is busy with another operation. The archive was not submitted. Wait for that operation to finish, then close and retry the import.", "此实例正在执行其他操作，归档尚未提交。请等待该操作结束，然后关闭并重新导入。"),
     INSTANCE_EXISTS: say("That instance ID already exists. Nothing was overwritten; close and choose a new ID.", "实例 ID 已存在，未覆盖任何内容；请关闭并使用新的 ID。"),
-    INVALID_PARAMS: say("Invalid archive or parameters. CurseForge packs require an API key and are not supported in this batch.", "归档或参数无效。CurseForge 整合包需要 API key，本批次尚不支持。"),
+    INVALID_PARAMS: say("Invalid archive or parameters. Check the archive and instance ID; for CurseForge archives select CurseForge and configure its key.", "归档或参数无效，请检查归档及实例 ID；CurseForge 归档需选择 CurseForge 并配置密钥。"),
+    CURSEFORGE_KEY_REQUIRED: say("No CurseForge API key is saved. Save it explicitly in Settings → CurseForge, then start a new import.", "未保存 CurseForge API key。请在设置 → CurseForge 中明确保存密钥，然后重新开始导入。"),
+    CURSEFORGE_KEY_INVALID: say("The saved CurseForge API key is invalid. Replace it in Settings → CurseForge.", "已保存的 CurseForge API key 无效，请在设置 → CurseForge 中替换。"),
+    CURSEFORGE_KEYCHAIN: say("The OS credential store could not be accessed. Check Settings → CurseForge.", "无法访问系统凭据库，请检查设置 → CurseForge。"),
     UNKNOWN_MODPACK_FORMAT: say("This archive is not a recognized modpack.", "此归档不是可识别的整合包。"),
     UNSUPPORTED_MODPACK_FORMAT: say("This modpack format version is unsupported.", "不支持此整合包格式版本。"),
     UNSUPPORTED_LOADER: say("This pack uses an unsupported loader.", "此整合包使用不支持的加载器。"),
@@ -72,8 +86,9 @@ function ImportForm({ onOpenChange, onImported, pickArchive = chooseArchive }: P
   return <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
     <DialogContent showCloseButton={!state.busy} className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{say("Import modpack", "导入整合包")}</DialogTitle><DialogDescription>{say("Creates a new isolated instance, then downloads and prepares its game files. Existing instances are never overwritten.", "创建新的隔离实例，然后下载和准备游戏文件，不覆盖已有实例。")}</DialogDescription></DialogHeader>
       <Label htmlFor="pack-provider">{say("Archive provider", "归档来源")}</Label>
-      <select id="pack-provider" value={provider} disabled={!!controller || picking} onChange={(event) => setProvider(event.target.value)} className="rounded border p-2"><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select>
-      {provider === "curseforge" ? <p role="status">{say("CurseForge import is blocked until API-key support is implemented. No key is requested or stored here.", "CurseForge 导入暂不可用，需等待 API key 支持。此处不收集或保存密钥。")}</p> : <>
+      <select id="pack-provider" value={provider} disabled={!!controller || picking} onChange={(event) => setProvider(event.target.value as "modrinth" | "curseforge")} className="rounded border p-2"><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select>
+      {provider === "curseforge" && <div className="space-y-2"><p role="status">{keyChecking ? say("Checking saved key…", "正在检查已保存的密钥…") : hasKey ? say("Uses the API key saved in the OS credential store. Core enforces author download permissions; unavailable files are not fetched from guessed URLs.", "使用系统凭据库中已保存的 API key。Core 遵守作者下载权限，不会猜测不可用文件的下载地址。") : say("No usable saved API key. Open Settings → CurseForge and explicitly save your key, then refresh its status here.", "尚无可用的已保存 API key。请打开设置 → CurseForge 并明确保存密钥，然后在此刷新状态。")}</p>{keyError && <p role="alert">{say("Cannot access the native credential store.", "无法访问原生凭据库。")}</p>}<Button variant="outline" disabled={keyChecking || !!controller} onClick={() => setKeyRevision((value) => value + 1)}>{say("Refresh key status", "刷新密钥状态")}</Button></div>}
+      <>
         <Label htmlFor="pack-instance-id">{say("New instance ID", "新实例 ID")}</Label><Input id="pack-instance-id" value={id} disabled={!!controller} onChange={(event) => setId(event.target.value)} />
         <p className="text-xs text-muted-foreground">{say("1–64 lowercase letters, digits, dots, underscores or hyphens; start with a letter or digit. Reserved Windows names are not allowed.", "1–64 位小写字母、数字、点、下划线或连字符，以字母或数字开头，不可使用 Windows 保留名称。")}</p>
         <Button variant="outline" onClick={() => void pick()} disabled={!!controller || picking}>{say("Choose archive", "选择归档")}</Button>
@@ -83,9 +98,9 @@ function ImportForm({ onOpenChange, onImported, pickArchive = chooseArchive }: P
         {phaseNames[state.phase] && <p role="status">{phaseNames[state.phase]}</p>}
         {state.progress && <p role="status">{state.progress.files} / {state.progress.total} {say("files", "文件")} · {state.progress.bytes} / {state.progress.bytesTotal} bytes</p>}
         {state.error && <div role="alert"><p>{state.error}: {errors[state.error] ?? say("The operation failed. Check the instance list before taking another action.", "操作失败，请先检查实例列表再进行下一步操作。")}</p><p>{state.error === "INSTANCE_BUSY" ? "" : state.canResume ? say("Archive import succeeded. Resume only game installation/preparation; the archive will not be imported again.", "归档导入已成功；仅恢复游戏安装/准备，不会再次导入归档。") : say("Archive import will not be repeated automatically. If the connection was interrupted, its outcome is unknown; inspect the instance before starting a new import.", "不会自动重复导入归档。若连接中断，结果可能未知；开始新导入前请检查实例。")}</p></div>}
-        {!controller && <Button onClick={start} disabled={!file || !validModpackInstanceId(id) || picking}>{say("Import into new instance", "导入到新实例")}</Button>}
+        {!controller && <Button onClick={start} disabled={!file || !validModpackInstanceId(id) || picking || (provider === "curseforge" && (!hasKey || keyChecking))}>{say("Import into new instance", "导入到新实例")}</Button>}
         {state.canResume && <Button onClick={() => { notified.current = false; void controller?.run(); }} disabled={state.busy}>{say("Resume game setup", "恢复游戏准备")}</Button>}
-      </>}
+      </>
       <Button variant="outline" onClick={close} disabled={state.busy}>{say("Close", "关闭")}</Button>
     </DialogContent>
   </Dialog>;

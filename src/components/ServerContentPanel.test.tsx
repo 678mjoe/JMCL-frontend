@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -10,6 +10,7 @@ const dom = new Window({ url: "http://localhost/" });
 Object.assign(globalThis, { window: dom, document: dom.document, localStorage: dom.localStorage, HTMLElement: dom.HTMLElement, Element: dom.Element, Node: dom.Node, Event: dom.Event, MouseEvent: dom.MouseEvent, HTMLInputElement: dom.HTMLInputElement, getComputedStyle: dom.getComputedStyle.bind(dom), IS_REACT_ACT_ENVIRONMENT: true });
 const { ServerContentPanel } = await import("./ServerContentPanel");
 let root: Root | undefined;
+const spies: { mockRestore: () => void }[] = [];
 let scope: ServerOperationScope;
 const server: ServerManifest = { id: "content-ui", name: "Fixture", version_id: "1.21.4", fabric_loader: "0.16.10", neoforge_version: null, forge_version: null, source: "official", accept_eula: true, java_path: null, installed: true };
 const entry: ServerContentEntry = { kind: "mod", file: "mods/fixture.jar", sha1: "a", size: 42, source: { provider: "modrinth", project_id: "fixture", version_id: "old", slug: "Fixture" }, enabled: true, as_dependency: false };
@@ -34,7 +35,7 @@ async function setup(state: "stopped" | "running" | "unknown" = "stopped", overr
   await render(); await click(kind === "mods" ? "Manage Mods" : "Manage datapacks"); await click("Load / refresh content");
   return { calls, render };
 }
-afterEach(async () => { await act(async () => root?.unmount()); root = undefined; dom.document.body.replaceChildren(); localStorage.clear(); });
+afterEach(async () => { await act(async () => root?.unmount()); root = undefined; for (const spy of spies.splice(0)) spy.mockRestore(); dom.document.body.replaceChildren(); localStorage.clear(); });
 describe("server content fixture DOM", () => {
   test("list, toggle, adopt and confirmed remove route through scoped server RPC", async () => {
     const { calls } = await setup(); expect(dom.document.body.textContent).toContain("mods/manual.jar");
@@ -86,4 +87,28 @@ describe("server content fixture DOM", () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
     expect(input("Search server-compatible projects")).toBeNull(); expect(dom.document.body.textContent).not.toContain("Server Mod fixture");
   });
+});
+test("CurseForge server versions retain native provider hint and explicit side warning", async () => {
+  const cf = await import("@/lib/curseforge");
+  spies.push(spyOn(cf, "curseForgeVersions").mockResolvedValue([
+    { id: "456", name: "Allowed", version_number: "456", game_versions: ["1.21.4"], loaders: ["fabric"], date_published: "2026-01-01", available: true },
+    { id: "455", name: "Restricted", version_number: "455", game_versions: ["1.21.4"], loaders: ["fabric"], date_published: "2026-01-01", available: false },
+  ]));
+  const { calls } = await setup("stopped", { serverModsList: async () => ({ stage: "server.mods.list", id: server.id, entries: [{ ...entry, kind: "mod", source: { provider: "curseforge", project_id: "123", version_id: "454" } }], unmanaged: [] }) });
+  await click("Choose version");
+  expect(dom.document.body.textContent).toContain("does not verify server-side compatibility");
+  expect(button("Author has disabled third-party downloads").disabled).toBe(true);
+  await click("Switch version");
+  expect(calls[0]?.slice(0, 6)).toEqual(["Mods.SetVersion", "/fixtures", server.id, "123", "456", { provider: "curseforge" }]);
+  expect(JSON.stringify(calls)).not.toContain("api_key");
+});
+for (const reverse of [false, true]) test(`server content blocks ambiguous cross-provider ID/slug selector (${reverse})`, async () => {
+  const cf = await import("@/lib/curseforge");
+  spies.push(spyOn(cf, "curseForgeVersions").mockResolvedValue([{ id: "456", name: "Allowed", version_number: "456", game_versions: ["1.21.4"], loaders: ["fabric"], date_published: "2026-01-01", available: true }]));
+  const entries = [{ ...entry, file: "mods/cf.jar", source: { provider: "curseforge", project_id: "123", version_id: "454" } }, { ...entry, file: "mods/modrinth.jar", source: { provider: "modrinth", project_id: "other", slug: "123", version_id: "old" } }];
+  const { calls } = await setup("stopped", { serverModsList: async () => ({ stage: "server.mods.list", id: server.id, entries: reverse ? entries.reverse() : entries, unmanaged: [] }) as never });
+  const row = [...dom.document.querySelectorAll("article")].find(el => el.textContent?.includes("mods/cf.jar"))!;
+  await act(async () => (row.querySelector("button") as unknown as HTMLButtonElement).click());
+  expect(button("Switch version").disabled).toBe(true); expect(dom.document.body.textContent).toContain("version switching is unsafe");
+  await click("Switch version"); expect(calls).toHaveLength(0);
 });

@@ -27,11 +27,10 @@ function displayName(entry: ContentEntry): string {
   return entry.source.slug ?? baseName(entry.file);
 }
 
-/** enable/disable/remove target: project id for provider entries, file for manual (§4). */
-function targetOf(entry: ContentEntry): { project: string } | { file: string } {
-  return entry.source.provider !== "manual" && entry.source.project_id
-    ? { project: entry.source.project_id }
-    : { file: entry.file };
+/** Exact registry paths avoid cross-provider project/slug collisions. Core's
+ * removal-by-project selector is Modrinth-only; file works for every provider. */
+export function contentEntryTarget(entry: ContentEntry): { file: string } {
+  return { file: entry.file };
 }
 
 type PanelState =
@@ -95,12 +94,12 @@ function ContentPanel({
   const toggle = (entry: ContentEntry) =>
     mutate(entry, () =>
       entry.enabled
-        ? session!.contentDisable(kind, directory, targetOf(entry))
-        : session!.contentEnable(kind, directory, targetOf(entry)),
+        ? session!.contentDisable(kind, directory, contentEntryTarget(entry))
+        : session!.contentEnable(kind, directory, contentEntryTarget(entry)),
     );
 
   const remove = (entry: ContentEntry) =>
-    mutate(entry, () => session!.contentRemove(kind, directory, targetOf(entry)));
+    mutate(entry, () => session!.contentRemove(kind, directory, contentEntryTarget(entry)));
 
   const adopt = async () => {
     if (!session) return;
