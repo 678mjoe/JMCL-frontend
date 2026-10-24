@@ -1,4 +1,4 @@
-name: Quality and native compile
+name: Quality and native packaging
 
 on:
   pull_request:
@@ -32,6 +32,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
+      - run: python scripts/test-verify-ci-package.py
       - run: bun run test
       - run: bun run build
       - run: bunx --no-install playwright install --with-deps chromium
@@ -47,12 +48,16 @@ jobs:
         include:
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+            bundle: deb
           - os: macos-15
             target: aarch64-apple-darwin
+            bundle: dmg
           - os: macos-15-intel
             target: x86_64-apple-darwin
+            bundle: dmg
           - os: windows-2025
             target: x86_64-pc-windows-msvc
+            bundle: nsis
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     defaults:
@@ -100,5 +105,9 @@ jobs:
       - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
       - name: Rust unit and isolated local RPC tests (not real services)
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
-      - name: Compile native application without signing, installer or publication
-        run: bun run tauri build --debug --no-bundle
+      # Debug reuses the test/check profile. These packages never leave the runner.
+      # --no-sign skips bundler signing; no identities, secrets or release services.
+      - name: Generate non-distributed debug package without code signing
+        run: bun run tauri build --debug --ci --no-sign --bundles '${{ matrix.bundle }}'
+      - name: Inspect package metadata, architecture and pinned sidecar (no installation)
+        run: python scripts/verify-ci-package.py --target '${{ matrix.target }}'

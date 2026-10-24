@@ -506,3 +506,5 @@ Mock 场景至少包含：
 5. 阶段 1 完成后才开始 SSH transport。
 
 阶段 8 后续实现状态（不修改范围或验收门槛）：[更新器代码记录](./docs/verification/2026-10-24-updater.md)新增官方 Tauri 插件、仅构建时配置的原生更新桥接、分步确认和合成状态测试；默认渠道仍禁用。生产渠道、真实签名更新、平台安装/重启/恢复验收仍未完成。
+
+阶段 8 安装包生成补充：质量 CI 在已有原生矩阵生成不分发的 debug-profile Debian、macOS DMG 和 Windows NSIS 包，并静态检查元数据、目标架构和固定 Core sidecar 的内容一致性；实际执行状态见[打包记录](./docs/verification/2026-10-24-packaging.md)。未执行安装器或应用，未上传二进制；正式签名、公证、release-profile、真实安装/升级/卸载和首个发布标签仍待独立授权与验收。

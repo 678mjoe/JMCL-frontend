@@ -14,19 +14,44 @@ gates; blocked native acceptance is not waived by a CI pass.
   using `scripts/prepare-sidecar.sh`; pass the `.exe` input explicitly on Windows.
 - Run frontend tests, production build, browser Mock E2E, Rust formatting/checks
   and applicable native tests. Distinguish tests skipped by platform conditions.
-- CI is compile/test evidence only: it does not establish native WebView, dialog,
-  keychain, SSH trust/agent, Minecraft graphics, or packaged installer behavior.
+- CI provides compile/test and non-distributed debug-package inspection evidence,
+  not native WebView, dialog, keychain, SSH trust/agent, Minecraft graphics, or
+  installer execution/upgrade/uninstall acceptance.
 - Never ship Mock builds, local caches, development credentials, personal paths,
   stale sidecars, or unsigned assets labeled as signed releases.
 
 ## Installer and platform gates
 
-These are preparation instructions, **not executed packaging results**. Future
-packaging requires an explicitly approved scope. Standard CI does not publish
-installers or create GitHub Releases.
+The quality workflow generates representative **debug-profile, non-distributed**
+packages on standard public CI runners: Linux x86_64 `.deb`, macOS Apple Silicon
+and Intel `.dmg` (containing `.app`), and Windows x86_64 NSIS `-setup.exe`.
+This reuses the existing native matrix, maximum two concurrent jobs and 45-minute
+job timeout; it does not add duplicate release-profile builds. `--no-sign` skips
+Tauri bundler signing, and updater artifacts remain disabled. No certificate,
+private signing identity, secret, notarization account, paid service, tag,
+release, upload or distribution is configured. Linkers may embed local ad-hoc
+Mach-O signatures; that is not Developer ID signing or notarization.
+
+`scripts/verify-ci-package.py` extracts Debian/NSIS archives or mounts DMGs
+read-only, checks package version/product metadata and host/sidecar target
+headers, and compares packaged Core bytes with the host-suffixed staged sidecar
+built from the pinned Core revision. Windows uses runner-provided 7-Zip; nothing
+executes the generated installer, launcher or sidecar. Temporary inspection
+files are removed and DMGs detached. Bundle hashes are logged, not uploaded.
+See [packaging verification](verification/2026-10-24-packaging.md) for actual
+results; adding this workflow is not evidence that each platform passed.
+
+This is package **generation**, not release/installation acceptance. Release
+optimization, MSI, AppImage/RPM, universal macOS, Windows ARM, layout/visual
+inspection and all installer lifecycle behavior remain outside this check.
+Tauri documents [Debian packaging](https://v2.tauri.app/distribute/debian/),
+[DMG packaging](https://v2.tauri.app/distribute/dmg/),
+[Windows installers](https://v2.tauri.app/distribute/windows-installer/) and
+[CLI build options](https://v2.tauri.app/reference/cli/).
 
 | Target | Required before release |
 | --- | --- |
+| Linux x86_64 | Release-profile Debian packaging; clean-machine dependency, install/open/upgrade/uninstall and data-preservation acceptance |
 | macOS Apple Silicon and Intel | Matching sidecar; Tauri `.app`/DMG packaging; approved Developer ID signing and notarization; verify app and nested sidecar signature; Gatekeeper check on a clean machine; install/open/upgrade/uninstall and data preservation |
 | Windows x86_64 | Matching `.exe` sidecar; WebView2 prerequisite behavior; chosen NSIS/MSI installer tested with ordinary-user permissions; approved Authenticode signing/timestamping; verify signature on clean Windows; install/upgrade/uninstall and data preservation |
 
