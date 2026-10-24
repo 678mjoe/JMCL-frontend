@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Gamepad2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { ModpackImportDialog } from "@/components/ModpackImportDialog";
 import { CreateInstanceDialog } from "@/components/CreateInstanceDialog";
 import { DeleteInstanceDialog } from "@/components/DeleteInstanceDialog";
 import { InstanceCard } from "@/components/InstanceCard";
@@ -26,6 +27,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
 
   const [instances, setInstances] = useState<InstanceManifest[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [logInstanceId, setLogInstanceId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstanceManifest | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -149,6 +151,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
           >
             <RefreshCw />
           </Button>
+          <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!coreReady}>{settings.language === "zh" ? "导入整合包" : "Import modpack"}</Button>
           <Button onClick={() => setDialogOpen(true)} disabled={!coreReady}>
             <Plus />
             {t("instances.new")}
@@ -203,6 +206,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
         </div>
       )}
 
+      <ModpackImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => void refresh()} />
       <CreateInstanceDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}

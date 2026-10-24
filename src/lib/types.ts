@@ -491,6 +491,49 @@ export interface ContentListResult {
   unmanaged: string[];
 }
 
+/** Client datapack registry paths are relative to the selected world, not the game tree. */
+export interface DatapackEntry extends Omit<ContentEntry, "kind"> { kind: "datapack" }
+export interface DatapackListResult {
+  stage: "datapacks.list";
+  world: string;
+  entries: DatapackEntry[];
+  unmanaged: string[];
+}
+export interface DatapackInstallResult {
+  stage: "datapacks.install";
+  world: string;
+  installed: ServerInstalledContent[];
+  skipped: number;
+}
+export interface DatapackSetVersionResult extends Omit<ServerContentSetVersionResult, "stage" | "id"> {
+  stage: "datapacks.set-version";
+  world: string;
+}
+export interface DatapackToggleResult {
+  stage: "datapacks.enable" | "datapacks.disable";
+  world: string;
+  changed: boolean;
+  entry: DatapackEntry | null;
+}
+export interface DatapackRemoveResult {
+  stage: "datapacks.remove";
+  world: string;
+  removed: DatapackEntry;
+}
+export interface DatapackAdoptResult {
+  stage: "datapacks.adopt";
+  world: string;
+  adopted: ServerInstalledContent[];
+}
+export type DatapackErrorCode =
+  | "INVALID_PARAMS" | "WORLD_NOT_FOUND" | "WORLD_LOCKED" | "CONTENT_NOT_FOUND"
+  | "NO_COMPATIBLE_VERSION" | "INCOMPATIBLE_VERSION" | "VERSION_PROJECT_MISMATCH"
+  | "CONTENT_CONFLICT" | "CONTENT_KIND_MISMATCH" | "UNSUPPORTED_PROJECT_TYPE"
+  | "DOWNLOAD_UNAVAILABLE" | "HTTP_STATUS_ERROR" | "RESPONSE_TOO_LARGE"
+  | "STORE_ROOT_ERROR" | "CONTENT_LIST_FAILED" | "CONTENT_INSTALL_FAILED"
+  | "CONTENT_SET_VERSION_FAILED" | "CONTENT_TOGGLE_FAILED" | "CONTENT_REMOVE_FAILED"
+  | "CONTENT_ADOPT_FAILED";
+
 /**
  * One save directory under `<game dir>/saves/` (contract §4, docs/worlds.md).
  * All level.dat metadata fields are null for missing/corrupt level.dat.

@@ -21,6 +21,12 @@ import { isMockTransport } from "./transportMode";
 import type {
   AccountProfile,
   AuthSession,
+  DatapackListResult,
+  DatapackInstallResult,
+  DatapackSetVersionResult,
+  DatapackToggleResult,
+  DatapackRemoveResult,
+  DatapackAdoptResult,
   ContentKind,
   ContentListResult,
   CoreIdentity,
@@ -930,6 +936,48 @@ export class CoreSession {
     }, undefined, mutationOptions(directory, "content-adopt"));
   }
 
+  // Client datapacks are world scoped. Only install/set-version take a Minecraft version.
+  datapacksList(directory: string, world: string) {
+    return this.request<DatapackListResult>("datapacks.list", { directory, world });
+  }
+
+  datapacksInstall(directory: string, world: string, minecraftVersion: string, project: string,
+    opts: Partial<{ version_id: string; provider: "modrinth" | "curseforge"; api_key: string;
+      with_dependencies: boolean; store_directory: string; workers: number; retries: number }> = {},
+    onEvent?: EventHandler<InstallEvent>,
+  ) {
+    return this.request<DatapackInstallResult, InstallEvent>("datapacks.install", {
+      directory, world, minecraft_version: minecraftVersion, project, ...opts,
+    }, onEvent, mutationOptions(directory, "content-install"));
+  }
+
+  datapacksSetVersion(directory: string, world: string, minecraftVersion: string, project: string,
+    versionId: string,
+    opts: Partial<{ api_key: string; store_directory: string; workers: number; retries: number }> = {},
+    onEvent?: EventHandler<InstallEvent>,
+  ) {
+    return this.request<DatapackSetVersionResult, InstallEvent>("datapacks.set-version", {
+      directory, world, minecraft_version: minecraftVersion, project, version_id: versionId, ...opts,
+    }, onEvent, mutationOptions(directory, "content-set-version"));
+  }
+
+  datapacksEnable(directory: string, world: string, target: { project: string } | { file: string }) {
+    return this.request<DatapackToggleResult>("datapacks.enable", { directory, world, ...target },
+      undefined, mutationOptions(directory, "content-enable"));
+  }
+  datapacksDisable(directory: string, world: string, target: { project: string } | { file: string }) {
+    return this.request<DatapackToggleResult>("datapacks.disable", { directory, world, ...target },
+      undefined, mutationOptions(directory, "content-disable"));
+  }
+  datapacksRemove(directory: string, world: string, target: { project: string } | { file: string }) {
+    return this.request<DatapackRemoveResult>("datapacks.remove", { directory, world, ...target },
+      undefined, mutationOptions(directory, "content-remove"));
+  }
+  datapacksAdopt(directory: string, world: string, storeDirectory?: string) {
+    return this.request<DatapackAdoptResult>("datapacks.adopt", { directory, world, store_directory: storeDirectory },
+      undefined, mutationOptions(directory, "content-adopt"));
+  }
+
   // --- worlds (saves; same game `directory` as content methods, contract §4) ----
   // Worlds are mutable instance-private state; mutations are crash-safe staging
   // operations and refuse worlds whose session.lock flock is held by a running
@@ -1034,13 +1082,14 @@ export class CoreSession {
       workers: number;
       retries: number;
     }> = {},
-    onEvent?: EventHandler,
+    onEvent?: EventHandler<InstallEvent>,
+    requestOptions: RequestOptions = {},
   ) {
-    return this.request<ModpackInstallResult>(
+    return this.request<ModpackInstallResult, InstallEvent>(
       "modpack.install",
       { directory, id, file, ...opts },
       onEvent,
-      { instanceId: instanceMutationKey(directory, id), mutation: "install" },
+      { instanceId: instanceMutationKey(directory, id), mutation: "install", ...requestOptions },
     );
   }
 

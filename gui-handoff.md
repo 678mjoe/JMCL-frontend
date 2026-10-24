@@ -464,8 +464,10 @@ Semantics the GUI must respect:
 
 Data packs (`datapacks.list|install|set-version|enable|disable|remove|adopt`)
 attach to one world instead of the instance: every method takes the game
-`directory` plus a required `world` name and `minecraft_version` (no
-`loader`), manages `saves/<world>/datapacks/*.zip`, and keeps its registry at
+`directory` plus a required `world` name. Only `install` and `set-version`
+also require `minecraft_version` (no `loader`); list, toggle, remove and adopt
+do not take a Minecraft version (verified against Core `97b65186`,
+`src/protocol/datapacks.zig`). It manages `saves/<world>/datapacks/*.zip`, and keeps its registry at
 `saves/<world>/.jmcl/content.json` — the entry shape is identical but
 relative to the world. Results echo `world`. Mutations refuse a live-game
 world (`WORLD_LOCKED`, same `session.lock` probe as world mutations) and a
