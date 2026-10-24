@@ -15,6 +15,7 @@ import {
   instanceMutationKeyFromGameDirectory,
   type InstanceMutation,
 } from "./instanceCoordinator";
+import type { StoreGcResult } from "./storeGc";
 import { mockRequest } from "./mockTransport";
 import { curseForgeKeyStatus } from "./curseforge";
 import { closeEndpointMockSession, endpointMockRequest, openEndpointMockSession } from "./endpointMock";
@@ -41,6 +42,8 @@ import type {
   JavaRuntimeListResult,
   JavaSelectResult,
   LoaderFields,
+  LaunchOptions,
+  LaunchPlanResult,
   LoaderName,
   MinecraftExchangeResult,
   ModpackInstallResult,
@@ -249,7 +252,9 @@ export type ServerContentSetVersionOptions = Partial<{
 export type LaunchExecuteOptions = {
   source?: Source;
   store_directory?: string;
-  options?: Record<string, unknown>;
+  options?: LaunchOptions;
+  java_paths?: string[];
+  arch?: "x86" | "x86_64" | "arm" | "arm64";
   java_policy?: JavaPolicy;
   java_override?: string;
 } & LoaderFields;
@@ -531,21 +536,14 @@ export class CoreSession {
 
   launchPlan(
     id: string,
+    directory: string,
     nativesDirectory: string,
     auth: AuthSession,
-    options: Record<string, unknown> = {},
-    java: Partial<{
-      java_policy: JavaPolicy;
-      java_override: string;
-      store_directory: string;
-    }> = {},
+    launch: LaunchExecuteOptions = {},
   ) {
-    return this.request<Record<string, unknown>>("launch.plan", {
-      id,
+    return this.request<LaunchPlanResult>("launch.plan", {
+      ...launchExecuteParams(id, directory, auth, launch),
       natives_directory: nativesDirectory,
-      auth,
-      options,
-      ...java,
     });
   }
 
@@ -1117,7 +1115,7 @@ export class CoreSession {
       min_age_seconds: number;
     }> = {},
   ) {
-    return this.request<Record<string, unknown>>("store.gc", { ...opts });
+    return this.request<StoreGcResult>("store.gc", { ...opts });
   }
 
   // --- Microsoft / Minecraft auth (secrets are caller-supplied, contract §5) ------

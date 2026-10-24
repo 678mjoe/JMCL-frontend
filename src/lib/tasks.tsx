@@ -15,12 +15,13 @@ import {
   type ReactNode,
 } from "react";
 import { useLauncher, errorText } from "./launcher";
-import type { AuthSession, InstanceManifest, LoaderFields } from "./types";
+import type { AuthSession, InstanceManifest, LoaderFields, LaunchOptions } from "./types";
 import {
   appendLaunchOutput,
   runLaunchRequest,
   runtimeInstallEvent,
 } from "./launchRunner";
+import { instanceLaunchOptions } from "./instanceLaunch";
 import { withOpenedSession } from "./sessionLifecycle";
 
 export type TaskKind = "install" | "launch" | "validate";
@@ -76,6 +77,7 @@ interface TasksContextValue {
     dirs: StartDirs,
     auth: AuthSession,
     javaOverride?: string | null,
+    options?: LaunchOptions,
   ) => Promise<void>;
   clearTask: (kind: TaskKind, instanceId: string) => void;
 }
@@ -230,6 +232,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       dirs: StartDirs,
       auth: AuthSession,
       javaOverride?: string | null,
+      options: LaunchOptions = {},
     ) => {
       const key = beginTask("launch", instance.id, "task.stage.launch");
       try {
@@ -240,12 +243,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
                     instance.version_id,
                     `${dirs.instancesDir}/${instance.id}/.minecraft`,
                     auth,
-                    {
-                      source: instance.source,
-                      store_directory: dirs.storeDir,
-                      ...loaderFieldsOf(instance),
-                      ...(javaOverride ? { java_override: javaOverride } : {}),
-                    },
+                    instanceLaunchOptions(instance, dirs.storeDir, javaOverride, options),
                     onEvent,
                   ),
                 (event, buffer) => {

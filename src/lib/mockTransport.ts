@@ -576,6 +576,14 @@ export async function mockRequest<T>(
       loader, files_installed: 4, files_skipped: 0, overrides_written: 1,
     } as T;
   }
+  if (method === "launch.plan") {
+    if (!id || !directory || typeof params.natives_directory !== "string" || !params.natives_directory) rpcFailure("INVALID_PARAMS", "Missing launch plan paths");
+    // Deliberately synthetic: never echo authentication or arbitrary input argv.
+    return { version_id: id, required_java: 21, runtime: { executable: "/mock/java" },
+      java_source: "local", forced: !!params.java_override,
+      launch: { java_executable: "/mock/java", working_directory: directory,
+        redacted_argv: ["/mock/java", "<mock launch plan>", "<redacted>"], sensitive_argv_indices: [2] } } as T;
+  }
   if (method === "launch.execute") {
     handler?.({
       kind: "diagnostic",
@@ -937,7 +945,16 @@ export async function mockRequest<T>(
         xuid: "123456789",
       },
     } as T;
-  if (method === "store.gc") return { removed: 0 } as T;
+  if (method === "store.gc") {
+    const dryRun = params.dry_run === undefined ? true : params.dry_run, age = params.min_age_seconds === undefined ? 86400 : params.min_age_seconds;
+    const store = params.store_directory === undefined ? "/mock/store" : params.store_directory;
+    if (typeof store !== "string" || !store.trim() || typeof dryRun !== "boolean" || typeof age !== "number" || !Number.isSafeInteger(age) || age < 0) rpcFailure("INVALID_PARAMS", "Invalid synthetic GC parameters");
+    return { dry_run: dryRun, min_age_seconds: age, summary: {
+      objects_scanned: 8, objects_eligible: 2, objects_deleted: dryRun ? 0 : 2,
+      bytes_eligible: 2048, bytes_deleted: dryRun ? 0 : 2048,
+      objects_linked: 3, objects_young: 1, objects_ignored: 1, objects_busy: 1, errors: 0,
+    } } as T;
+  }
   throw {
     kind: "rpc",
     code: "METHOD_NOT_FOUND",

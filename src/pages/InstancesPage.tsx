@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorText, useLauncher } from "@/lib/launcher";
 import { AuthTransientError, ReloginRequiredError, useLaunchAuth } from "@/lib/auth";
+import { launchOptionsFor } from "@/lib/launchOptions";
 import { useSettings } from "@/lib/settings";
 import { useTasks, type TaskStatus } from "@/lib/tasks";
 import type { InstanceManifest } from "@/lib/types";
@@ -25,7 +26,19 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
   const { tasks, taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
   const resolveLaunchAuth = useLaunchAuth();
 
-  const [instances, setInstances] = useState<InstanceManifest[]>([]);
+  const rootRef = useRef(settings.instancesDir);
+  const scopeGeneration = useRef(0);
+  if (rootRef.current !== settings.instancesDir) scopeGeneration.current++;
+  rootRef.current = settings.instancesDir;
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; scopeGeneration.current++; }; }, []);
+  const refreshRevision = useRef(0);
+  const [loaded, setLoaded] = useState<{ root: string; instances: InstanceManifest[] }>({ root: "", instances: [] });
+  const instances = loaded.root === settings.instancesDir ? loaded.instances : [];
+  const setInstances = (update: (current: InstanceManifest[]) => InstanceManifest[]) => {
+    if (!mounted.current || rootRef.current !== settings.instancesDir) return;
+    setLoaded(current => ({ root: settings.instancesDir, instances: update(current.root === settings.instancesDir ? current.instances : []) }));
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [logInstanceId, setLogInstanceId] = useState<string | null>(null);
@@ -49,11 +62,14 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
 
   const refresh = useCallback(async () => {
     if (status !== "ready" || !session || !settings.instancesDir) return;
+    const generation = scopeGeneration.current;
+    const revision = ++refreshRevision.current;
+    const current = () => mounted.current && generation === scopeGeneration.current && revision === refreshRevision.current;
     try {
       const result = await session.instanceList(settings.instancesDir);
-      setInstances(result.instances);
+      if (current()) setLoaded({ root: settings.instancesDir, instances: result.instances });
     } catch (e) {
-      toast.error(errorText(e));
+      if (current()) toast.error(errorText(e));
     }
   }, [status, session, settings.instancesDir]);
 
@@ -84,6 +100,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
   }, [tasks, refresh]);
 
   const handleCreated = (instance: InstanceManifest) => {
+    if (!mounted.current || rootRef.current !== settings.instancesDir) return;
     setDialogOpen(false);
     setInstances((current) => {
       const index = current.findIndex((item) => item.id === instance.id);
@@ -101,10 +118,13 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
   };
 
   const handleLaunch = (instance: InstanceManifest) => {
+    if (loaded.root !== settings.instancesDir || !instances.includes(instance)) return;
+    const generation = scopeGeneration.current;
     void (async () => {
       try {
         const auth = await resolveLaunchAuth();
-        void startLaunch(instance, dirs, auth, settings.javaOverrides[instance.id]);
+        if (!mounted.current || generation !== scopeGeneration.current || rootRef.current !== dirs.instancesDir) return;
+        void startLaunch(instance, dirs, auth, settings.javaOverrides[instance.id], launchOptionsFor(settings.launchOptions, dirs.instancesDir, instance.id));
         setLogInstanceId(instance.id);
       } catch (e) {
         toast.error(
@@ -120,7 +140,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
 
   const confirmDelete = async () => {
     const target = deleteTarget;
-    if (!target || !session) return;
+    if (!target || !session || loaded.root !== settings.instancesDir || !instances.includes(target)) return;
     setDeleting(true);
     try {
       await session.instanceDelete(settings.instancesDir, target.id);
@@ -219,7 +239,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
         }}
       />
       <DeleteInstanceDialog
-        instance={deleteTarget}
+        instance={deleteTarget && loaded.root === settings.instancesDir && instances.includes(deleteTarget) ? deleteTarget : null}
         deleting={deleting}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDelete()}

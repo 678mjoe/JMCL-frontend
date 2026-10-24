@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { StoreGcSettings } from "@/components/StoreGcSettings";
 import { CurseForgeSettings } from "@/components/CurseForgeSettings";
 import { EndpointManager } from "@/components/EndpointManager";
 import { useMicrosoftAccounts } from "@/lib/auth";
@@ -227,6 +228,10 @@ export function SettingsPage() {
         <Separator />
 
         <CurseForgeSettings />
+
+        <Separator />
+
+        <StoreGcSettings />
 
         <Separator />
 

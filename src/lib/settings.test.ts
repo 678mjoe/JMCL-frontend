@@ -9,3 +9,8 @@ describe("settings migration", () => {
     expect(settings.theme).toBe("dark");
   });
 });
+
+ test("malformed individual preferences do not crash startup or erase valid legacy values", () => {
+  const settings = mergeStoredSettings({ theme: 1, language: null, instancesDir: [], storeDir: "/keep", javaOverrides: null, activeAccountId: {}, launchOptions: { version: 999 } });
+  expect(settings.theme).toBe("system"); expect(settings.language).toBe("zh"); expect(settings.instancesDir).toBe(""); expect(settings.storeDir).toBe("/keep"); expect(settings.javaOverrides).toEqual({}); expect(settings.activeAccountId).toBeNull(); expect(settings.launchOptions).toEqual({version:1,instances:{}});
+ });
