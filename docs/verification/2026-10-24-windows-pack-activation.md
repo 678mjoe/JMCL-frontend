@@ -92,3 +92,23 @@ Windows native CI execution is pending. macOS/Windows visual acceptance, real
 Minecraft loading, custom filesystem/ACL deployment compatibility, and external
 client/process acceptance remain pending. Do not infer those from Linux tests or
 cross-target checking.
+
+## Initial native CI and corrective regression
+
+[Run 40052502149](https://github.com/678mjoe/JMCL-frontend/actions/runs/40052502149)
+on `9d5184f571320a2f07519cc4e81b9889fd6822f7` passed frontend (including all
+three browser E2E scenarios), Linux, macOS ARM64 and macOS Intel. Windows
+`cargo check` and linking passed; runtime unit tests were **57 passed, 1 failed**.
+The failure was the junction fixture's directory rename receiving sharing
+violation while concurrent activation tests held common ancestor directories.
+Resourcepack/Iris/Oculus roundtrips and file-symlink/hardlink/conflict checks passed,
+but this was not an overall Windows pass and no merge was performed.
+
+Directory handles now allow READ|WRITE sharing while still denying DELETE
+sharing, so unrelated children can be created/renamed without relocating the
+pinned directory. Config-file handles still deny WRITE and DELETE sharing;
+staging remains exclusive. Reparse safety continues to come from single-leaf
+handle-relative opens, not sharing flags. A deterministic sibling-directory
+rename regression runs while the first instance's ancestor handles remain held,
+in addition to the existing rejection of renaming the pinned instance/game and
+junction/target-symlink tests. Corrected exact-head CI must pass before merge.

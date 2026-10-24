@@ -98,6 +98,7 @@ fn open_nt(
     parent: Option<&File>,
     name: &str,
     create: bool,
+    directory: bool,
     security: *const windows_sys::Win32::Security::SECURITY_DESCRIPTOR,
 ) -> Result<File, i32> {
     let mut wide: Vec<u16> = name.encode_utf16().collect();
@@ -119,8 +120,9 @@ fn open_nt(
     };
     let mut handle: HANDLE = null_mut();
     let mut status = IO_STATUS_BLOCK::default();
-    // GENERIC_READ includes LIST_DIRECTORY for directories. Deny writes and
-    // deletion while inspecting; pre-existing conflicting handles fail closed.
+    // GENERIC_READ includes LIST_DIRECTORY for directories. Directory WRITE
+    // sharing permits unrelated child creation/rename; no DELETE sharing pins
+    // the directory itself. Files still deny WRITE sharing while inspected.
     let access = FILE_GENERIC_READ
         | if create {
             FILE_GENERIC_WRITE | DELETE
@@ -137,7 +139,13 @@ fn open_nt(
             &mut status,
             null(),
             FILE_ATTRIBUTE_NORMAL,
-            if create { 0 } else { FILE_SHARE_READ },
+            if create {
+                0
+            } else if directory {
+                FILE_SHARE_READ | FILE_SHARE_WRITE
+            } else {
+                FILE_SHARE_READ
+            },
             if create { FILE_CREATE } else { FILE_OPEN },
             FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             null(),
@@ -159,7 +167,7 @@ fn child(
     if !leaf(name) {
         return Err(fail());
     }
-    let file = open_nt(Some(parent), name, false, null()).map_err(|_| fail())?;
+    let file = open_nt(Some(parent), name, false, directory, null()).map_err(|_| fail())?;
     let metadata = info(&file)?;
     if (metadata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0) != directory
         || (!directory && single_link && metadata.nNumberOfLinks != 1)
@@ -170,7 +178,7 @@ fn child(
     Ok(file)
 }
 fn optional_dir(parent: &File, name: &str) -> Result<Option<File>, SessionError> {
-    match open_nt(Some(parent), name, false, null()) {
+    match open_nt(Some(parent), name, false, true, null()) {
         // STATUS_OBJECT_NAME_NOT_FOUND only, not access/sharing/reparse failures.
         Err(status) if status == 0xC0000034u32 as i32 => Ok(None),
         Err(_) => Err(fail()),
@@ -232,8 +240,14 @@ impl InstanceFiles {
         }
         // Only a local DOS drive root is resolved by name. Every subsequent
         // directory and file is opened by a single leaf relative to its handle.
-        let volume = open_nt(None, &format!(r"\??\{}:\", bytes[0] as char), false, null())
-            .map_err(|_| fail())?;
+        let volume = open_nt(
+            None,
+            &format!(r"\??\{}:\", bytes[0] as char),
+            false,
+            true,
+            null(),
+        )
+        .map_err(|_| fail())?;
         if info(&volume)?.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0 {
             return Err(fail());
         }
@@ -289,7 +303,7 @@ impl InstanceFiles {
         })
     }
     fn target(&self) -> Result<File, SessionError> {
-        match open_nt(Some(&self.game), self.target_name, false, null()) {
+        match open_nt(Some(&self.game), self.target_name, false, false, null()) {
             Err(status) if status == 0xC0000034u32 as i32 => Err(error(if self.shader {
                 "SHADER_ACTIVATION_CONFIG_MISSING"
             } else {
@@ -455,8 +469,14 @@ impl InstanceFiles {
             return Err(fail());
         }
         let temporary = format!(".jmcl-options-{}-{nonce}.tmp", std::process::id());
-        let output = open_nt(Some(&self.game), &temporary, true, security.as_ptr().cast())
-            .map_err(|_| fail())?;
+        let output = open_nt(
+            Some(&self.game),
+            &temporary,
+            true,
+            false,
+            security.as_ptr().cast(),
+        )
+        .map_err(|_| fail())?;
         struct Temporary(File, bool);
         impl Drop for Temporary {
             fn drop(&mut self) {

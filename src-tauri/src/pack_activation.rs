@@ -1735,6 +1735,12 @@ mod tests {
             let files = files::InstanceFiles::open(&f.root(), "demo").unwrap();
             assert!(fs::rename(f.root.join("demo"), f.root.join("moved")).is_err());
             assert!(fs::rename(f.path(""), f.root.join("moved-game")).is_err());
+            // Pinning shared ancestors must not prevent unrelated siblings from
+            // being renamed. Only the validated directory itself is pinned.
+            let sibling = Fixture::new();
+            let sibling_moved = sibling.root.with_extension("moved");
+            fs::rename(&sibling.root, &sibling_moved).unwrap();
+            fs::rename(&sibling_moved, &sibling.root).unwrap();
             let original = files.options().unwrap();
             let temporary = f.path(&format!(".jmcl-options-{}-123456.tmp", std::process::id()));
             fs::write(&temporary, "do not overwrite").unwrap();
