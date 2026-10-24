@@ -24,11 +24,11 @@ Confirm separate instance/store directories, create an instance, install/prepare
 - Mod、资源包、光影、世界数据包可通过兼容版本搜索安装和管理。CurseForge 需要在原生设置中配置 API key；不要把 key 写入问题报告或浏览器代码。
 - 整合包导入使用隔离实例；导入成功后仍可能需要安装/准备游戏。读取归档不代表下载和运行已成功。
 - **已安装 ≠ 已选择 ≠ 兼容 ≠ 实际加载。** 资源包顺序与光影配置修改前停止所有游戏进程并确认。JMCL 无法证明外部启动的游戏已停止。
-- Windows 配置写入、未知/旧版资源包格式和 OptiFine/其他未知运行时配置不受支持；使用游戏内菜单。Iris/Oculus 只修改明确选择的已有配置，目录兼容结果不保证 GPU 或游戏加载。
+- Windows 配置写入要求本地卷中的非链接路径，拒绝重解析点、硬链接配置及无法安全访问的文件；目标平台执行验证见 [Windows 激活记录](verification/2026-10-24-windows-pack-activation.md)。未知/旧版资源包格式和 OptiFine/其他未知运行时配置不受支持；使用游戏内菜单。Iris/Oculus 只修改明确选择的已有配置，目录兼容结果不保证 GPU 或游戏加载。
 - 世界删除和覆盖恢复不可逆；先导出/备份并确认可恢复性。不要在游戏运行时操作世界。
 - 共享存储清理先做 dry-run，核对目录和候选项再确认；不确定结果时先重新预览，不自动重试删除。
 
-Use compatible catalog versions. Imported packs may still need game installation/preparation. Installed files, selection, compatibility and actual loading are separate. Stop every game before config/world changes; keep independent backups before delete/restore. Windows activation writes and unknown runtime formats are unsupported. Review store cleanup's dry-run and exact directory before confirming.
+Use compatible catalog versions. Imported packs may still need game installation/preparation. Installed files, selection, compatibility and actual loading are separate. Stop every game before config/world changes; keep independent backups before delete/restore. Windows activation requires non-linked paths on a local volume and refuses unsupported access. Unknown runtime formats remain unsupported. Review store cleanup's dry-run and exact directory before confirming.
 
 ## 远端服务器 / Remote servers
 
