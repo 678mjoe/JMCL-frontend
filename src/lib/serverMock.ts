@@ -45,6 +45,8 @@ export interface ServerMockServer {
   backups: ServerBackupEntry[];
   /** Private mock payload metadata; not serialized in ServerBackupEntry results. */
   backup_world_sets: Record<string, string[]>;
+  /** Synthetic archive contents, independent from later world mutations. */
+  backup_world_entries: Record<string, ServerWorldEntry[]>;
   mods: { entries: ServerContentEntry[]; unmanaged: string[] };
   datapacks: { entries: ServerContentEntry[]; unmanaged: string[] };
 }
@@ -327,6 +329,7 @@ function makeServer(
     worlds: options.worlds ?? [],
     backups: options.backups ?? [],
     backup_world_sets: options.backup_world_sets ?? {},
+    backup_world_entries: options.backup_world_entries ?? {},
     mods: options.mods ?? { entries: [], unmanaged: [] },
     datapacks: options.datapacks ?? { entries: [], unmanaged: [] },
   };
@@ -855,10 +858,21 @@ function requireWorld(server: ServerMockServer, name: string): ServerWorldEntry 
   return world;
 }
 
+function baseWorldNames(server: ServerMockServer): string[] {
+  const base = server.properties?.["level-name"];
+  return base ? [base, `${base}_nether`, `${base}_the_end`] : [];
+}
+
+function unlockedWorlds(server: ServerMockServer, names: string[]): void {
+  if (server.worlds.some((world) => names.includes(world.name) && world.locked)) {
+    failure("WORLD_LOCKED", "A mock world is locked");
+  }
+}
+
 function serverWorldsList(state: ServerMockState, params: Record<string, unknown>) {
   const server = serverFor(state, params);
   optionalText(params, "minecraft_version");
-  return { stage: "server.worlds.list" as const, id: server.manifest.id, worlds: copy(server.worlds) };
+  return { stage: "server.worlds.list" as const, id: server.manifest.id, worlds: copy(server.worlds.filter((world) => baseWorldNames(server).includes(world.name))) };
 }
 
 function serverWorldsGet(state: ServerMockState, params: Record<string, unknown>) {
@@ -884,6 +898,7 @@ function serverWorldsRename(state: ServerMockState, params: Record<string, unkno
   const baseName = server.properties?.["level-name"];
   const renamingBase = baseName === oldName;
   const siblingSuffixes = ["_nether", "_the_end"];
+  unlockedWorlds(server, renamingBase ? baseWorldNames(server) : [oldName]);
   if (renamingBase) {
     for (const suffix of siblingSuffixes) {
       const oldSibling = `${oldName}${suffix}`;
@@ -919,6 +934,7 @@ function serverWorldsDelete(state: ServerMockState, params: Record<string, unkno
   const deletedNames = baseName === name
     ? new Set([name, `${name}_nether`, `${name}_the_end`])
     : new Set([name]);
+  unlockedWorlds(server, [...deletedNames]);
   server.worlds = server.worlds.filter((world) => !deletedNames.has(world.name));
   return { stage: "server.worlds.delete" as const, deleted: name };
 }
@@ -940,9 +956,11 @@ function serverWorldsBackup(state: ServerMockState, params: Record<string, unkno
     ? [world]
     : [baseName, `${baseName}_nether`, `${baseName}_the_end`].filter((name) => server.worlds.some((item) => item.name === name));
   if (!world && !server.worlds.some((item) => item.name === baseName)) failure("WORLD_NOT_FOUND", "No mock world matches the base level name");
+  unlockedWorlds(server, names);
   const backup = { file, world: world ?? baseName, created_ms: state.clock_ms, size_bytes: 8192 };
   server.backups.unshift(backup);
   server.backup_world_sets[file] = names;
+  server.backup_world_entries[file] = copy(server.worlds.filter((entry) => names.includes(entry.name)));
   return { stage: "server.worlds.backup" as const, backup: file };
 }
 
@@ -966,9 +984,10 @@ function serverWorldsRestore(state: ServerMockState, params: Record<string, unkn
   if (params.replace !== true && names.some((name) => server.worlds.some((world) => world.name === name))) {
     failure("WORLD_EXISTS", "The restored mock world already exists");
   }
+  unlockedWorlds(server, names);
   const archivedNames = new Set(names);
   server.worlds = server.worlds.filter((world) => !archivedNames.has(world.name));
-  server.worlds.push(...names.map((name) => makeWorld(name, state.clock_ms)));
+  server.worlds.push(...copy(server.backup_world_entries[file] ?? names.map((name) => makeWorld(name))));
   return { stage: "server.worlds.restore" as const, restored: file };
 }
 
@@ -978,6 +997,8 @@ function serverWorldsBackupDelete(state: ServerMockState, params: Record<string,
   stopped(server);
   if (!server.backups.some((backup) => backup.file === file)) failure("BACKUP_NOT_FOUND", "No mock backup matches the given file");
   server.backups = server.backups.filter((backup) => backup.file !== file);
+  delete server.backup_world_sets[file];
+  delete server.backup_world_entries[file];
   return { stage: "server.worlds.backups.delete" as const, deleted: file };
 }
 

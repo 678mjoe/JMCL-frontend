@@ -140,6 +140,23 @@ describe("server RPC wire shapes", () => {
     ]);
   });
 
+  test("whole-server backups omit client paths and world selectors; restore replacement is explicit", async () => {
+    const calls: CapturedRequest[] = [];
+    const session = captureSession(calls);
+    await session.serverWorldsBackup("/fixture/servers", "demo");
+    await session.serverWorldsBackup("/fixture/servers", "demo", { label: "before-rename" });
+    await session.serverWorldsRestore("/fixture/servers", "demo", "archive.zip");
+    await session.serverWorldsRestore("/fixture/servers", "demo", "archive.zip", false);
+    await session.serverWorldsRestore("/fixture/servers", "demo", "archive.zip", true);
+    expect(calls).toEqual([
+      { method: "server.worlds.backup", params: { directory: "/fixture/servers", id: "demo" } },
+      { method: "server.worlds.backup", params: { directory: "/fixture/servers", id: "demo", label: "before-rename" } },
+      { method: "server.worlds.restore", params: { directory: "/fixture/servers", id: "demo", backup: "archive.zip", replace: false } },
+      { method: "server.worlds.restore", params: { directory: "/fixture/servers", id: "demo", backup: "archive.zip", replace: false } },
+      { method: "server.worlds.restore", params: { directory: "/fixture/servers", id: "demo", backup: "archive.zip", replace: true } },
+    ]);
+  });
+
   test("uses server content selectors and never sends client version or loader", async () => {
     const calls: CapturedRequest[] = [];
     const session = captureSession(calls);

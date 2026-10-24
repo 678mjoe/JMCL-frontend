@@ -591,7 +591,6 @@ describe("server mock worlds and content", () => {
     const session = await openDefault();
     await session.serverWorldsRename(directory, "survival", "world_nether", "custom-nether");
     expect((await session.serverWorldsList(directory, "survival")).worlds.map((world) => world.name).sort()).toEqual([
-      "custom-nether",
       "world",
       "world_the_end",
     ]);
@@ -615,6 +614,83 @@ describe("server mock worlds and content", () => {
     expect((await session.serverWorldsList(directory, "survival")).worlds.map((world) => world.name)).toContain("survival-world");
     await session.serverWorldsBackupsDelete(directory, "survival", backup.backup);
     expect((await session.serverWorldsBackups(directory, "survival")).backups.map((item) => item.file)).not.toContain(backup.backup);
+  });
+
+  test("lists only the configured base and dimensions without rewriting level-name on restore", () => {
+    const state = createServerMockState("default");
+    const server = state.servers[`${directory}\0survival`];
+    const base = { directory, id: "survival" };
+    const archive = dispatchServerMockRequest<{ backup: string }>(state, "server.worlds.backup", base);
+    dispatchServerMockRequest(state, "server.worlds.rename", { ...base, world: "world", new_name: "new-base" });
+    dispatchServerMockRequest(state, "server.worlds.restore", { ...base, backup: archive.backup });
+    expect(server.worlds).toHaveLength(6);
+    expect(server.properties!["level-name"]).toBe("new-base");
+    const result = dispatchServerMockRequest<{ worlds: Array<{ name: string }> }>(state, "server.worlds.list", base);
+    expect(result.worlds.map((world) => world.name)).toEqual(["new-base", "new-base_nether", "new-base_the_end"]);
+  });
+
+  test("whole-world restore requires explicit replace and recovers archived metadata atomically", () => {
+    const state = createServerMockState("default");
+    const server = state.servers[`${directory}\0survival`];
+    const base = { directory, id: "survival" };
+    server.worlds[0].level_name = "Synthetic display name";
+    server.worlds[0].size_bytes = 123456;
+    server.worlds[1].version_name = null;
+    const archived = structuredClone(server.worlds);
+    const archive = dispatchServerMockRequest<{ backup: string }>(state, "server.worlds.backup", base);
+    server.worlds[0].size_bytes = 5;
+    server.worlds[1].level_name = "Changed after backup";
+    server.worlds.push({ ...server.worlds[0], name: "unrelated" });
+    const changed = structuredClone(server.worlds);
+    for (const replace of [undefined, false]) {
+      expect(dispatchErrorCode(() => dispatchServerMockRequest(state, "server.worlds.restore", { ...base, backup: archive.backup, replace }))).toBe("WORLD_EXISTS");
+      expect(server.worlds).toEqual(changed);
+    }
+    dispatchServerMockRequest(state, "server.worlds.restore", { ...base, backup: archive.backup, replace: true });
+    expect(server.worlds.filter((world) => world.name !== "unrelated")).toEqual(archived);
+    expect(server.worlds.find((world) => world.name === "unrelated")).toEqual(changed[3]);
+    dispatchServerMockRequest(state, "server.worlds.backups.delete", { ...base, backup: archive.backup });
+    expect(server.backup_world_entries[archive.backup]).toBeUndefined();
+    expect(dispatchErrorCode(() => dispatchServerMockRequest(state, "server.worlds.restore", { ...base, backup: archive.backup, replace: true }))).toBe("BACKUP_NOT_FOUND");
+  });
+
+  test("coupled mutations fail atomically on sibling collision or world lock", () => {
+    const state = createServerMockState("default");
+    const server = state.servers[`${directory}\0survival`];
+    const base = { directory, id: "survival" };
+    server.worlds.push({ ...server.worlds[0], name: "new-base_nether" });
+    const before = structuredClone(server.worlds);
+    expect(dispatchErrorCode(() => dispatchServerMockRequest(state, "server.worlds.rename", { ...base, world: "world", new_name: "new-base" }))).toBe("WORLD_EXISTS");
+    expect(server.worlds).toEqual(before);
+    expect(server.properties!["level-name"]).toBe("world");
+    server.worlds[1].locked = true;
+    const locked = structuredClone(server.worlds);
+    for (const [method, params] of [
+      ["server.worlds.rename", { world: "world", new_name: "safe-name" }],
+      ["server.worlds.delete", { world: "world" }],
+      ["server.worlds.backup", {}],
+      ["server.worlds.restore", { backup: "world-20260920-120000.zip", replace: true }],
+    ] as const) {
+      expect(dispatchErrorCode(() => dispatchServerMockRequest(state, method, { ...base, ...params }))).toBe("WORLD_LOCKED");
+      expect(server.worlds).toEqual(locked);
+    }
+  });
+
+  test("world mutations reject running servers and wrong server roots without touching fixtures", () => {
+    const state = createServerMockState("default");
+    const server = state.servers[`${directory}\0survival`];
+    server.running = true;
+    const before = structuredClone(server);
+    for (const [method, params] of [
+      ["server.worlds.rename", { world: "world", new_name: "renamed" }],
+      ["server.worlds.delete", { world: "world" }],
+      ["server.worlds.backup", {}],
+      ["server.worlds.restore", { backup: "world-20260920-120000.zip", replace: true }],
+    ] as const) {
+      expect(dispatchErrorCode(() => dispatchServerMockRequest(state, method, { directory, id: "survival", ...params }))).toBe("SERVER_ALREADY_RUNNING");
+      expect(dispatchErrorCode(() => dispatchServerMockRequest(state, method, { directory: "/other/fixture", id: "survival", ...params }))).toBe("SERVER_NOT_FOUND");
+      expect(server).toEqual(before);
+    }
   });
 
   test("keeps canonical content paths across project and file toggles", async () => {
