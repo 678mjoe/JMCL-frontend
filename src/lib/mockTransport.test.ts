@@ -123,7 +123,8 @@ describe("mock transport scenarios", () => {
       xuid: exchange.session.xuid,
     };
     await session.accountSave(account);
-    expect((await session.accountList()).accounts).toContainEqual(account);
+    expect((await session.accountList()).accounts).toContainEqual({ schema_version: 1, ...account });
+    expect(await session.accountGet(account.id)).toEqual({ schema_version: 1, ...account });
     await session.accountDelete(account.id);
     expect((await session.accountList()).accounts).not.toContainEqual(account);
 

@@ -715,10 +715,11 @@ export type RefreshExchangeResult =
     };
 
 export interface AccountProfile {
+  schema_version?: number;
   id: string;
   player_name: string;
   client_id: string;
-  xuid?: string;
+  xuid?: string | null;
   [field: string]: unknown;
 }
 
