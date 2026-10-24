@@ -18,8 +18,14 @@ remain isolated synthetic tests, not real game/account/server acceptance.
 ## Evidence
 
 Based on merged updater main `05937157436d16b0c4e5cc50c4c4ebd9f933eb51`
-(tree `b6b1e66632ddf1bb8d5ce00a68af754550d4ed01`). The final PR comment records
-the published head/tree and actual matrix run without self-referential commit IDs.
+(tree `b6b1e66632ddf1bb8d5ce00a68af754550d4ed01`). The
+[final PR #18 evidence](https://github.com/678mjoe/JMCL-frontend/pull/18#issuecomment-6379482236)
+records the published head/tree, package hashes and actual matrix run.
+All five jobs in [run 40057904328](https://github.com/678mjoe/JMCL-frontend/actions/runs/40057904328)
+passed on PR head `10df8109168e4855a6a834504602ffc28f95e901`, tree
+`089bf589f5d402c7dde4ce96631c4477b7c69f23`, identical to merged main
+`8d68d00983634359f2f6425e2297bad372f2cb12`. This is exact-head PR evidence,
+not a claim about any subsequent post-merge run or native installation acceptance.
 
 - Local Python synthetic tests: 5 passed, including all four target headers,
   architecture mismatches, missing/duplicate files and sidecar hash mismatch.
@@ -27,7 +33,7 @@ the published head/tree and actual matrix run without self-referential commit ID
   authorized workspace-local native sysroot/cache (Bun 1.4.4, Rust 1.99.1).
   Command: `bun run tauri build --debug --ci --no-sign --bundles deb`, then
   `python scripts/verify-ci-package.py --target x86_64-unknown-linux-gnu`.
-  This is Linux-only evidence; CI on the final PR tree is still pending.
+  This local check is Linux-only evidence; subsequent PR CI results are linked above.
 - Generated local Debian SHA256:
   `6f531173098029309fa74ae8c0f91a824de79273b9c11748ff0b87d26baf71e3`.
   Matching embedded/staged Core SHA256:

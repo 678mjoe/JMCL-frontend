@@ -4,7 +4,7 @@ Base frontend: `d7e3e402423d0d70e6ccae6f4dd031f47e29d627` (PR #14).
 Core: `97b65186d7882c415220969d8dcd264b6c3353bd`. Local OS: Linux x86_64.
 This record does not change roadmap ordering or waive real/native acceptance.
 
-## Implementation
+## Original batch implementation (PR #15)
 
 - React interaction coverage and strict replay of checked-in protocol-v1 examples;
   fixture correspondence with authoritative `gui-handoff.md` is tested.
@@ -19,8 +19,10 @@ This record does not change roadmap ordering or waive real/native acceptance.
   script. Native IPC and specific image origins allowed. Dynamic inline CSS is
   retained for UI overlays/themes. Development has a separate loopback HMR policy.
   Native HTTP/Core permissions are separate from WebView CSP.
-- Updater status is explicitly unconfigured, immutable and disabled; no updater
-  plugin, endpoint, public key, network check, download or install exists.
+- In this original batch, updater status was explicitly unconfigured, immutable
+  and disabled; no updater plugin, endpoint, public key, network check, download
+  or install existed. Subsequent [PR #17 updater implementation](2026-10-24-updater.md)
+  adds the plugin and native bridge; the default production channel remains disabled.
 - Bilingual user guide, corrected README scope, and release/signing/installer
   prerequisite checklist. No release operation is performed.
 
@@ -86,7 +88,7 @@ intentional unsupported implementation path. These are not interchangeable.
 | Stage 8 Actions/native/sidecar matrix | IMPLEMENTED; all four initial native CI targets VERIFIED; compile never proves native UI |
 | Stage 8 CSP | IMPLEMENTED; static regressions/build VERIFIED; actual native enforcement/visual acceptance BLOCKED |
 | Stage 8 code signing | Preparation IMPLEMENTED; keys/accounts/approval and platform checks BLOCKED |
-| Stage 8 installers | Configuration/checklist present; signed installer creation/testing/publication BLOCKED, not executed |
+| Stage 8 installers | Subsequent [PR #18 debug package generation and static inspection](2026-10-24-packaging.md) VERIFIED on all four native CI targets; signing, installation acceptance and publication remain BLOCKED, not executed |
 | Stage 8 automatic updating | Initial batch: disabled status only. Subsequent [updater code](2026-10-24-updater.md) IMPLEMENTED; default channel disabled and real signed update acceptance pending |
 | Stage 8 user documentation | IMPLEMENTED; release-specific acceptance still required |
 | Stage 8 first release tag | BLOCKED on explicit release approval and prerequisites; no tag/release created |
