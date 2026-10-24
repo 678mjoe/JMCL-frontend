@@ -132,13 +132,13 @@ Windows 负责兼容性和发布验证：
 - 世界级数据包列表、Modrinth / CurseForge 兼容搜索、安装/版本切换、启停/删除/接管；
 - Modrinth / CurseForge 整合包导入 UI，隔离实例创建及后续游戏安装/准备；
 - CurseForge 独立 OS 凭据库设置、固定主机原生目录桥接与 Core 调用时注入；
+- 配置存储目录的 dry-run／命名确认 GC UI；
+- 按实例根目录隔离的高级 JVM/游戏 argv、分辨率、试玩和默认 JVM 选项及 Core 脱敏预览；
 - stdout、stderr 和 core 诊断日志；
 - 中英文和明暗主题。
 
 ### 尚未实现的客户端能力
 
-- store GC UI；
-- 高级 JVM/游戏参数；
 - 资源包和光影的游戏内激活顺序；
 - Shader runtime 指引；
 - 自动更新。
@@ -457,6 +457,8 @@ Mock 场景至少包含：
 8. Shader runtime 指引。
 
 阶段 7 前两项的前端实现已落地：世界级数据包及 Modrinth 整合包导入/后续安装准备。该批次当时明确阻止 CurseForge 归档；后续第三项现已实现独立 API key 设置、目录与版本查询、客户端/世界数据包/服务端内容安装和版本切换及 CurseForge 归档导入。密钥由原生层保存和注入，禁止 JS 请求携带密钥；目录仅使用固定官方主机，不推测 CDN 地址。实现与待验收范围见[CurseForge 记录](./docs/verification/2026-10-24-stage-7-curseforge.md)。Linux 自动验证与范围见[阶段 7 首批记录](./docs/verification/2026-10-24-stage-7-client-content.md)；原生文件选择、真实归档/游戏下载及 macOS/Windows/视觉验收仍未完成，不表示整个阶段 7 已验收。
+
+阶段 7 第四至第六项的前端实现已落地：共享存储 GC 的预览与显式目录确认、按实例保存的原样 JVM/游戏参数、分辨率及启动选项。GC 错误不推断删除数量；启动预览只展示 Core 脱敏 argv。Linux 自动验证和边界见[存储与启动选项记录](./docs/verification/2026-10-24-stage-7-store-launch.md)。真实存储删除、游戏启动、视觉及 macOS/Windows 验收仍未完成，不表示整个阶段 7 已验收。
 
 ## 13. 阶段 8——质量与发布
 

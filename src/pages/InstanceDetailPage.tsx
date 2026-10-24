@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DeleteInstanceDialog } from "@/components/DeleteInstanceDialog";
+import { InstanceLaunchOptions } from "@/components/InstanceLaunchOptions";
 import { InstanceJavaCard } from "@/components/InstanceJavaCard";
 import { InstallTaskProgress } from "@/components/InstallTaskProgress";
 import { LogSheet } from "@/components/LogSheet";
@@ -28,6 +29,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { errorText, useLauncher } from "@/lib/launcher";
 import { AuthTransientError, ReloginRequiredError, useLaunchAuth } from "@/lib/auth";
 import { RpcError } from "@/lib/rpc";
+import { launchOptionsFor } from "@/lib/launchOptions";
+import { instanceLaunchOptions } from "@/lib/instanceLaunch";
+import { withOpenedSession } from "@/lib/sessionLifecycle";
 import { useSettings } from "@/lib/settings";
 import { useTasks, type TaskStatus } from "@/lib/tasks";
 import type { InstanceManifest } from "@/lib/types";
@@ -50,11 +54,20 @@ export function InstanceDetailPage({
   onBack,
   onOpenContent,
 }: InstanceDetailPageProps) {
-  const { status, session, error: coreError } = useLauncher();
+  const { status, session, openSession, error: coreError } = useLauncher();
   const { settings, t } = useSettings();
   const { taskFor, startValidate, startInstall, startLaunch, clearTask } = useTasks();
   const resolveLaunchAuth = useLaunchAuth();
 
+  const currentScope = `${settings.instancesDir}\0${instanceId}`;
+  const scopeRef = useRef(currentScope);
+  const scopeGeneration = useRef(0);
+  if (scopeRef.current !== currentScope) scopeGeneration.current++;
+  scopeRef.current = currentScope;
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; scopeGeneration.current++; }; }, []);
+  const refreshRevision = useRef(0);
+  const [manifestScope, setManifestScope] = useState("");
   const [manifest, setManifest] = useState<InstanceManifest | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -80,13 +93,18 @@ export function InstanceDetailPage({
       setLoadError(null);
       return;
     }
+    const revision = ++refreshRevision.current;
+    const scope = currentScope;
     setLoading(true);
     setLoadError(null);
     setNotFound(false);
     try {
       const result = await session.instanceGet(settings.instancesDir, instanceId);
+      if (!mounted.current || revision !== refreshRevision.current || scopeRef.current !== scope) return;
+      setManifestScope(scope);
       setManifest(result);
     } catch (e) {
+      if (!mounted.current || revision !== refreshRevision.current || scopeRef.current !== scope) return;
       setManifest(null);
       setNotFound(
         e instanceof RpcError &&
@@ -95,9 +113,9 @@ export function InstanceDetailPage({
       );
       setLoadError(errorText(e));
     } finally {
-      setLoading(false);
+      if (mounted.current && revision === refreshRevision.current && scopeRef.current === scope) setLoading(false);
     }
-  }, [status, session, settings.instancesDir, instanceId]);
+  }, [status, session, settings.instancesDir, instanceId, currentScope]);
 
   useEffect(() => {
     void refresh();
@@ -115,23 +133,25 @@ export function InstanceDetailPage({
   }, [installTask?.status, refresh]);
 
   const beginInstall = () => {
-    if (!manifest) return;
+    if (!manifest || manifestScope !== currentScope) return;
     void startInstall(manifest, dirs);
   };
 
   const retryValidate = () => {
-    if (!manifest) return;
+    if (!manifest || manifestScope !== currentScope) return;
     void startValidate(manifest).then((ok) => {
       if (ok) beginInstall();
     });
   };
 
   const beginLaunch = () => {
-    if (!manifest) return;
+    if (!manifest || manifestScope !== currentScope) return;
+    const generation = scopeGeneration.current;
     void (async () => {
       try {
         const auth = await resolveLaunchAuth();
-        void startLaunch(manifest, dirs, auth, settings.javaOverrides[manifest.id]);
+        if (!mounted.current || generation !== scopeGeneration.current || scopeRef.current !== currentScope) return;
+        void startLaunch(manifest, dirs, auth, settings.javaOverrides[manifest.id], launchOptionsFor(settings.launchOptions, dirs.instancesDir, manifest.id));
         setLogOpen(true);
       } catch (e) {
         toast.error(
@@ -146,7 +166,7 @@ export function InstanceDetailPage({
   };
 
   const confirmDelete = async () => {
-    if (!manifest || !session) return;
+    if (!manifest || !session || manifestScope !== currentScope) return;
     setDeleting(true);
     try {
       await session.instanceDelete(settings.instancesDir, manifest.id);
@@ -165,7 +185,7 @@ export function InstanceDetailPage({
 
   if (
     status === "starting" ||
-    (loading && !manifest && !loadError && !notFound)
+    ((loading || manifestScope !== currentScope) && !loadError && !notFound)
   ) {
     return (
       <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -464,6 +484,20 @@ export function InstanceDetailPage({
       </div>
 
       <InstanceJavaCard instance={manifest} />
+      <InstanceLaunchOptions instance={manifest} onPreview={async (options) => {
+        if (manifestScope !== currentScope) throw new Error("Stale instance");
+        const generation = scopeGeneration.current;
+        const auth = await resolveLaunchAuth();
+        if (!mounted.current || generation !== scopeGeneration.current || scopeRef.current !== currentScope) throw new Error("Stale instance");
+        const directory = `${settings.instancesDir}/${manifest.id}/.minecraft`;
+        return withOpenedSession(openSession, (previewSession) => {
+          if (!mounted.current || generation !== scopeGeneration.current) throw new Error("Stale instance");
+          return previewSession.launchPlan(
+            manifest.version_id, directory, `${directory}/.jmcl-preview-natives`, auth,
+            instanceLaunchOptions(manifest, settings.storeDir, settings.javaOverrides[manifest.id], options),
+          );
+        });
+      }} />
 
       <WorldsManager instance={manifest} />
 

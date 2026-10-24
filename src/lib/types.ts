@@ -730,3 +730,34 @@ export interface ProgressInfo {
   bytes_total: number;
   bytes_transferred: number;
 }
+
+/** Core src/launch/plan.zig Options; these are literal argv, never shell text. */
+export interface LaunchOptions {
+  demo?: boolean;
+  resolution_width?: number;
+  resolution_height?: number;
+  quick_play_support?: boolean;
+  quick_play_path?: string;
+  quick_play_singleplayer?: string;
+  quick_play_multiplayer?: string;
+  quick_play_realms?: string;
+  launcher_name?: string;
+  launcher_version?: string;
+  include_default_user_jvm?: boolean;
+  extra_jvm_args?: string[];
+  extra_game_args?: string[];
+}
+
+export interface LaunchPlanResult {
+  version_id: string;
+  required_java: number;
+  runtime: JavaRuntime;
+  java_source: string;
+  forced: boolean;
+  launch: {
+    java_executable: string;
+    working_directory: string;
+    redacted_argv: string[];
+    sensitive_argv_indices: number[];
+  };
+}
