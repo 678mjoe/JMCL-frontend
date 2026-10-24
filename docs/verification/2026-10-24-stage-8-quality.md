@@ -9,7 +9,7 @@ This record does not change roadmap ordering or waive real/native acceptance.
 - React interaction coverage and strict replay of checked-in protocol-v1 examples;
   fixture correspondence with authoritative `gui-handoff.md` is tested.
 - Three isolated browser Mock E2Es for default/empty/errors: navigation/detail
-  back, cancel/reopen/Escape, pending failure/retry and disabled updater status.
+  back, cancel/reopen/Escape, handshake failure/disabled actions/reload recovery and disabled updater status.
 - Least-privilege CI: immutable action refs, frozen frontend lockfile, pinned
   toolchains/Core, official Zig SHA-256 verification, public standard runners,
   no credentials, no artifacts uploaded, no release/tag/signing step.
@@ -39,7 +39,32 @@ This record does not change roadmap ordering or waive real/native acceptance.
 
 ## CI evidence
 
-Pending first PR run. No matrix or browser execution is claimed from workflow YAML.
+Initial PR commit `a2976f35b178d3a60118154fdfc414e670065b7b`,
+[run 40049354614](https://github.com/678mjoe/JMCL-frontend/actions/runs/40049354614):
+
+- Linux x64, macOS ARM64, macOS Intel and Windows x64 native jobs: **PASS**.
+  Each built the pinned Core for its host, staged the target-suffixed sidecar,
+  passed Rust fmt/check/tests, then compiled Tauri with `--debug --no-bundle`.
+  This is not a signed installer or native UI/game/keychain acceptance.
+- Linux and both macOS targets: 55 unit +7 synthetic Core +25 fake-SSH tests.
+  Windows: 38 unit +8 RPC/process tests = **46 passed**, with platform-conditioned coverage. Unix fake-SSH/config-write tests are
+  not Windows passes. Its separate process-console probe executes on Windows.
+- Frontend unit/build: **PASS**. Browser default and empty: **PASS**. Initial errors
+  scenario: **FAIL** because the test incorrectly expected a list error, while the
+  documented errors fixture rejects `core.version` before list access. Corrected
+  E2E asserts the connection alert, disabled refresh/create, no false empty state,
+  and recovery by loading the normal fixture. The failure was not waived.
+- Exact-head rerun and post-merge outcomes are recorded in
+  [PR #15 checks and verification comments](https://github.com/678mjoe/JMCL-frontend/pull/15).
+  Always inspect the commit SHA; this initial run is historical, not a claim that
+  a subsequent revision passed. Merging requires the corrected full CI to pass.
+
+Official input references: [standard hosted runner architecture/free public policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners),
+[checkout v6.0.2](https://github.com/actions/checkout/releases/tag/v6.0.2),
+[setup-bun v2.2.0](https://github.com/oven-sh/setup-bun/releases/tag/v2.2.0),
+and [Zig 0.16 official hashes](https://ziglang.org/download/index.json).
+Pinned Core also cross-compiled locally for Windows x64 and macOS ARM64; these
+preflights are not counted as native execution.
 
 ## Roadmap completion matrix
 
@@ -57,8 +82,8 @@ intentional unsupported implementation path. These are not interchangeable.
 | Stage 7 Windows activation | NOTSUPPORTED pending reparse-safe adapter; not a passing platform check |
 | Stage 7 OptiFine/unknown formats | NOTSUPPORTED; use in-game UI, no guessed adapter |
 | Stage 8 React and RPC fixtures | IMPLEMENTED, Linux automated tests VERIFIED |
-| Stage 8 browser E2E | IMPLEMENTED; local execution BLOCKED; CI evidence pending |
-| Stage 8 Actions/native/sidecar matrix | IMPLEMENTED; CI evidence pending; compile never proves native UI |
+| Stage 8 browser E2E | IMPLEMENTED; local execution BLOCKED; initial CI 2/3, corrected exact-head result linked above |
+| Stage 8 Actions/native/sidecar matrix | IMPLEMENTED; all four initial native CI targets VERIFIED; compile never proves native UI |
 | Stage 8 CSP | IMPLEMENTED; static regressions/build VERIFIED; actual native enforcement/visual acceptance BLOCKED |
 | Stage 8 code signing | Preparation IMPLEMENTED; keys/accounts/approval and platform checks BLOCKED |
 | Stage 8 installers | Configuration/checklist present; signed installer creation/testing/publication BLOCKED, not executed |

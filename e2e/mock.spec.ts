@@ -45,13 +45,14 @@ test('empty: server empty state stays empty after cancelled creation', async ({ 
   await expect(page.getByText('No servers yet', { exact: true })).toBeVisible();
 });
 
-test('errors: failed list remains recoverable without false empty success', async ({ page }) => {
+test('errors: failed handshake blocks actions without false empty success and reload recovers', async ({ page }) => {
   await page.goto('/?jmclMockScenario=errors');
   await page.getByRole('navigation').getByRole('button', { name: 'Servers', exact: true }).click();
-  await expect(page.getByText('Failed to load the server list', { exact: true })).toBeVisible();
+  // The errors fixture rejects core.version before any server-list request.
+  await expect(page.getByRole('alert')).toHaveText('Core connection failed');
   await expect(page.getByText('No servers yet', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Refresh server list', exact: true }).click();
-  await expect(page.getByText('Failed to load the server list', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Refresh server list', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'New Server', exact: true })).toBeDisabled();
   await page.goto('/');
   await page.getByRole('navigation').getByRole('button', { name: 'Servers', exact: true }).click();
   await expect(page.getByRole('button', { name: /Vanilla Server/ })).toBeVisible();
