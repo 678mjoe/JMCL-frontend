@@ -57,7 +57,10 @@ Tauri documents [Debian packaging](https://v2.tauri.app/distribute/debian/),
 
 Choose supported architectures from successful native evidence, not a guessed
 cross-compile result. Do not claim Windows ARM or a universal macOS artifact from
-one host build. Windows activation writes remain intentionally unsupported.
+one host build. Windows activation now has a guarded handle-relative write
+adapter, with Windows-native compilation and synthetic tests passed in PR #16;
+real-game and visual acceptance remain pending. See the
+[Windows activation record](verification/2026-10-24-windows-pack-activation.md).
 
 Tauri provides [macOS signing/notarization guidance](https://v2.tauri.app/distribute/sign/macos/)
 and [Windows signing guidance](https://v2.tauri.app/distribute/sign/windows/).
