@@ -9,6 +9,8 @@ pub mod server_status_cache;
 pub mod session;
 pub mod ssh_transport;
 pub mod transport;
+mod update_config;
+mod updater;
 
 use std::time::{Duration, Instant};
 
@@ -211,6 +213,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::UpdateState::default())
         .manage(pack_activation::PackActivationState::default())
         .setup(|app| {
             // Core children run with the app-data dir as CWD so the core's
@@ -227,6 +231,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            updater::updater_status,
+            updater::updater_action,
             core_open,
             endpoint_session_open,
             core_close,

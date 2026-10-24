@@ -42,27 +42,57 @@ signing service. Keep private material out of Git, PR jobs, logs and artifacts;
 use a reviewed secret-handling release process with minimal permissions. Do not
 bypass Gatekeeper, SmartScreen, or signature verification as an acceptance step.
 
-## Automatic updates: deliberately unavailable
+## Automatic updates: code available, release channel disabled
 
-There is no configured production endpoint/public key, updater plugin, or signed
-update feed. Disabled UI is a safe status path, **not a working updater**. No
-network request, download, installation or false “latest version” result should
-occur through that path.
+The official Tauri updater plugin and narrow native check/download/install bridge
+are implemented; [implementation and verification](verification/2026-10-24-updater.md)
+remain distinct from production readiness. Default builds have **no channel**:
+Settings cannot check/download/install and never claims they are current.
+No production endpoint, public signing key, signed feed or accepted update was
+provisioned by this change. `createUpdaterArtifacts` remains false.
 
-Before enabling the [Tauri updater](https://v2.tauri.app/plugin/updater/), separately
-approve and review all of these gates:
+A release maintainer must separately verify endpoint ownership, target mappings,
+key custody, channel policy, signed artifacts and native recovery acceptance.
+Only then may the build process supply all four public build-time variables:
 
-- Stable owned HTTPS endpoint, target/architecture mapping, version policy and
-  publication authority; never use a placeholder endpoint in production.
-- Approved signing-key custody, backup/recovery and rotation policy, an embedded
-  public key, and signed artifacts matching each platform. Never generate or
-  expose real signing keys merely to satisfy a test.
-- Explicit user check/download/install decisions with progress/cancellation,
-  restart/data-safety handling and actionable offline/error behavior.
-- Tests for no update, valid update, network failure, malformed metadata,
-  unsupported target, invalid/missing signatures and interrupted downloads.
-- Reject tampered assets; independently verify clean-machine update/rollback
-  recovery behavior. Do not weaken signature/TLS checks to make a test pass.
+- `JMCL_UPDATE_ENDPOINT`: verified HTTPS manifest URL (no credentials/fragments).
+- `JMCL_UPDATE_PUBLIC_KEY`: Tauri-format base64 public-key **content**, not a path
+  or private key. Public keys are not secrets.
+- `JMCL_UPDATE_CHANNEL`: `stable` or `beta`, matching the verified endpoint's feed.
+- `JMCL_UPDATE_VERIFIED`: `release-maintainer-verified`, an explicit maintainer
+  attestation, **not automated proof** of ownership or platform acceptance.
+
+All absent means disabled; partial or invalid values fail the native build.
+These values are embedded during Rust compilation, not read at runtime. The
+frontend cannot supply URLs, keys, bytes, headers or channel overrides. Changing
+localStorage or a running process's environment cannot enable a default build.
+A syntactically valid configuration is not sufficient evidence of release safety.
+
+HTTPS is enforced on native requests and redirects, including debug builds.
+The plugin checks artifact signatures on download and again on installation;
+`requireSignedVersion` rejects signatures without a bound version and mismatched
+versions, and downgrade allowance stays off. A future authorized signing pipeline
+must use a compatible Tauri CLI that signs the app version (or its supported
+`signer sign --app-version` path); older unbound signatures are not accepted.
+Do not weaken these checks or generate real signing keys for tests.
+
+Every network check, download, install and restart requires an explicit UI
+confirmation. Download completion does not install. Cancel dismisses an unstarted
+confirmation; discard drops the available/verified in-memory update. Active
+checks/downloads/installations have **no user cancellation claim**; navigating
+away does not cancel. Checks time out after 60 seconds, downloads after 600.
+Only an explicit new check retries a failure. No automatic polling of the feed,
+background update, persistent artifact cache or automatic retry is implemented.
+
+Save work and stop games/servers before installing. Installation clears launcher
+Core sessions; Windows exits to the installer with automatic relaunch disabled; reopen the launcher manually afterward.
+Linux/macOS offer a separately confirmed restart after install. A failed install
+may require repair: neither atomic rollback nor clean-machine recovery is claimed.
+Real signed installation, tamper rejection end-to-end, offline/interruption,
+unsupported targets, platform dialogs, restart and recovery acceptance are still
+required under a separately approved release/test scope. See the official
+[Tauri updater guide](https://v2.tauri.app/plugin/updater/) and
+[plugin API](https://docs.rs/tauri-plugin-updater/2.14.0/tauri_plugin_updater/struct.Update.html).
 
 ## First-release approval checklist
 

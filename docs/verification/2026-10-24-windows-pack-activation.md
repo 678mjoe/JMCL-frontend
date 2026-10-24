@@ -88,7 +88,7 @@ staging-name collisions, namespace aliases, bounded reads, and a competing
 write handle. Tests do not silently skip symlink failures: the Windows CI runner
 must provide its normal symlink capability.
 
-Windows native CI execution is pending. macOS/Windows visual acceptance, real
+At the initial local checkpoint Windows native CI execution was pending; the final corrected run below now establishes its synthetic/native-compile result. macOS/Windows visual acceptance, real
 Minecraft loading, custom filesystem/ACL deployment compatibility, and external
 client/process acceptance remain pending. Do not infer those from Linux tests or
 cross-target checking.
@@ -112,3 +112,16 @@ handle-relative opens, not sharing flags. A deterministic sibling-directory
 rename regression runs while the first instance's ancestor handles remain held,
 in addition to the existing rejection of renaming the pinned instance/game and
 junction/target-symlink tests. Corrected exact-head CI must pass before merge.
+
+
+## Final corrected CI and merge
+
+[Run 40053687383](https://github.com/678mjoe/JMCL-frontend/actions/runs/40053687383)
+on exact head `5a285aa` passed all five jobs: frontend (including browser E2E),
+Linux x64, macOS ARM64, macOS Intel and Windows x64. Windows passed **58 unit
+and 8 RPC/process tests**, including all seven Windows-specific activation
+regressions, and the final native compile. [PR #16 evidence](https://github.com/678mjoe/JMCL-frontend/pull/16#issuecomment-6378837455)
+records the results; merged main is `4dc9e955a3215f11929a5043945788f908f18344`
+with the same tested tree `3e919af3`. These passes supersede the initial failure
+and pending-CI notes, not the pending real-game, visual, native-dialog or broader
+filesystem/ACL deployment acceptance.

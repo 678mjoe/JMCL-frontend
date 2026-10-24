@@ -79,7 +79,7 @@ intentional unsupported implementation path. These are not interchangeable.
 | Stage 3 server lifecycle | IMPLEMENTED; synthetic flow/state checks VERIFIED; real game server workload and reconnect acceptance BLOCKED |
 | Stages 4–6 controls, worlds, content | IMPLEMENTED; Linux tests VERIFIED; native/real RCON/Query/world/content acceptance BLOCKED |
 | Stage 7 client features | IMPLEMENTED with documented guards; Linux tests VERIFIED; real accounts/catalogs/archive/game/native acceptance BLOCKED |
-| Stage 7 Windows activation | Handle-relative adapter IMPLEMENTED; cross-target typecheck VERIFIED; Windows execution pending ([record](2026-10-24-windows-pack-activation.md)) |
+| Stage 7 Windows activation | Handle-relative adapter IMPLEMENTED; Windows native compile and synthetic tests VERIFIED by PR #16 / run 40053687383; real-game/visual acceptance pending ([record](2026-10-24-windows-pack-activation.md)) |
 | Stage 7 OptiFine/unknown formats | NOTSUPPORTED; use in-game UI, no guessed adapter |
 | Stage 8 React and RPC fixtures | IMPLEMENTED, Linux automated tests VERIFIED |
 | Stage 8 browser E2E | IMPLEMENTED; local execution BLOCKED; initial CI 2/3, corrected exact-head result linked above |
@@ -87,7 +87,7 @@ intentional unsupported implementation path. These are not interchangeable.
 | Stage 8 CSP | IMPLEMENTED; static regressions/build VERIFIED; actual native enforcement/visual acceptance BLOCKED |
 | Stage 8 code signing | Preparation IMPLEMENTED; keys/accounts/approval and platform checks BLOCKED |
 | Stage 8 installers | Configuration/checklist present; signed installer creation/testing/publication BLOCKED, not executed |
-| Stage 8 automatic updating | Disabled status IMPLEMENTED and tested; updater itself BLOCKED/unimplemented pending signed channel and integration |
+| Stage 8 automatic updating | Initial batch: disabled status only. Subsequent [updater code](2026-10-24-updater.md) IMPLEMENTED; default channel disabled and real signed update acceptance pending |
 | Stage 8 user documentation | IMPLEMENTED; release-specific acceptance still required |
 | Stage 8 first release tag | BLOCKED on explicit release approval and prerequisites; no tag/release created |
 
@@ -96,3 +96,5 @@ development or acceptance. Follow
 [release gates](../release.md) before any publication. No real service/account,
 SSH trust change, Minecraft workload, paid runner, signing key or installer on a
 user machine was used in this stage.
+
+后续状态更正：以上为本批次完成时的记录；更新器代码实现已继续推进，详见[后续更新器记录](2026-10-24-updater.md)。默认渠道仍禁用，生产发布和真实平台更新验收并未完成；“可执行开发的尽头”不应被理解为后续代码工作均已结束。

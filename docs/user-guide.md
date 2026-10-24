@@ -44,6 +44,6 @@ Use a host you control and have verified through system OpenSSH. Unknown/changed
 - Keychain/dialog/SSH failure: record the OS and exact structured error; do not bypass OS security or host-key checks.
 - Catalog/image failure: retry deliberately after checking connectivity; CSP intentionally blocks unapproved hosts. Report the provider and sanitized URL hostname, never a key.
 - Pending/failed mutation: refresh authoritative state before retry. Back up data independently.
-- Updates: no update service or signed update artifacts are configured. The app must not claim “up to date.” Follow future maintainer release instructions only after a release is explicitly approved and verified. Do not disable signature checks to install an update.
+- Updates: updater code is present, but default builds have no update service or signed update artifacts configured. The app must not claim “up to date.” Follow future maintainer release instructions only after a release is explicitly approved and verified. Do not disable signature checks to install an update.
 
-自动更新未配置；“不可用”不表示“已是最新”。正式版本需完成[发布门槛](release.md)，本指南不授权发布、登录真实账户或操作真实服务器。
+更新代码已实现，但默认构建的自动更新渠道未配置；“不可用”不表示“已是最新”。正式版本需完成[发布门槛](release.md)，本指南不授权发布、登录真实账户或操作真实服务器。
