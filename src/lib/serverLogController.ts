@@ -1,3 +1,4 @@
+import { acquireServerTarget } from "./serverTargetLock";
 import type { ServerCommandResult, ServerLogResult } from "./types";
 import type { ServerOperationScope } from "./servers";
 
@@ -288,6 +289,8 @@ export class ServerLogController {
     if (/[\r\n]/.test(input)) { this.update({ validationError: "multiline", commandError: null, acceptedNotice: false }); return false; }
     const session = this.session;
     if (!session) return false;
+    const release = acquireServerTarget(scope, this.options.serverId);
+    if (!release) return false;
     const generation = this.generation;
     this.update({ commandPending: true, commandError: null, validationError: null, acceptedNotice: false, commandAccepted: false });
     try {
@@ -303,6 +306,8 @@ export class ServerLogController {
       }
       this.update({ commandPending: false, commandError: stableCode(error) });
       return false;
+    } finally {
+      release();
     }
   }
 }

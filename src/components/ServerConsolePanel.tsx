@@ -1,3 +1,4 @@
+import { useServerTargetBusy } from "@/lib/serverTargetLock";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useServers } from "@/lib/servers";
 import { useSettings } from "@/lib/settings";
@@ -37,7 +38,8 @@ export function ServerConsolePanel({ server, running }: { server: ServerManifest
     hasProperties: false,
     hasLoaderManifest: Boolean(server.fabric_loader || server.neoforge_version || server.forge_version),
   });
-  const canCommand = shown && state.open && state.sessionReady && derived.capabilities.consoleCommand;
+  const targetBusy = useServerTargetBusy(scope, server.id);
+  const canCommand = !targetBusy && shown && state.open && state.sessionReady && derived.capabilities.consoleCommand;
 
   useEffect(() => () => { void controller.close(); }, [controller]);
   useEffect(() => {

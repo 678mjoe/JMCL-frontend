@@ -151,9 +151,9 @@ Windows 负责兼容性和发布验证：
 
 JMCLCore 已实现主要 `server.*` 能力，JMCL-frontend 仍未实现：
 
-- RCON 和 Query UI；
-- properties UI；
 - 服务端世界、Mod 和数据包 UI。
+
+阶段 4 的 properties 编辑器、即时 RCON 与 basic/full Query UI 已实现，并有 Linux 前端自动测试覆盖；真实、视觉及 macOS/Windows 原生验收仍待完成。详见[阶段 4 自动验证记录](./docs/verification/2026-10-23-stage-4-controls.md)。
 
 ## 5. 已完成：阶段 0——稳定开发基线
 
