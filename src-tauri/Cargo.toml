@@ -17,6 +17,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+base64 = "0.22"
+minisign-verify = "0.3"
+url = "2"
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -29,6 +32,10 @@ async-trait = "0.1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 thiserror = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "=2.14.0"
+base64 = "0.22"
+minisign-verify = "0.3"
+url = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

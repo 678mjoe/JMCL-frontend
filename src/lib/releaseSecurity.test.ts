@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import config from "../../src-tauri/tauri.conf.json";
 import capabilities from "../../src-tauri/capabilities/default.json";
-import { updateAvailability } from "./updates";
+import { unconfiguredUpdate, canUpdate } from "./updates";
 
 describe("release security gates", () => {
   test("unconfigured updater cannot check, download or install", () => {
-    expect(updateAvailability).toEqual({ state: "unconfigured", canCheck: false, canDownload: false, canInstall: false });
-    expect(Object.isFrozen(updateAvailability)).toBe(true);
+    for (const action of ["check", "download", "install", "discard", "restart"] as const) expect(canUpdate(unconfiguredUpdate.phase, action)).toBe(false);
+    expect(Object.isFrozen(unconfiguredUpdate)).toBe(true);
     expect(config.bundle.createUpdaterArtifacts).toBe(false);
-    expect("plugins" in config && "updater" in (config as { plugins: object }).plugins).toBe(false);
+    expect(config.plugins.updater).toEqual({ pubkey: "", requireSignedVersion: true, allowDowngrades: false });
     expect(JSON.stringify(capabilities)).not.toContain("updater:");
   });
 

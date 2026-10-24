@@ -60,5 +60,12 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true,
+      "allowDowngrades": false
+    }
   }
 }
