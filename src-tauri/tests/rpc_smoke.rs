@@ -397,3 +397,85 @@ fn worlds_lifecycle_round_trip() {
         assert_eq!(names, ["Alpha", "Gamma"]);
     });
 }
+
+/// Account metadata is local synthetic data: no OAuth calls, credentials or
+/// keychain access. Exercise the actual Core envelope rather than a permissive
+/// mock, including the exact malformed request previously sent after login.
+#[test]
+fn account_metadata_requires_account_envelope_and_round_trips() {
+    runtime().block_on(async {
+        let root = FixtureRoot::new("account-wire-contract");
+        let transport = LocalProcessTransport::spawn(&core_path(), &["rpc"], Some(&root.0))
+            .await
+            .expect("spawn isolated account metadata core");
+        let session = Session::establish(Box::new(transport)).await.unwrap();
+        let account = json!({
+            "id": "0123456789abcdef0123456789abcdef",
+            "player_name": "SyntheticPlayer",
+            "client_id": "00000000-0000-0000-0000-000000000001"
+        });
+        let error = session
+            .request("account.microsoft.save", account.clone(), |_| {})
+            .await
+            .unwrap_err();
+        assert!(matches!(error, SessionError::Rpc { ref code, ref message }
+            if code == "INVALID_PARAMS" && message == "Account metadata parameters are invalid"));
+        let empty = session
+            .request("account.microsoft.list", json!({}), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(empty["accounts"], json!([]));
+        let saved = session
+            .request(
+                "account.microsoft.save",
+                json!({"account": account}),
+                |_| {},
+            )
+            .await
+            .unwrap();
+        assert_eq!(saved["stage"], "save");
+        let expected = json!({
+            "schema_version": 1,
+            "id": "0123456789abcdef0123456789abcdef",
+            "player_name": "SyntheticPlayer",
+            "client_id": "00000000-0000-0000-0000-000000000001",
+            "xuid": null
+        });
+        assert_eq!(saved["account"], expected);
+        let loaded = session
+            .request(
+                "account.microsoft.get",
+                json!({"id": account["id"]}),
+                |_| {},
+            )
+            .await
+            .unwrap();
+        assert_eq!(loaded, json!({"stage": "account_get", "account": expected}));
+        let listed = session
+            .request("account.microsoft.list", json!({}), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(
+            listed,
+            json!({"stage": "account_list", "accounts": [expected]})
+        );
+        let deleted = session
+            .request(
+                "account.microsoft.delete",
+                json!({"id": account["id"]}),
+                |_| {},
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            deleted,
+            json!({"stage": "account_delete", "id": account["id"], "deleted": true})
+        );
+        let empty = session
+            .request("account.microsoft.list", json!({}), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(empty["accounts"], json!([]));
+        session.close().await;
+    });
+}
