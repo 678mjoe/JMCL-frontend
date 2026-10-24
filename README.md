@@ -17,7 +17,9 @@ The GUI currently supports:
 - installation progress plus stdout, stderr, and core diagnostics;
 - Chinese/English UI, themes, official/BMCLAPI sources, and configurable directories.
 
-The GUI includes local server management and endpoint-scoped remote sessions through the system OpenSSH client. SSH uses strict `known_hosts` checking, a fixed remote `exec jmcl-core rpc` command, and the user's inherited SSH configuration/agent; JMCL does not store SSH credentials. Fake-SSH tests cover transport behavior; native macOS/Windows verification is tracked separately and remains incomplete. Client data packs, full modpack/CurseForge support, and advanced launch options are outside the current scope.
+The GUI includes local server management and endpoint-scoped remote sessions through the system OpenSSH client. SSH uses strict `known_hosts` checking, a fixed remote `exec jmcl-core rpc` command, and the user's inherited SSH configuration/agent; JMCL does not store SSH credentials. Fake-SSH tests cover transport behavior; native macOS/Windows verification is tracked separately and remains incomplete. Client world data packs, Modrinth/CurseForge content and modpack import, store cleanup, and advanced launch options are implemented. Unix pack activation is intentionally limited to supported existing configuration formats; Windows writes and OptiFine configuration are unsupported. Implementation is not real-game or native UI acceptance. Automatic updates and a signed first release are not available.
+
+See the [user guide](docs/user-guide.md), [release gates](docs/release.md), and [verification records](docs/verification/) before using development builds.
 
 ## Technology stack and dependencies
 

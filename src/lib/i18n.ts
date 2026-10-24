@@ -197,6 +197,10 @@ const zh = {
   "worlds.difficulty.3": "困难",
 
   "settings.title": "设置",
+  "updates.title": "应用更新",
+  "updates.unconfigured": "自动更新不可用",
+  "updates.hint": "此开发版本未配置可信更新端点和签名公钥，不会检查、下载或安装更新。正式发布前须完成签名和平台验收。",
+  "updates.check": "检查更新",
   "settings.appearance": "外观",
   "settings.theme": "主题",
   "settings.theme.system": "跟随系统",
@@ -681,6 +685,10 @@ const en: Record<MessageKey, string> = {
   "worlds.difficulty.3": "Hard",
 
   "settings.title": "Settings",
+  "updates.title": "Application updates",
+  "updates.unconfigured": "Automatic updates unavailable",
+  "updates.hint": "This development build has no trusted update endpoint or signing public key. It does not check, download, or install updates. Signing and platform acceptance are required before release.",
+  "updates.check": "Check for updates",
   "settings.appearance": "Appearance",
   "settings.theme": "Theme",
   "settings.theme.system": "System",

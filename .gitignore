@@ -31,3 +31,10 @@ src-tauri/binaries/*
 
 # Local agent instructions
 AGENTS.md
+
+# Browser E2E output (may contain diagnostic data)
+test-results/
+playwright-report/
+
+# Isolated CI core checkout
+.ci-core/

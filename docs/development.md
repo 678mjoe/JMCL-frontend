@@ -129,3 +129,34 @@ session's results and remaining verification limits.
 See [contributor rules](../CONTRIBUTING.md) for roadmap ownership and
 [Devin environment documentation](https://docs.devin.ai/onboard-devin/environment)
 for Devin-specific snapshot configuration.
+
+## Stage 8 quality workflow
+
+`bun run test` runs the `src` Bun/React/contract suites. Browser tests are separate:
+
+```bash
+bunx --no-install playwright install --with-deps chromium
+bun run test:e2e
+```
+
+Playwright starts its own loopback-only development Mock server and denies
+external requests in the fixtures. It is not a Tauri WebView test. On a compatible
+local system an existing Chromium can be selected explicitly with
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; sandbox/network failures are blockers, not
+permission to bypass environment restrictions. Test reports/traces are ignored
+and should be reviewed for diagnostic/private data before sharing.
+
+The GitHub quality workflow uses public-repository standard runners only, pinned
+action commits and toolchain versions, read-only repository permissions, no
+secrets, and no signing/upload/release step. Its native matrix asserts the host
+architecture, builds the pinned Core, stages its sidecar, and compiles Tauri
+without bundling. Runtime/keychain/SSH/game/installer acceptance remains separate.
+
+Production CSP defaults to deny: bundled scripts/fonts, Tauri IPC, and explicit
+avatar/catalog image hosts only. Existing native HTTP capabilities remain scoped
+to catalog hosts; WebView CSP does not constrain native HTTP or Core. Inline CSS
+is retained for runtime positioning/theme styles, not inline scripts. Development
+adds React-refresh inline script and loopback HMR only. Remote `TAURI_DEV_HOST`
+needs a separately reviewed development policy adjustment; do not broaden the
+production policy. Native WebView enforcement must still be tested on each OS.
+See [Tauri CSP documentation](https://v2.tauri.app/security/csp/).

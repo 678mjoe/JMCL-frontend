@@ -1,0 +1,8 @@
+{
+  "provenance": "Synthetic examples copied from gui-handoff.md sections 3 and server console; pinned JMCLCore 97b65186. Not recorded real server/account traffic.",
+  "identity": {"protocol":1,"id":"0","event":"result","result":{"name":"jmcl-core","version":"0.1.0-dev","protocol":1}},
+  "logs": {"protocol":1,"id":"logs-1","event":"result","result":{"stage":"server.logs","id":"demo","text":"[Server thread/INFO]: Done\n","file_id":123456,"start_cursor":0,"next_cursor":33,"eof":true,"reset":false,"truncated":false}},
+  "command": {"protocol":1,"id":"cmd-1","event":"result","result":{"stage":"server.command","id":"demo","accepted":true,"pid":12345}},
+  "queryRequest": {"protocol":1,"id":"query-1","method":"server.query","params":{"directory":"/srv/jmcl/servers","id":"demo","mode":"full"}},
+  "query": {"protocol":1,"id":"query-1","event":"result","result":{"stage":"server.query","mode":"full","hostname":"A Minecraft Server","game_type":"SMP","map":"world","version":"1.21.4","players":2,"max_players":20,"host_port":25565,"host_ip":"127.0.0.1","plugins":"","player_names":["Alex","Steve"]}}
+}
