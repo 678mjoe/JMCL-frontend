@@ -1,8 +1,8 @@
 //! Narrow GUI-owned resource-pack activation. Core only installs pack files.
 //!
 //! No arbitrary path or file API is exposed. Unix directory descriptors and
-//! O_NOFOLLOW pin each validated component. Windows fails closed until equivalent
-//! reparse-point-safe access is implemented. The user must confirm that clients
+//! O_NOFOLLOW pin each validated component. Windows uses handle-relative NT
+//! file operations and rejects reparse points. The user must confirm that clients
 //! launched outside this GUI are stopped; Core has no client-status endpoint.
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -525,8 +525,12 @@ mod files {
     }
 }
 
+#[cfg(windows)]
+#[path = "pack_activation/windows.rs"]
+mod files;
+
 impl PackActivationState {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     async fn read(&self, root: String, id: String) -> Result<PackActivationSnapshot, SessionError> {
         let _guard = self
             .requests
@@ -538,7 +542,7 @@ impl PackActivationState {
         let available = files.available()?;
         self.snapshot(root, id, original, selected, available).await
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     async fn snapshot(
         &self,
         root: String,
@@ -567,7 +571,7 @@ impl PackActivationState {
             available_resource_packs: available,
         })
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     async fn write(
         &self,
         root: String,
@@ -615,11 +619,11 @@ pub async fn pack_activation_read(
     instances_root: String,
     instance_id: String,
 ) -> Result<PackActivationSnapshot, SessionError> {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         state.read(instances_root, instance_id).await
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (state, instances_root, instance_id);
         Err(error("PACK_ACTIVATION_UNSUPPORTED"))
@@ -635,7 +639,7 @@ pub async fn pack_activation_write(
     resource_packs: Vec<String>,
     confirmed_stopped: bool,
 ) -> Result<PackActivationSnapshot, SessionError> {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         state
             .write(
@@ -647,7 +651,7 @@ pub async fn pack_activation_write(
             )
             .await
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (
             state,
@@ -790,7 +794,7 @@ fn replace_shader(
 }
 
 impl PackActivationState {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     async fn shader_snapshot(
         &self,
         root: String,
@@ -822,7 +826,7 @@ impl PackActivationState {
             available_shader_packs: available,
         })
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     async fn read_shader(
         &self,
         root: String,
@@ -837,7 +841,7 @@ impl PackActivationState {
         self.shader_snapshot(root, id, runtime, files.options()?, files.available()?)
             .await
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[allow(clippy::too_many_arguments)]
     async fn write_shader(
         &self,
@@ -904,13 +908,13 @@ pub async fn shader_activation_read(
     instance_id: String,
     runtime: ShaderRuntime,
 ) -> Result<ShaderActivationSnapshot, SessionError> {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         state
             .read_shader(instances_root, instance_id, runtime)
             .await
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (state, instances_root, instance_id, runtime);
         Err(error("PACK_ACTIVATION_UNSUPPORTED"))
@@ -930,7 +934,7 @@ pub async fn shader_activation_write(
     confirmed_stopped: bool,
     confirmed_runtime: bool,
 ) -> Result<ShaderActivationSnapshot, SessionError> {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         state
             .write_shader(
@@ -945,7 +949,7 @@ pub async fn shader_activation_write(
             )
             .await
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (
             state,
@@ -962,7 +966,7 @@ pub async fn shader_activation_write(
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, any(unix, windows)))]
 mod tests {
     use super::*;
     use std::fs;
@@ -1227,6 +1231,7 @@ mod tests {
         );
         assert!(!f.path("options.txt").exists());
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn rejects_symlinked_paths_targets_and_hardlinked_config() {
         use std::os::unix::fs::symlink;
@@ -1246,6 +1251,7 @@ mod tests {
         symlink("realpacks", f.path("resourcepacks")).unwrap();
         assert!(state.read(f.root(), "demo".into()).await.is_err());
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn symlinked_pack_not_offered_but_core_hardlinked_zip_is_available() {
         use std::os::unix::fs::symlink;
@@ -1261,6 +1267,7 @@ mod tests {
         assert!(!s.available_resource_packs.contains(&"file/Link.zip".into()));
         assert!(s.available_resource_packs.contains(&"file/Hard.zip".into()));
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn removed_selected_pack_and_late_target_symlink_are_rejected() {
         use std::os::unix::fs::symlink;
@@ -1426,6 +1433,7 @@ mod tests {
             .await
             .is_ok());
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn shader_missing_config_symlink_and_external_changes_fail_closed() {
         use std::os::unix::fs::symlink;
@@ -1536,6 +1544,243 @@ mod tests {
                 value[k] = v.clone();
             }
             assert!(validate_manifest(&value, "demo").is_err());
+        }
+    }
+    #[cfg(windows)]
+    mod windows {
+        use super::*;
+        use std::process::Command;
+        fn junction(link: &std::path::Path, target: &std::path::Path) {
+            // Only process-owned synthetic fixture paths; no elevation or system
+            // settings changes. Junctions require no symlink developer privilege.
+            // cmd's built-in mklink uses ordinary drive paths; the fixture's
+            // canonicalized paths carry Rust's extended-length prefix.
+            let ordinary = |path: &std::path::Path| {
+                let text = path.to_str().unwrap();
+                text.strip_prefix(r"\\?\").unwrap_or(text).to_owned()
+            };
+            let output = Command::new("cmd.exe")
+                .args(["/d", "/c", "mklink", "/J"])
+                .arg(ordinary(link))
+                .arg(ordinary(target))
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "junction: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        #[tokio::test]
+        async fn junctions_at_root_instance_game_packs_and_config_are_rejected() {
+            for component in [
+                "",
+                "demo",
+                "demo/.minecraft",
+                "demo/.minecraft/resourcepacks",
+                "demo/.minecraft/config",
+            ] {
+                let f = Fixture::new();
+                let state = PackActivationState::default();
+                let target = if component.is_empty() {
+                    f.root.clone()
+                } else {
+                    f.root.join(component)
+                };
+                let moved = target.with_extension("actual");
+                fs::rename(&target, &moved).unwrap();
+                junction(&target, &moved);
+                if component.ends_with("config") {
+                    assert!(state
+                        .read_shader(f.root(), "demo".into(), ShaderRuntime::Iris)
+                        .await
+                        .is_err());
+                } else {
+                    assert!(state.read(f.root(), "demo".into()).await.is_err());
+                }
+                // Explicitly remove junction itself before returning real tree;
+                // cleanup never recursively follows a junction.
+                fs::remove_dir(&target).unwrap();
+                fs::rename(&moved, &target).unwrap();
+            }
+        }
+        #[tokio::test]
+        async fn target_hardlinks_late_replacement_and_runtime_conflicts_fail_closed() {
+            let f = Fixture::new();
+            let state = PackActivationState::default();
+            let snapshot = state.read(f.root(), "demo".into()).await.unwrap();
+            fs::rename(f.path("options.txt"), f.path("real.txt")).unwrap();
+            fs::hard_link(f.path("real.txt"), f.path("options.txt")).unwrap();
+            assert!(state
+                .write(
+                    f.root(),
+                    "demo".into(),
+                    snapshot.revision,
+                    snapshot.resource_packs,
+                    true
+                )
+                .await
+                .is_err());
+            assert_eq!(
+                fs::read(f.path("real.txt")).unwrap(),
+                fs::read(f.path("options.txt")).unwrap()
+            );
+            for runtime in [ShaderRuntime::Iris, ShaderRuntime::Oculus] {
+                let name = if runtime == ShaderRuntime::Iris {
+                    "iris.properties"
+                } else {
+                    "oculus.properties"
+                };
+                let snapshot = state
+                    .read_shader(f.root(), "demo".into(), runtime)
+                    .await
+                    .unwrap();
+                let path = f.path(&format!("config/{name}"));
+                fs::write(&path, "enableShaders=false\nexternal=changed\n").unwrap();
+                code(
+                    state
+                        .write_shader(
+                            f.root(),
+                            "demo".into(),
+                            runtime,
+                            snapshot.revision,
+                            None,
+                            false,
+                            true,
+                            true,
+                        )
+                        .await,
+                    "PACK_ACTIVATION_CHANGED",
+                );
+                assert_eq!(
+                    fs::read_to_string(&path).unwrap(),
+                    "enableShaders=false\nexternal=changed\n"
+                );
+                fs::hard_link(&path, f.path(&format!("config/{name}.link"))).unwrap();
+                assert!(state
+                    .read_shader(f.root(), "demo".into(), runtime)
+                    .await
+                    .is_err());
+            }
+        }
+        #[tokio::test]
+        async fn pack_junction_not_offered_and_core_hardlinked_zip_is_available() {
+            let f = Fixture::new();
+            junction(
+                &f.path("resourcepacks/LinkedFolder"),
+                &f.path("resourcepacks/Folder"),
+            );
+            fs::hard_link(
+                f.path("resourcepacks/New.zip"),
+                f.path("resourcepacks/Hard.zip"),
+            )
+            .unwrap();
+            let snapshot = PackActivationState::default()
+                .read(f.root(), "demo".into())
+                .await
+                .unwrap();
+            assert!(!snapshot
+                .available_resource_packs
+                .contains(&"file/LinkedFolder".into()));
+            assert!(snapshot
+                .available_resource_packs
+                .contains(&"file/Hard.zip".into()));
+            fs::remove_dir(f.path("resourcepacks/LinkedFolder")).unwrap();
+        }
+        #[tokio::test]
+        async fn late_target_and_shader_file_symlinks_never_modify_referents() {
+            use std::os::windows::fs::symlink_file;
+            let f = Fixture::new();
+            let state = PackActivationState::default();
+            let snapshot = state.read(f.root(), "demo".into()).await.unwrap();
+            let outside = f.root.join("outside-options.txt");
+            fs::write(&outside, "outside sentinel").unwrap();
+            fs::remove_file(f.path("options.txt")).unwrap();
+            symlink_file(&outside, f.path("options.txt")).unwrap();
+            assert!(state
+                .write(
+                    f.root(),
+                    "demo".into(),
+                    snapshot.revision,
+                    snapshot.resource_packs,
+                    true
+                )
+                .await
+                .is_err());
+            assert_eq!(fs::read_to_string(&outside).unwrap(), "outside sentinel");
+            let snapshot = state
+                .read_shader(f.root(), "demo".into(), ShaderRuntime::Iris)
+                .await
+                .unwrap();
+            fs::remove_file(f.path("config/iris.properties")).unwrap();
+            symlink_file(&outside, f.path("config/iris.properties")).unwrap();
+            assert!(state
+                .write_shader(
+                    f.root(),
+                    "demo".into(),
+                    ShaderRuntime::Iris,
+                    snapshot.revision,
+                    None,
+                    false,
+                    true,
+                    true
+                )
+                .await
+                .is_err());
+            assert_eq!(fs::read_to_string(&outside).unwrap(), "outside sentinel");
+        }
+        #[test]
+        fn pinned_ancestors_cannot_be_renamed_and_staging_collision_does_not_overwrite() {
+            let f = Fixture::new();
+            let files = files::InstanceFiles::open(&f.root(), "demo").unwrap();
+            assert!(fs::rename(f.root.join("demo"), f.root.join("moved")).is_err());
+            assert!(fs::rename(f.path(""), f.root.join("moved-game")).is_err());
+            let original = files.options().unwrap();
+            let temporary = f.path(&format!(".jmcl-options-{}-123456.tmp", std::process::id()));
+            fs::write(&temporary, "do not overwrite").unwrap();
+            assert!(files
+                .replace(&original, b"resourcePacks:[]\n", 123456)
+                .is_err());
+            assert_eq!(fs::read_to_string(&temporary).unwrap(), "do not overwrite");
+            assert_eq!(files.options().unwrap(), original);
+        }
+        #[tokio::test]
+        async fn bounded_reads_and_windows_namespace_aliases_fail_closed() {
+            let f = Fixture::new();
+            let state = PackActivationState::default();
+            for root in [
+                r"\\server\share".to_owned(),
+                r"\\.\C:\path".to_owned(),
+                r"C:relative".to_owned(),
+                format!("{}\\..", f.root()),
+                format!("{}\\.", f.root()),
+                format!("{}:stream", f.root()),
+                format!("{} ", f.root()),
+            ] {
+                assert!(state.read(root, "demo".into()).await.is_err());
+            }
+            fs::write(f.path("options.txt"), vec![b'x'; MAX_OPTIONS + 1]).unwrap();
+            code(
+                state.read(f.root(), "demo".into()).await,
+                "PACK_ACTIVATION_FORMAT",
+            );
+        }
+        #[test]
+        fn competing_target_write_handle_blocks_save_without_partial_write() {
+            use std::fs::OpenOptions;
+            use std::os::windows::fs::OpenOptionsExt;
+            let f = Fixture::new();
+            let files = files::InstanceFiles::open(&f.root(), "demo").unwrap();
+            let original = files.options().unwrap();
+            let _writer = OpenOptions::new()
+                .write(true)
+                .share_mode(7)
+                .open(f.path("options.txt"))
+                .unwrap();
+            assert!(files
+                .replace(&original, b"resourcePacks:[]\n", 999)
+                .is_err());
+            assert_eq!(fs::read(f.path("options.txt")).unwrap(), original);
         }
     }
 }

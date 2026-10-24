@@ -79,7 +79,7 @@ intentional unsupported implementation path. These are not interchangeable.
 | Stage 3 server lifecycle | IMPLEMENTED; synthetic flow/state checks VERIFIED; real game server workload and reconnect acceptance BLOCKED |
 | Stages 4–6 controls, worlds, content | IMPLEMENTED; Linux tests VERIFIED; native/real RCON/Query/world/content acceptance BLOCKED |
 | Stage 7 client features | IMPLEMENTED with documented guards; Linux tests VERIFIED; real accounts/catalogs/archive/game/native acceptance BLOCKED |
-| Stage 7 Windows activation | NOTSUPPORTED pending reparse-safe adapter; not a passing platform check |
+| Stage 7 Windows activation | Handle-relative adapter IMPLEMENTED; cross-target typecheck VERIFIED; Windows execution pending ([record](2026-10-24-windows-pack-activation.md)) |
 | Stage 7 OptiFine/unknown formats | NOTSUPPORTED; use in-game UI, no guessed adapter |
 | Stage 8 React and RPC fixtures | IMPLEMENTED, Linux automated tests VERIFIED |
 | Stage 8 browser E2E | IMPLEMENTED; local execution BLOCKED; initial CI 2/3, corrected exact-head result linked above |
@@ -91,7 +91,8 @@ intentional unsupported implementation path. These are not interchangeable.
 | Stage 8 user documentation | IMPLEMENTED; release-specific acceptance still required |
 | Stage 8 first release tag | BLOCKED on explicit release approval and prerequisites; no tag/release created |
 
-The end of feasible authorized development is not the end of acceptance. Follow
+This stage is an implementation/verification checkpoint, not the end of authorized
+development or acceptance. Follow
 [release gates](../release.md) before any publication. No real service/account,
 SSH trust change, Minecraft workload, paid runner, signing key or installer on a
 user machine was used in this stage.
