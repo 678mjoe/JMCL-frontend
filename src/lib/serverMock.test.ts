@@ -808,6 +808,20 @@ describe("server mock worlds and content", () => {
     expect(adopted.adopted.every((entry) => entry.file.startsWith("datapacks/") && !entry.file.startsWith("world/"))).toBe(true);
   });
 
+  test("preserves server-root-relative mod selectors through list, install, adoption and mutations", async () => {
+    const session = await openDefault();
+    const initial = await session.serverModsList(directory, "survival");
+    expect([...initial.entries.map((entry) => entry.file), ...initial.unmanaged].every((file) => file.startsWith("mods/"))).toBe(true);
+    const result = await session.serverModsInstall(directory, "survival", "selector-fixture");
+    expect(result.installed[0].file).toBe("mods/selector-fixture.jar");
+    await expect(session.serverModsDisable(directory, "survival", { file: "selector-fixture.jar" })).rejects.toMatchObject({ code: "CONTENT_NOT_FOUND" });
+    await expect(session.serverModsDisable(directory, "survival", { file: result.installed[0].file })).resolves.toMatchObject({ changed: true });
+    await expect(session.serverModsEnable(directory, "survival", { file: result.installed[0].file })).resolves.toMatchObject({ changed: true });
+    const adopted = await session.serverModsAdopt(directory, "survival");
+    expect(adopted.adopted[0].file).toBe("mods/manual.jar");
+    await expect(session.serverModsRemove(directory, "survival", { file: adopted.adopted[0].file })).resolves.toMatchObject({ removed: { file: "mods/manual.jar" } });
+  });
+
   test("allows vanilla stopped mod mutations but still requires a loader to install", async () => {
     const session = await openDefault();
     await expect(session.serverModsDisable(directory, "vanilla-server", { file: "mods/manual.jar" })).resolves.toMatchObject({ changed: true });
@@ -911,6 +925,62 @@ describe("server mock dispatcher inventory", () => {
       dispatchServerMockRequest(createServerMockState("default"), "server.unknown", {});
     } catch (error) {
       expect(error).toMatchObject({ kind: "rpc", code: "METHOD_NOT_FOUND" });
+    }
+  });
+});
+
+describe("server content world scope and loader fixtures", () => {
+  test("keeps datapacks in the selected base world through switch, rename, delete and restore", async () => {
+    const session = await openDefault();
+    const original = await session.serverDatapacksList(directory, "survival");
+    await session.serverPropertiesSet(directory, "survival", { "level-name": "new-base" });
+    expect((await session.serverDatapacksList(directory, "survival")).entries).toEqual([]);
+    await session.serverDatapacksInstall(directory, "survival", "new-base-pack", { version_id: "v1" });
+    await session.serverPropertiesSet(directory, "survival", { "level-name": "world" });
+    expect((await session.serverDatapacksList(directory, "survival")).entries).toEqual(original.entries);
+    await session.serverWorldsRename(directory, "survival", "world", "renamed");
+    expect((await session.serverDatapacksList(directory, "survival")).entries).toEqual(original.entries);
+    const archive = await session.serverWorldsBackup(directory, "survival");
+    await session.serverWorldsDelete(directory, "survival", "renamed");
+    expect((await session.serverDatapacksList(directory, "survival")).entries).toEqual([]);
+    await session.serverWorldsRestore(directory, "survival", archive.backup, false);
+    const restored = await session.serverDatapacksList(directory, "survival");
+    expect(restored.entries).toEqual([]);
+    expect(restored.unmanaged).toContain("datapacks/terralith.zip");
+    await session.serverDatapacksAdopt(directory, "survival");
+    expect((await session.serverDatapacksList(directory, "survival")).entries.every((entry) => entry.source.provider === "manual")).toBe(true);
+    await session.serverPropertiesSet(directory, "survival", { "level-name": "new-base" });
+    expect((await session.serverDatapacksList(directory, "survival")).entries[0].source.project_id).toBe("new-base-pack");
+  });
+
+  test("allows installed Vanilla datapacks before first start and requires usable properties", async () => {
+    const session = await openDefault();
+    await session.serverCreate(directory, "prelaunch", "1.21.4");
+    await expect(session.serverDatapacksList(directory, "prelaunch")).rejects.toMatchObject({ code: "SERVER_PROPERTIES_INVALID" });
+    await expect(session.serverDatapacksInstall(directory, "prelaunch", "pack")).rejects.toMatchObject({ code: "SERVER_PROPERTIES_INVALID" });
+    await session.serverInstall(directory, "prelaunch", { accept_eula: true });
+    expect((await session.serverWorldsList(directory, "prelaunch")).worlds).toEqual([]);
+    await session.serverDatapacksInstall(directory, "prelaunch", "pack", { version_id: "v1" });
+    await session.serverDatapacksSetVersion(directory, "prelaunch", "pack", "v2");
+    expect((await session.serverDatapacksList(directory, "prelaunch")).entries[0].source.version_id).toBe("v2");
+    expect((await session.serverStatus(directory, "prelaunch")).running).toBe(false);
+    await expect(session.serverModsInstall(directory, "prelaunch", "mod")).rejects.toMatchObject({ code: "SERVER_LOADER_REQUIRED" });
+  });
+
+  test("round-trips mod version and repeated toggles for every server loader", async () => {
+    const session = await openDefault();
+    for (const [id, loader] of [["fabric", { fabric_loader: "0.16.10" }], ["neoforge", { neoforge_version: "21.4.1" }], ["forge", { forge_version: "54.0.0" }]] as const) {
+      await session.serverCreate(directory, id, "1.21.4", loader);
+      await session.serverModsInstall(directory, id, "fixture", { version_id: "v1" });
+      expect((await session.serverModsDisable(directory, id, { project: "fixture" })).changed).toBe(true);
+      expect((await session.serverModsDisable(directory, id, { project: "fixture" })).changed).toBe(false);
+      await session.serverModsSetVersion(directory, id, "fixture", "v2");
+      const entry = (await session.serverModsList(directory, id)).entries[0];
+      expect(entry.source.version_id).toBe("v2");
+      expect(entry.enabled).toBe(false);
+      await session.serverModsEnable(directory, id, { file: entry.file });
+      await session.serverModsRemove(directory, id, { project: "fixture" });
+      expect((await session.serverModsList(directory, id)).entries).toEqual([]);
     }
   });
 });

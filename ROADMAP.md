@@ -149,9 +149,7 @@ Windows 负责兼容性和发布验证：
 
 阶段 2 的 SSH transport、连接配置、端点选择、按端点隔离的会话/状态缓存及远端日志/命令接入已实现；平台验收尚未全部完成，不能据此开启阶段 3。既有验证范围见[阶段 2 验收记录](./docs/verification/stage-2-platform-handoff.md)，历史平台证据不等于 Cloud 环境已验收。
 
-JMCLCore 已实现主要 `server.*` 能力，JMCL-frontend 仍未实现：
-
-- 服务端 Mod 和数据包 UI。
+JMCLCore 已实现主要 `server.*` 能力。阶段 6 的服务端 Mod 和数据包 UI 已实现：Modrinth 搜索与兼容版本、安装／版本切换、启停／删除／接管、停服权威校验与按端点隔离的请求。数据包路径及 world-scoped registry 由 Core 决定，支持首次启动前安装。Linux 自动验证见[阶段 6 记录](./docs/verification/2026-10-24-stage-6-content.md)；真实、视觉及 macOS/Windows 原生验收仍待完成，CurseForge 仍保留在既有后续范围。
 
 阶段 4 的 properties 编辑器、即时 RCON 与 basic/full Query UI 已实现，并有 Linux 前端自动测试覆盖；真实、视觉及 macOS/Windows 原生验收仍待完成。详见[阶段 4 自动验证记录](./docs/verification/2026-10-23-stage-4-controls.md)。
 

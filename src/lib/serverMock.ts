@@ -23,6 +23,8 @@ export type ServerMockEventHandler = (event: {
   data: Record<string, unknown> | string;
 }) => void;
 
+interface MockContentStore { entries: ServerContentEntry[]; unmanaged: string[] }
+
 interface ServerMockLog {
   file_id: number;
   bytes: Uint8Array;
@@ -47,8 +49,10 @@ export interface ServerMockServer {
   backup_world_sets: Record<string, string[]>;
   /** Synthetic archive contents, independent from later world mutations. */
   backup_world_entries: Record<string, ServerWorldEntry[]>;
-  mods: { entries: ServerContentEntry[]; unmanaged: string[] };
-  datapacks: { entries: ServerContentEntry[]; unmanaged: string[] };
+  mods: MockContentStore;
+  /** Registry belongs to each base world, not the server manifest. */
+  datapacks_by_world: Record<string, MockContentStore>;
+  backup_datapack_files: Record<string, Record<string, string[]>>;
 }
 
 export interface ServerMockState {
@@ -281,6 +285,7 @@ function makeServer(
   directory: string,
   id: string,
   options: Partial<ServerMockServer> & {
+    datapacks?: MockContentStore;
     version_id?: string;
     name?: string;
     fabric_loader?: string | null;
@@ -331,7 +336,8 @@ function makeServer(
     backup_world_sets: options.backup_world_sets ?? {},
     backup_world_entries: options.backup_world_entries ?? {},
     mods: options.mods ?? { entries: [], unmanaged: [] },
-    datapacks: options.datapacks ?? { entries: [], unmanaged: [] },
+    datapacks_by_world: options.datapacks_by_world ?? (options.datapacks && properties?.["level-name"] ? { [properties["level-name"]]: options.datapacks } : {}),
+    backup_datapack_files: options.backup_datapack_files ?? {},
   };
 }
 
@@ -921,6 +927,10 @@ function serverWorldsRename(state: ServerMockState, params: Record<string, unkno
       }
     }
   }
+  if (server.datapacks_by_world[oldName]) {
+    server.datapacks_by_world[newName] = server.datapacks_by_world[oldName];
+    delete server.datapacks_by_world[oldName];
+  }
   if (renamingBase && server.properties) server.properties["level-name"] = newName;
   return { stage: "server.worlds.rename" as const, renamed: { old_name: oldName, new_name: newName } };
 }
@@ -936,6 +946,7 @@ function serverWorldsDelete(state: ServerMockState, params: Record<string, unkno
     : new Set([name]);
   unlockedWorlds(server, [...deletedNames]);
   server.worlds = server.worlds.filter((world) => !deletedNames.has(world.name));
+  for (const name of deletedNames) delete server.datapacks_by_world[name];
   return { stage: "server.worlds.delete" as const, deleted: name };
 }
 
@@ -961,6 +972,11 @@ function serverWorldsBackup(state: ServerMockState, params: Record<string, unkno
   server.backups.unshift(backup);
   server.backup_world_sets[file] = names;
   server.backup_world_entries[file] = copy(server.worlds.filter((entry) => names.includes(entry.name)));
+  // Core archives exclude .jmcl: registry metadata is not restored.
+  server.backup_datapack_files[file] = Object.fromEntries(names.map((name) => {
+    const store = server.datapacks_by_world[name];
+    return [name, store ? [...store.unmanaged, ...store.entries.filter((entry) => entry.enabled).map((entry) => entry.file)] : []];
+  }));
   return { stage: "server.worlds.backup" as const, backup: file };
 }
 
@@ -988,6 +1004,7 @@ function serverWorldsRestore(state: ServerMockState, params: Record<string, unkn
   const archivedNames = new Set(names);
   server.worlds = server.worlds.filter((world) => !archivedNames.has(world.name));
   server.worlds.push(...copy(server.backup_world_entries[file] ?? names.map((name) => makeWorld(name))));
+  for (const name of names) server.datapacks_by_world[name] = { entries: [], unmanaged: [...(server.backup_datapack_files[file]?.[name] ?? [])] };
   return { stage: "server.worlds.restore" as const, restored: file };
 }
 
@@ -999,12 +1016,19 @@ function serverWorldsBackupDelete(state: ServerMockState, params: Record<string,
   server.backups = server.backups.filter((backup) => backup.file !== file);
   delete server.backup_world_sets[file];
   delete server.backup_world_entries[file];
+  delete server.backup_datapack_files[file];
   return { stage: "server.worlds.backups.delete" as const, deleted: file };
 }
 
 type ContentKind = "mods" | "datapacks";
-function contentStore(server: ServerMockServer, kind: ContentKind) {
-  return server[kind];
+function datapackWorld(server: ServerMockServer): string {
+  const name = server.properties?.["level-name"];
+  if (!name || name === "." || name === ".." || /[\\/\0\r\n]/.test(name)) failure("SERVER_PROPERTIES_INVALID", "The mock server has no usable level-name");
+  return name;
+}
+function contentStore(server: ServerMockServer, kind: ContentKind): MockContentStore {
+  if (kind === "mods") return server.mods;
+  return server.datapacks_by_world[datapackWorld(server)] ?? { entries: [], unmanaged: [] };
 }
 function contentKind(kind: ContentKind): "mod" | "datapack" {
   return kind === "mods" ? "mod" : "datapack";
@@ -1028,8 +1052,8 @@ function contentMutationServer(state: ServerMockState, params: Record<string, un
     failure("SERVER_LOADER_REQUIRED", "A server loader is required for mock mods");
   }
   if (kind === "datapacks") {
-    installed(server);
-    if (!server.properties?.["level-name"]) failure("SERVER_PROPERTIES_INVALID", "The mock server has no usable level-name");
+    const world = datapackWorld(server);
+    server.datapacks_by_world[world] ??= { entries: [], unmanaged: [] };
   }
   return server;
 }

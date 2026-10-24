@@ -103,3 +103,32 @@ export async function projectVersions(
     `${API_BASE}/project/${encodeURIComponent(projectId)}/version${query ? `?${query}` : ""}`,
   );
 }
+
+/** Server catalog only. Never infer remote paths or pass client install options. */
+export type ServerCatalogKind = "mods" | "datapacks";
+export function serverSearchUrl(kind: ServerCatalogKind, query: string, gameVersion: string, loader: LoaderName | null): string {
+  const facets: string[][] = kind === "mods" ? [["project_type:mod"], [`categories:${loader}`]] : [["categories:datapack"]];
+  if (gameVersion) facets.push([`versions:${gameVersion}`]);
+  // v2 documents server_side as supported (deprecated in favour of environment).
+  // Required/optional deliberately exclude unknown and unsupported client-only hits.
+  facets.push(["server_side:required", "server_side:optional"]);
+  return `${API_BASE}/search?${new URLSearchParams({ query, limit: "24", index: query.trim() ? "relevance" : "downloads", facets: JSON.stringify(facets) })}`;
+}
+export function serverVersionsUrl(projectId: string, kind: ServerCatalogKind, gameVersion: string, loader: LoaderName | null): string {
+  const params = new URLSearchParams({ game_versions: JSON.stringify([gameVersion]), loaders: JSON.stringify([kind === "datapacks" ? "datapack" : loader]) });
+  return `${API_BASE}/project/${encodeURIComponent(projectId)}/version?${params}`;
+}
+export function compatibleServerVersions(versions: ModrinthVersion[], kind: ServerCatalogKind, gameVersion: string, loader: LoaderName | null): ModrinthVersion[] {
+  const requiredLoader = kind === "datapacks" ? "datapack" : loader;
+  return requiredLoader ? versions.filter((version) => version.game_versions.includes(gameVersion) && version.loaders.includes(requiredLoader)) : [];
+}
+export async function searchServerProjects(kind: ServerCatalogKind, query: string, gameVersion: string, loader: LoaderName | null): Promise<ModrinthProject[]> {
+  if (kind === "mods" && !loader) return [];
+  if (isMockTransport()) return [{ project_id: `mock-server-${kind}`, slug: `server-${kind}`, title: query.trim() || (kind === "mods" ? "Server Mod fixture" : "Datapack fixture"), description: "Synthetic server-compatible catalog fixture", author: "JMCL fixture", downloads: 42, icon_url: null }];
+  return (await getJson<{ hits: ModrinthProject[] }>(serverSearchUrl(kind, query, gameVersion, loader))).hits;
+}
+export async function serverProjectVersions(projectId: string, kind: ServerCatalogKind, gameVersion: string, loader: LoaderName | null): Promise<ModrinthVersion[]> {
+  if (kind === "mods" && !loader) return [];
+  if (isMockTransport()) return ["2", "1"].map((number) => ({ id: `mock-${kind}-${number}`, name: `Fixture ${number}`, version_number: number, game_versions: [gameVersion], loaders: [kind === "datapacks" ? "datapack" : loader!], date_published: "2026-01-01T00:00:00Z" }));
+  return compatibleServerVersions(await getJson<ModrinthVersion[]>(serverVersionsUrl(projectId, kind, gameVersion, loader)), kind, gameVersion, loader);
+}
