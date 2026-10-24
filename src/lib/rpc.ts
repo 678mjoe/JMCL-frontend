@@ -1159,8 +1159,8 @@ export class CoreSession {
   // spawns core with the app-data dir as CWD, so the default resolves there.
 
   accountSave(profile: AccountProfile) {
-    return this.request<unknown>("account.microsoft.save", {
-      ...profile,
+    return this.request<{ stage: "save"; account: AccountProfile }>("account.microsoft.save", {
+      account: { ...profile },
     });
   }
 
@@ -1168,8 +1168,9 @@ export class CoreSession {
     return this.request<{ accounts: AccountProfile[] }>("account.microsoft.list");
   }
 
-  accountGet(id: string) {
-    return this.request<AccountProfile>("account.microsoft.get", { id });
+  async accountGet(id: string): Promise<AccountProfile> {
+    const result = await this.request<{ stage: "account_get"; account: AccountProfile }>("account.microsoft.get", { id });
+    return result.account;
   }
 
   accountDelete(id: string) {

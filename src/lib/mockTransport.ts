@@ -886,7 +886,7 @@ export async function mockRequest<T>(
     } as T;
   }
   if (method === "account.microsoft.list")
-    return { accounts: [...fixture.accounts] } as T;
+    return { stage: "account_list", accounts: [...fixture.accounts] } as T;
   if (method === "account.microsoft.get") {
     const account = fixture.accounts.find((item) => item.id === id);
     if (!account)
@@ -895,18 +895,23 @@ export async function mockRequest<T>(
         code: "ACCOUNT_NOT_FOUND",
         message: "Mock account not found",
       };
-    return account as T;
+    return { stage: "account_get", account: { ...account } } as T;
   }
   if (method === "account.microsoft.save") {
-    const account = params as AccountProfile;
+    const value = params.account;
+    if (!value || typeof value !== "object" || Array.isArray(value)
+      || !["id", "player_name", "client_id"].every(key => typeof (value as Record<string, unknown>)[key] === "string"))
+      throw { kind: "rpc", code: "INVALID_PARAMS", message: "Account metadata parameters are invalid" };
+    const input = value as AccountProfile;
+    const account: AccountProfile = { schema_version: input.schema_version ?? 1, id: input.id, player_name: input.player_name, client_id: input.client_id, xuid: input.xuid ?? null };
     const index = fixture.accounts.findIndex((item) => item.id === account.id);
     if (index < 0) fixture.accounts.push({ ...account });
     else fixture.accounts[index] = { ...account };
-    return null as T;
+    return { stage: "save", account: { ...account } } as T;
   }
   if (method === "account.microsoft.delete") {
     fixture.accounts = fixture.accounts.filter((account) => account.id !== id);
-    return null as T;
+    return { stage: "account_delete", id, deleted: true } as T;
   }
   if (method === "auth.microsoft.device.begin")
     return {
