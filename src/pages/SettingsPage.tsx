@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { DiagnosticSettings } from "@/components/DiagnosticSettings";
 import { UpdateSettings } from "@/components/UpdateSettings";
 import { StoreGcSettings } from "@/components/StoreGcSettings";
 import { CurseForgeSettings } from "@/components/CurseForgeSettings";
@@ -221,6 +222,10 @@ export function SettingsPage() {
             </Select>
           </div>
         </section>
+
+        <Separator />
+
+        <DiagnosticSettings />
 
         <Separator />
 

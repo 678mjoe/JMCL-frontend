@@ -38,6 +38,20 @@ Use compatible catalog versions. Imported packs may still need game installation
 
 Use a host you control and have verified through system OpenSSH. Unknown/changed host keys are rejected. A disconnect does not mean the server stopped: reconnect and refresh state. Accept the EULA explicitly before installing; stop the server before properties/world/content edits. Never expose RCON/Query as a workaround for connection errors.
 
+## 本地诊断日志 / Local diagnostic logs
+
+在**设置 → 诊断日志**开启记录，复现问题后刷新查看。默认关闭；开关在重启后保留。可按级别筛选、通过原生保存对话框导出 JSON Lines，或确认后清理。关闭记录不会删除旧日志；清理保留开关设置。浏览器预览不写入诊断日志。
+
+记录包含固定事件类别、时间、操作结果、关联编号和耗时；Core 方法仅归入有限类别。它不是游戏／服务器控制台，也不保存原始请求、响应、错误详情、堆栈、账号、凭据或文件路径。日志不自动上传，导出也不会发送给维护者；分享前仍应检查导出内容及其时间信息。
+
+日志在应用数据目录的 `diagnostics` 子目录轮转，最多 4 个文件，每个 256 KiB。忙碌或存储失败时可丢弃记录，设置页显示丢弃数量；缺少记录不证明操作未发生；退出／崩溃时尾部记录不保证落盘。查看／导出会忽略不识别或损坏的记录，每次最多返回最近 4,096 条有效记录，界面显示其中最近 2,000 条。出现不可用或失败提示时先刷新，不要把日志故障当作 Core 操作成功或失败的依据。
+
+Open **Settings → Diagnostic logs**, enable recording, reproduce the issue, then refresh. Recording is off by default and the preference survives restart. Filter by severity, export JSON Lines through the native save dialog, or confirm clearing the retained logs. Disabling preserves existing logs; clearing preserves the preference. Browser preview does not persist diagnostics.
+
+Records use fixed event categories, timestamps, outcomes, correlation numbers and durations; Core methods are reduced to a small set of categories. These are application diagnostics, not game/server console logs. Raw requests, responses, error messages, stacks, account details, credentials and file paths are not recorded. Nothing is uploaded automatically. Export only creates a local file; review its contents and timing information before sharing it yourself.
+
+The app-data `diagnostics` directory retains at most four 256 KiB log files. Busy queues or storage failures may drop records; the settings page shows the dropped count. A missing record does not prove an operation never happened; final records are not guaranteed to reach disk on exit/crash. Viewing/exporting ignores unrecognized or corrupt records and returns at most the latest 4,096 valid records; the UI displays the latest 2,000 of those. Refresh after an unavailable/failed log operation; diagnostic status is not authoritative Core operation status.
+
 ## 故障与更新 / Troubleshooting and updates
 
 - Core missing/protocol mismatch: check the pinned Core and staged sidecar architecture; a web preview is not a native build.

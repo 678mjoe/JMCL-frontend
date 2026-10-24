@@ -57,3 +57,18 @@ test('errors: failed handshake blocks actions without false empty success and re
   await page.getByRole('navigation').getByRole('button', { name: 'Servers', exact: true }).click();
   await expect(page.getByRole('button', { name: /Vanilla Server/ })).toBeVisible();
 });
+
+test('diagnostics: browser-only fallback is explicit and actions cannot write', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' });
+  await nav.getByRole('button', { name: 'Settings', exact: true }).click();
+  const logs = page.getByRole('region', { name: 'Diagnostic logs' });
+  await expect(logs.getByText(/browser preview does not write logs/)).toBeVisible();
+  await expect(logs.getByRole('button', { name: 'Export logs…', exact: true })).toBeDisabled();
+  await expect(logs.getByRole('button', { name: 'Clear logs…', exact: true })).toBeDisabled();
+  await logs.getByRole('button', { name: 'Refresh logs', exact: true }).click();
+  await nav.getByRole('button', { name: 'Instances', exact: true }).click();
+  await nav.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(logs.getByRole('button', { name: 'Enable recording', exact: true })).toBeDisabled();
+  await logs.screenshot({ path: 'test-results/diagnostic-browser-fallback.png' });
+});

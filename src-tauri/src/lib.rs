@@ -2,6 +2,7 @@
 
 pub mod credentials;
 pub mod curseforge;
+pub mod diagnostics;
 pub mod endpoints;
 pub mod pack_activation;
 pub mod pool;
@@ -25,8 +26,12 @@ use session::{SessionError, SessionEvent};
 async fn core_open(
     pool: State<'_, SessionPool>,
     binary_path: Option<String>,
+    diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<pool::SessionInfo, SessionError> {
-    pool.open(binary_path.as_deref()).await
+    let mut operation = diagnostics.operation(diagnostics::Event::CoreOpen, None);
+    let result = pool.open(binary_path.as_deref()).await;
+    operation.finish(&result);
+    result
 }
 
 /// Open an independent system OpenSSH RPC session for a persisted endpoint.
@@ -34,14 +39,23 @@ async fn core_open(
 async fn endpoint_session_open(
     pool: State<'_, SessionPool>,
     endpoint_id: String,
+    diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<pool::SessionInfo, SessionError> {
-    pool.open_endpoint(&endpoint_id).await
+    let mut operation = diagnostics.operation(diagnostics::Event::EndpointOpen, None);
+    let result = pool.open_endpoint(&endpoint_id).await;
+    operation.finish(&result);
+    result
 }
 
 /// Close a session. Unknown ids are a no-op.
 #[tauri::command]
-async fn core_close(pool: State<'_, SessionPool>, session_id: u64) -> Result<(), SessionError> {
+async fn core_close(
+    pool: State<'_, SessionPool>,
+    session_id: u64,
+    diagnostics: State<'_, diagnostics::Diagnostics>,
+) -> Result<(), SessionError> {
     pool.close(session_id).await;
+    diagnostics.event(diagnostics::Event::CoreClose);
     Ok(())
 }
 
@@ -50,8 +64,12 @@ async fn core_close(pool: State<'_, SessionPool>, session_id: u64) -> Result<(),
 async fn endpoint_sessions_close(
     pool: State<'_, SessionPool>,
     endpoint_id: String,
+    diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<(), SessionError> {
-    pool.close_endpoint(&endpoint_id).await
+    let mut operation = diagnostics.operation(diagnostics::Event::EndpointClose, None);
+    let result = pool.close_endpoint(&endpoint_id).await;
+    operation.finish(&result);
+    result
 }
 
 const INSTALL_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -123,60 +141,67 @@ async fn core_request(
     events: Channel<SessionEvent>,
     compact_events: Option<bool>,
     curseforge: Option<bool>,
+    diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<Value, SessionError> {
-    let _activation_guard = activation.requests.read().await;
-    let session = pool
-        .get(session_id)
-        .await
-        .ok_or_else(|| SessionError::coded("SESSION_CLOSED", "This session is closed."))?;
-    let mut params = params.unwrap_or_else(|| json!({}));
-    let enabled = curseforge.unwrap_or(false);
-    curseforge::validate_injection(&method, &params, enabled)?;
-    let key = if enabled {
-        curseforge::preflight_version_change(&session, &method, &params).await?;
-        Some(curseforge::required_key().await?)
-    } else {
-        None
-    };
-    if let Some(key) = &key {
-        params["api_key"] = Value::String(key.clone());
-    }
-    let mut forwarder = CompactEventForwarder::new(compact_events.unwrap_or(false));
-    let mut on_event = |event| {
-        let event = match &key {
-            Some(key) => curseforge::scrub_event(event, key),
-            None => Some(event),
-        };
-        if let Some(event) = event {
-            forwarder.push(event, |event| {
-                let _ = events.send(event);
-            });
-        }
-    };
-    let result = if enabled {
-        session
-            .request_credentialed(&method, params, &mut on_event)
+    let mut operation = diagnostics.operation(diagnostics::Event::CoreRequest, Some(&method));
+    let result = async {
+        let _activation_guard = activation.requests.read().await;
+        let session = pool
+            .get(session_id)
             .await
-    } else {
-        session.request(&method, params, &mut on_event).await
-    };
-    forwarder.flush(|event| {
-        let _ = events.send(event);
-    });
-    if let Some(key) = key {
-        // Credential-bearing sessions cannot be reused. Reap the child and its
-        // diagnostic tail before releasing the in-memory secret.
-        pool.close(session_id).await;
-        match result {
-            Ok(mut value) => {
-                curseforge::scrub_value(&mut value, &key);
-                Ok(value)
-            }
-            Err(error) => Err(curseforge::scrub_error(error, &key)),
+            .ok_or_else(|| SessionError::coded("SESSION_CLOSED", "This session is closed."))?;
+        let mut params = params.unwrap_or_else(|| json!({}));
+        let enabled = curseforge.unwrap_or(false);
+        curseforge::validate_injection(&method, &params, enabled)?;
+        let key = if enabled {
+            curseforge::preflight_version_change(&session, &method, &params).await?;
+            Some(curseforge::required_key().await?)
+        } else {
+            None
+        };
+        if let Some(key) = &key {
+            params["api_key"] = Value::String(key.clone());
         }
-    } else {
-        result
+        let mut forwarder = CompactEventForwarder::new(compact_events.unwrap_or(false));
+        let mut on_event = |event| {
+            let event = match &key {
+                Some(key) => curseforge::scrub_event(event, key),
+                None => Some(event),
+            };
+            if let Some(event) = event {
+                forwarder.push(event, |event| {
+                    let _ = events.send(event);
+                });
+            }
+        };
+        let result = if enabled {
+            session
+                .request_credentialed(&method, params, &mut on_event)
+                .await
+        } else {
+            session.request(&method, params, &mut on_event).await
+        };
+        forwarder.flush(|event| {
+            let _ = events.send(event);
+        });
+        if let Some(key) = key {
+            // Credential-bearing sessions cannot be reused. Reap the child and its
+            // diagnostic tail before releasing the in-memory secret.
+            pool.close(session_id).await;
+            match result {
+                Ok(mut value) => {
+                    curseforge::scrub_value(&mut value, &key);
+                    Ok(value)
+                }
+                Err(error) => Err(curseforge::scrub_error(error, &key)),
+            }
+        } else {
+            result
+        }
     }
+    .await;
+    operation.finish(&result);
+    result
 }
 
 #[cfg(test)]
@@ -227,10 +252,19 @@ pub fn run() {
                 .map_err(|e| format!("app data dir unavailable: {e}"))?;
             std::fs::create_dir_all(&dir)
                 .map_err(|e| format!("cannot create app data dir: {e}"))?;
+            let diagnostics = diagnostics::Diagnostics::start(dir.join("diagnostics"));
+            diagnostics.event(diagnostics::Event::AppStarted);
+            app.manage(diagnostics);
             app.manage(SessionPool::new(Some(dir)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            diagnostics::diagnostics_status,
+            diagnostics::diagnostics_set_enabled,
+            diagnostics::diagnostics_read,
+            diagnostics::diagnostics_clear,
+            diagnostics::diagnostics_export,
+            diagnostics::diagnostics_record,
             updater::updater_status,
             updater::updater_action,
             core_open,
@@ -258,6 +292,8 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                app.state::<diagnostics::Diagnostics>()
+                    .event(diagnostics::Event::AppStopped);
                 // Kill every core child before the process exits.
                 let pool = app.state::<SessionPool>();
                 tauri::async_runtime::block_on(pool.clear());
