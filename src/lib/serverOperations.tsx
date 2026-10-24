@@ -1,3 +1,4 @@
+import { isLocalCoreTransportFailure } from "./transportFailure";
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { acquireServerTarget } from "./serverTargetLock";
 import { errorText } from "./launcher";
@@ -43,7 +44,7 @@ function errorCode(error: unknown): string | null {
 function isTransportFailure(error: unknown): boolean {
   return error instanceof RpcError
     ? error.kind === "transport"
-    : errorCode(error)?.startsWith("SSH_") === true || errorCode(error)?.startsWith("SESSION_") === true || errorCode(error) === "TRANSPORT_ERROR";
+    : errorCode(error)?.startsWith("SSH_") === true || errorCode(error)?.startsWith("SESSION_") === true || errorCode(error) === "TRANSPORT_ERROR" || isLocalCoreTransportFailure(errorCode(error));
 }
 
 export function canInstallServer(manifest: ServerManifest, consent: boolean): boolean {

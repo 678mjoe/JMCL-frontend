@@ -1,3 +1,4 @@
+import { localCoreTransportCodes } from "./transportFailure";
 import { describe, expect, test } from "bun:test";
 import { ServerLogController, MAX_SERVER_LOG_BUFFER_CHARS, isNearLogBottom, type ServerLogSession } from "./serverLogController";
 import type { ServerLogResult } from "./types";
@@ -317,3 +318,13 @@ describe("ServerLogController", () => {
     expect(translate("en", "serverConsole.accepted")).toContain("output will appear in logs");
   });
 });
+
+for (const code of localCoreTransportCodes) {
+  test(`local transport ${code} pauses server log polling and retires session`, async () => {
+    const h = harness({ reads: [async () => result("old"), async () => { throw { code }; }, async () => result("new")] });
+    h.controller.setRunning(true); await h.controller.open(); await h.controller.retry();
+    expect(h.controller.getSnapshot()).toMatchObject({ sessionReady: false, error: code, text: "old" });
+    expect(h.timerCount()).toBe(0); await h.controller.retry();
+    expect(h.opens()).toBe(2); expect(h.closes()).toBe(1); await h.controller.close();
+  });
+}
