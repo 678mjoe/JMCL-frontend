@@ -55,9 +55,9 @@ ssh user@host jmcl-core rpc
 
 ## 3. 平台与测试分工
 
-### Devin Cloud Linux
+### Linux 开发环境
 
-当前开发环境为 Devin Cloud；每个会话按实际 OS 和架构选择工具链与 core。可复现配置和操作说明见[环境指南](./docs/development.md)。旧 Pi 和个人 Mac 工作区不再是当前开发前提。
+开发可以使用经授权且实际可用的 Cloud、远端或本地工作区，不限定提供商；每个会话按实际 OS 和架构选择工具链与 core。可复现配置和操作说明见[环境指南](./docs/development.md)。旧 Pi 和个人 Mac 工作区不再是当前开发前提。
 
 Linux Cloud 可用于：
 
@@ -75,7 +75,7 @@ Linux Cloud 可用于：
 
 Linux 原生编译需要对应 Tauri 依赖，其结果不能代替 macOS/Windows 原生验证。
 
-### Devin Cloud macOS
+### macOS 验收环境
 
 macOS 是主要桌面集成与 UI 验收平台，负责：
 
@@ -88,7 +88,7 @@ macOS 是主要桌面集成与 UI 验收平台，负责：
 - Minecraft 客户端实际启动；
 - 应用打包和交互验收。
 
-### Devin Cloud Windows
+### Windows 验收环境
 
 Windows 负责兼容性和发布验证：
 
@@ -136,12 +136,12 @@ Windows 负责兼容性和发布验证：
 - 按实例根目录隔离的高级 JVM/游戏 argv、分辨率、试玩和默认 JVM 选项及 Core 脱敏预览；
 - Unix/Windows 受限原生资源包选择/顺序及显式 Iris/Oculus 配置编辑（Windows 执行验收待完成），按实际游戏版本/加载器查询的 Shader runtime 指引；
 - stdout、stderr 和 core 诊断日志；
-- 中英文和明暗主题。
+- 中英文和明暗主题；
+- 官方 Tauri 更新器与原生检查/下载/安装流程（默认生产渠道禁用，真实签名更新及平台安装/恢复验收待完成，见[更新器记录](./docs/verification/2026-10-24-updater.md)）。
 
 ### 尚未实现的客户端能力
 
-- 旧版/未知资源包格式与未验证光影运行时的自动配置；
-- 自动更新。
+- 旧版/未知资源包格式与未验证光影运行时的自动配置。
 
 ### 服务器 GUI
 
