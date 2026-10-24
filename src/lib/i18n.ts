@@ -93,6 +93,7 @@ const zh = {
 
   "detail.back": "返回实例列表",
   "detail.info": "实例信息",
+  "content.fileStateOnly": "下方开关只控制文件是否可用；不代表资源包/光影已在游戏中选择，也不证明兼容性。",
   "content.title": "内容",
   "content.back": "返回实例详情",
   "content.kind.mods": "Mod",
@@ -576,6 +577,7 @@ const en: Record<MessageKey, string> = {
 
   "detail.back": "Back to Instances",
   "detail.info": "Instance Information",
+  "content.fileStateOnly": "These switches control file availability only, not in-game resource/shader selection or compatibility.",
   "content.title": "Content",
   "content.back": "Back to instance",
   "content.kind.mods": "Mods",

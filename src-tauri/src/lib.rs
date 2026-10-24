@@ -3,6 +3,7 @@
 pub mod credentials;
 pub mod curseforge;
 pub mod endpoints;
+pub mod pack_activation;
 pub mod pool;
 pub mod server_status_cache;
 pub mod session;
@@ -112,6 +113,7 @@ fn is_core_event(event: &SessionEvent, kind: &str) -> bool {
 /// the returned value is the terminal `result`.
 #[tauri::command]
 async fn core_request(
+    activation: State<'_, pack_activation::PackActivationState>,
     pool: State<'_, SessionPool>,
     session_id: u64,
     method: String,
@@ -120,6 +122,7 @@ async fn core_request(
     compact_events: Option<bool>,
     curseforge: Option<bool>,
 ) -> Result<Value, SessionError> {
+    let _activation_guard = activation.requests.read().await;
     let session = pool
         .get(session_id)
         .await
@@ -208,6 +211,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(pack_activation::PackActivationState::default())
         .setup(|app| {
             // Core children run with the app-data dir as CWD so the core's
             // CWD-relative defaults (e.g. the `accounts` registry, contract
@@ -228,6 +232,10 @@ pub fn run() {
             core_close,
             endpoint_sessions_close,
             core_request,
+            pack_activation::pack_activation_read,
+            pack_activation::pack_activation_write,
+            pack_activation::shader_activation_read,
+            pack_activation::shader_activation_write,
             curseforge::curseforge_key_status,
             curseforge::curseforge_key_set,
             curseforge::curseforge_key_delete,
