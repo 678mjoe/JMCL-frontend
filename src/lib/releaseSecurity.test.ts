@@ -4,6 +4,14 @@ import capabilities from "../../src-tauri/capabilities/default.json";
 import { unconfiguredUpdate, canUpdate } from "./updates";
 
 describe("release security gates", () => {
+  test("locked Rust and JavaScript Tauri packages use the same major/minor", async () => {
+    const cargo = await Bun.file(new URL("../../src-tauri/Cargo.lock", import.meta.url)).text();
+    const bun = await Bun.file(new URL("../../bun.lock", import.meta.url)).text();
+    const native = cargo.match(/name = "tauri"\nversion = "(\d+\.\d+)\./)?.[1];
+    const guest = bun.match(/"@tauri-apps\/api": \["@tauri-apps\/api@(\d+\.\d+)\./)?.[1];
+    expect(native).toBeDefined();
+    expect(guest).toBe(native);
+  });
   test("unconfigured updater cannot check, download or install", () => {
     for (const action of ["check", "download", "install", "discard", "restart"] as const) expect(canUpdate(unconfiguredUpdate.phase, action)).toBe(false);
     expect(Object.isFrozen(unconfiguredUpdate)).toBe(true);
