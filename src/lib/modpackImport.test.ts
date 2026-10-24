@@ -14,9 +14,30 @@ function setup(overrides: Partial<ModpackSession> = {}) {
     installExecute: async (...values) => { calls.push("install"); args.push(values); expect(instanceCoordinator.isBusy(instanceMutationKey(input.directory, input.id))).toBe(true); return {}; },
     installPrepare: async (...values) => { calls.push("prepare"); args.push(values); return { native_directory: "fixture" }; }, ...overrides,
   };
-  return { controller: new ModpackImportController(input, async () => session), calls, args };
+  return { controller: new ModpackImportController(input, async () => session), calls, args, session };
 }
 describe("modpack import staged ownership", () => {
+  test("CurseForge archive session is replaced before game setup without releasing ownership", async () => {
+    const fixture = setup(); let opens = 0; const order: string[] = [];
+    const archive = { ...fixture.session, close: async () => { order.push("archive-close"); }, instanceGet: async () => { throw new Error("credentialed session reused"); }, modpackInstall: async (...args: Parameters<ModpackSession["modpackInstall"]>) => {
+      expect(args[3]).toEqual({ store_directory: input.storeDirectory, provider: "curseforge" });
+      return fixture.session.modpackInstall(...args);
+    } };
+    const controller = new ModpackImportController({ ...input, provider: "curseforge" }, async () => {
+      expect(instanceCoordinator.isBusy(instanceMutationKey(input.directory, input.id))).toBe(true);
+      order.push("open"); return ++opens === 1 ? archive : fixture.session;
+    });
+    await controller.run(); expect(opens).toBe(2); expect(order).toEqual(["open", "archive-close", "open"]);
+    expect(controller.getSnapshot().phase).toBe("success");
+  });
+  test("disposal while closing credentialed archive session prevents reopening", async () => {
+    const fixture = setup(); let opens = 0; let finish!: () => void;
+    const controller = new ModpackImportController({ ...input, provider: "curseforge" }, async () => { opens++; return { ...fixture.session, close: async () => { await new Promise<void>((resolve) => { finish = resolve; }); } }; });
+    const pending = controller.run(); await new Promise((resolve) => setTimeout(resolve, 0)); controller.dispose(); finish(); await pending;
+    expect(opens).toBe(1); expect(fixture.calls).not.toContain("get");
+    expect(instanceCoordinator.isBusy(instanceMutationKey(input.directory, input.id))).toBe(false);
+  });
+
   test("validates core-compatible IDs including Windows names", () => {
     for (const id of ["", "Pack", "../pack", "con", "aux.zip", "lpt1", "pack.", "a".repeat(65)]) expect(validModpackInstanceId(id)).toBe(false);
     expect(validModpackInstanceId("my-pack_1.2")).toBe(true);

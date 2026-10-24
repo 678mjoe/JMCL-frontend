@@ -125,19 +125,18 @@ Windows 负责兼容性和发布验证：
 - OS keychain 凭据存储；
 - 本地与托管 Java；
 - 推荐 Java 主版本和实例级 `java_override`；
-- Modrinth Mod、资源包和光影管理；
+- Modrinth / CurseForge Mod、资源包和光影目录与管理；
 - 内容启停、删除、接管、升级和降级；
 - 世界列表、元数据、锁定、重命名、复制和删除；
 - 世界导入、导出、备份和恢复；
-- 世界级数据包列表、Modrinth 兼容搜索、安装/版本切换、启停/删除/接管；
-- Modrinth 整合包导入 UI，隔离实例创建及后续游戏安装/准备；
+- 世界级数据包列表、Modrinth / CurseForge 兼容搜索、安装/版本切换、启停/删除/接管；
+- Modrinth / CurseForge 整合包导入 UI，隔离实例创建及后续游戏安装/准备；
+- CurseForge 独立 OS 凭据库设置、固定主机原生目录桥接与 Core 调用时注入；
 - stdout、stderr 和 core 诊断日志；
 - 中英文和明暗主题。
 
 ### 尚未实现的客户端能力
 
-- CurseForge 整合包导入的 API key 支持（现有 UI 明确阻止，未模拟为可用）；
-- CurseForge；
 - store GC UI；
 - 高级 JVM/游戏参数；
 - 资源包和光影的游戏内激活顺序；
@@ -150,7 +149,7 @@ Windows 负责兼容性和发布验证：
 
 阶段 2 的 SSH transport、连接配置、端点选择、按端点隔离的会话/状态缓存及远端日志/命令接入已实现；平台验收尚未全部完成，不能据此开启阶段 3。既有验证范围见[阶段 2 验收记录](./docs/verification/stage-2-platform-handoff.md)，历史平台证据不等于 Cloud 环境已验收。
 
-JMCLCore 已实现主要 `server.*` 能力。阶段 6 的服务端 Mod 和数据包 UI 已实现：Modrinth 搜索与兼容版本、安装／版本切换、启停／删除／接管、停服权威校验与按端点隔离的请求。数据包路径及 world-scoped registry 由 Core 决定，支持首次启动前安装。Linux 自动验证见[阶段 6 记录](./docs/verification/2026-10-24-stage-6-content.md)；真实、视觉及 macOS/Windows 原生验收仍待完成，CurseForge 仍保留在既有后续范围。
+JMCLCore 已实现主要 `server.*` 能力。阶段 6 的服务端 Mod 和数据包 UI 已实现：Modrinth 搜索与兼容版本、安装／版本切换、启停／删除／接管、停服权威校验与按端点隔离的请求。数据包路径及 world-scoped registry 由 Core 决定，支持首次启动前安装。Linux 自动验证见[阶段 6 记录](./docs/verification/2026-10-24-stage-6-content.md)；真实、视觉及 macOS/Windows 原生验收仍待完成，CurseForge 实现状态见阶段 7，真实 API/keychain 验收仍未完成。
 
 阶段 4 的 properties 编辑器、即时 RCON 与 basic/full Query UI 已实现，并有 Linux 前端自动测试覆盖；真实、视觉及 macOS/Windows 原生验收仍待完成。详见[阶段 4 自动验证记录](./docs/verification/2026-10-23-stage-4-controls.md)。
 
@@ -457,7 +456,7 @@ Mock 场景至少包含：
 7. 资源包/光影游戏内激活；
 8. Shader runtime 指引。
 
-阶段 7 前两项的前端实现已落地：世界级数据包及 Modrinth 整合包导入/后续安装准备。CurseForge 归档仍明确阻止，等待既有下一优先级的 key 支持。Linux 自动验证与范围见[阶段 7 首批记录](./docs/verification/2026-10-24-stage-7-client-content.md)；原生文件选择、真实归档/游戏下载及 macOS/Windows/视觉验收仍未完成，不表示整个阶段 7 已验收。
+阶段 7 前两项的前端实现已落地：世界级数据包及 Modrinth 整合包导入/后续安装准备。该批次当时明确阻止 CurseForge 归档；后续第三项现已实现独立 API key 设置、目录与版本查询、客户端/世界数据包/服务端内容安装和版本切换及 CurseForge 归档导入。密钥由原生层保存和注入，禁止 JS 请求携带密钥；目录仅使用固定官方主机，不推测 CDN 地址。实现与待验收范围见[CurseForge 记录](./docs/verification/2026-10-24-stage-7-curseforge.md)。Linux 自动验证与范围见[阶段 7 首批记录](./docs/verification/2026-10-24-stage-7-client-content.md)；原生文件选择、真实归档/游戏下载及 macOS/Windows/视觉验收仍未完成，不表示整个阶段 7 已验收。
 
 ## 13. 阶段 8——质量与发布
 

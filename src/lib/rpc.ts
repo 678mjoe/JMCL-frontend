@@ -16,6 +16,7 @@ import {
   type InstanceMutation,
 } from "./instanceCoordinator";
 import { mockRequest } from "./mockTransport";
+import { curseForgeKeyStatus } from "./curseforge";
 import { closeEndpointMockSession, endpointMockRequest, openEndpointMockSession } from "./endpointMock";
 import { isMockTransport } from "./transportMode";
 import type {
@@ -198,6 +199,8 @@ const optionalGameDirectoryMutationOptions = (
 
 export interface RequestOptions {
   compactEvents?: boolean;
+  /** Native-only credential injection; never contains the key. */
+  curseforge?: boolean;
   coordinate?: boolean;
   instanceId?: string;
   mutation?: InstanceMutation;
@@ -229,7 +232,6 @@ export type ServerContentTarget = { project: string } | { file: string };
 
 export type ServerContentInstallOptions = Partial<{
   provider: "modrinth" | "curseforge";
-  api_key: string;
   version_id: string;
   with_dependencies: boolean;
   store_directory: string;
@@ -238,7 +240,7 @@ export type ServerContentInstallOptions = Partial<{
 }>;
 
 export type ServerContentSetVersionOptions = Partial<{
-  api_key: string;
+  provider: "modrinth" | "curseforge";
   store_directory: string;
   workers: number;
   retries: number;
@@ -361,17 +363,32 @@ export class CoreSession {
     onEvent?: EventHandler<E>,
     options: RequestOptions = {},
   ): Promise<T> {
+    if ("api_key" in params) throw new Error("CurseForge keys must be managed in Settings");
+    const usesCurseForge = params.provider === "curseforge" || options.curseforge === true;
+    if (usesCurseForge && !( /^(?:server\.)?(?:mods|resourcepacks|shaderpacks|datapacks)\.(?:install|set-version)$/.test(method) || method === "modpack.install")) {
+      throw new Error("CurseForge credentials are not permitted for this operation");
+    }
+    if (method.endsWith(".set-version") || method === "modpack.install") {
+      const { provider: _provider, ...wire } = params;
+      params = wire;
+    }
+    if (usesCurseForge) options = { ...options, curseforge: true };
     const execute = async () => {
       if (this.requestExecutor) {
         return this.requestExecutor<T, E>(method, params, onEvent, options);
       }
+      let mockParams = params;
+      if ((this.endpointMock || this.mock) && usesCurseForge) {
+        if (!await curseForgeKeyStatus()) throw new Error("Save an API key in Settings → CurseForge first");
+        mockParams = { ...params, __curseforge_authorized: true };
+      }
       if (this.endpointMock) {
-        try { return await endpointMockRequest<T>(this.id, method, params); }
+        try { return await endpointMockRequest<T>(this.id, method, mockParams); }
         catch (e) { throw normalizeError(e); }
       }
       if (this.mock) {
         try {
-          return await mockRequest<T>(method, params, onEvent as never);
+          return await mockRequest<T>(method, mockParams, onEvent as never);
         } catch (e) {
           throw normalizeError(e);
         }
@@ -384,6 +401,7 @@ export class CoreSession {
         params,
         events,
         compactEvents: options.compactEvents ?? false,
+        curseforge: usesCurseForge,
       });
     };
     if (options.coordinate !== false && options.instanceId && options.mutation) {
@@ -863,7 +881,6 @@ export class CoreSession {
     opts: Partial<{
       version_id: string;
       provider: "modrinth" | "curseforge";
-      api_key: string;
       with_dependencies: boolean;
       store_directory: string;
       workers: number;
@@ -889,7 +906,7 @@ export class CoreSession {
     versionId: string,
     opts: Partial<{
       loader: LoaderName;
-      api_key: string;
+      provider: "modrinth" | "curseforge";
       store_directory: string;
       workers: number;
       retries: number;
@@ -942,7 +959,7 @@ export class CoreSession {
   }
 
   datapacksInstall(directory: string, world: string, minecraftVersion: string, project: string,
-    opts: Partial<{ version_id: string; provider: "modrinth" | "curseforge"; api_key: string;
+    opts: Partial<{ version_id: string; provider: "modrinth" | "curseforge";
       with_dependencies: boolean; store_directory: string; workers: number; retries: number }> = {},
     onEvent?: EventHandler<InstallEvent>,
   ) {
@@ -953,7 +970,7 @@ export class CoreSession {
 
   datapacksSetVersion(directory: string, world: string, minecraftVersion: string, project: string,
     versionId: string,
-    opts: Partial<{ api_key: string; store_directory: string; workers: number; retries: number }> = {},
+    opts: Partial<{ provider: "modrinth" | "curseforge"; store_directory: string; workers: number; retries: number }> = {},
     onEvent?: EventHandler<InstallEvent>,
   ) {
     return this.request<DatapackSetVersionResult, InstallEvent>("datapacks.set-version", {
@@ -1077,7 +1094,7 @@ export class CoreSession {
     id: string,
     file: string,
     opts: Partial<{
-      api_key: string;
+      provider: "modrinth" | "curseforge";
       store_directory: string;
       workers: number;
       retries: number;

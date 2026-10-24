@@ -58,3 +58,35 @@ test("client datapack catalog uses datapack category + game and filters exact lo
   const version = { id: "good", game_versions: ["1.21.4"], loaders: ["datapack"] } as ModrinthVersion;
   expect(compatibleDatapackVersions([version, { ...version, id: "fabric", loaders: ["fabric"] }, { ...version, id: "old", game_versions: ["1.20"] }], "1.21.4")).toEqual([version]);
 });
+test("CurseForge world datapacks send provider hints, numeric IDs and no credentials", async () => {
+  const f = fixture();
+  expect(await f.controller.install("123", "456", "curseforge")).toBe(true);
+  expect(await f.controller.setVersion("123", "455", "curseforge")).toBe(true);
+  expect(f.calls[0]?.[5]).toEqual({ provider: "curseforge", version_id: "456", with_dependencies: true, store_directory: "/store" });
+  expect(f.calls[1]?.[6]).toEqual({ provider: "curseforge", store_directory: "/store" });
+  expect(JSON.stringify(f.calls)).not.toContain("api_key");
+  expect(await f.controller.install("not-numeric", "456", "curseforge")).toBe(false);
+  expect(await f.controller.setVersion("123", "0", "curseforge")).toBe(false);
+  expect(f.calls).toHaveLength(2);
+});
+test("CF refresh opens a fresh session after native credential session retirement", async () => {
+  let opens = 0, retired = false;
+  const first = fixture({ datapacksInstall: async () => { retired = true; return { world: "World A" } as never; }, datapacksList: async () => { if (retired) throw new Error("retired"); return { stage: "datapacks.list", world: "World A", entries: [], unmanaged: [] }; } });
+  const clean = fixture();
+  const c = new ClientDatapackController({ directory: "/a", world: "World A", version: "1.21.4", openSession: async () => ++opens === 1 ? first.session : clean.session });
+  expect(await c.install("123", "456", "curseforge")).toBe(true);
+  expect(opens).toBe(2); expect(c.getSnapshot().refreshError).toBeNull(); expect(c.getSnapshot().content?.world).toBe("World A"); expect(first.closes()).toBe(1); expect(clean.closes()).toBe(1);
+});
+test("cancellation while opening post-CF refresh closes the late session without stale results", async () => {
+  const late = deferred<ClientDatapackSession>(); const first = fixture(), clean = fixture(); let opens = 0;
+  const c = new ClientDatapackController({ directory: "/a", world: "World A", version: "1.21.4", openSession: async () => ++opens === 1 ? first.session : late.promise });
+  const operation = c.install("123", "456", "curseforge");
+  for (let i = 0; i < 30; i++) await Promise.resolve();
+  expect(opens).toBe(2); c.cancel(); late.resolve(clean.session);
+  expect(await operation).toBe(false); expect(c.getSnapshot().content).toBeNull(); expect(clean.closes()).toBe(1);
+});
+test("missing CF key retains actionable code but no native diagnostic", async () => {
+  const f = fixture({ datapacksInstall: async () => { throw { code: "CURSEFORGE_KEY_REQUIRED", message: "PRIVATE" }; } });
+  expect(await f.controller.install("123", "456", "curseforge")).toBe(false);
+  expect(f.controller.getSnapshot().error).toBe("CURSEFORGE_KEY_REQUIRED"); expect(JSON.stringify(f.controller.getSnapshot())).not.toContain("PRIVATE");
+});

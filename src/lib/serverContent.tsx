@@ -1,3 +1,4 @@
+import { hasAmbiguousContentProject } from "./contentIdentity";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { CoreSession, InstallEvent, SessionEvent, ServerContentTarget } from "./rpc";
 import { useServers, type ServerOperationScope } from "./servers";
@@ -11,7 +12,7 @@ export interface ServerContentSnapshot {
   pending: boolean; error: string | null; refreshError: string | null; progress: string | null;
 }
 const empty = (): ServerContentSnapshot => ({ content: null, status: null, pending: false, error: null, refreshError: null, progress: null });
-const codes = new Set(["BUSY", "INVALID_PARAMS", "SERVER_NOT_FOUND", "SERVER_ALREADY_RUNNING", "SERVER_STATUS_FAILED", "SERVER_LOADER_REQUIRED", "SERVER_PROPERTIES_INVALID", "CONTENT_NOT_FOUND", "NO_COMPATIBLE_VERSION", "INCOMPATIBLE_VERSION", "VERSION_PROJECT_MISMATCH", "CONTENT_CONFLICT", "CONTENT_KIND_MISMATCH", "UNSUPPORTED_PROJECT_TYPE", "DOWNLOAD_UNAVAILABLE", "HTTP_STATUS_ERROR", "RESPONSE_TOO_LARGE", "CONTENT_LIST_FAILED", "SERVER_CONTENT_INSTALL_FAILED", "SERVER_CONTENT_SET_VERSION_FAILED", "SERVER_CONTENT_TOGGLE_FAILED", "SERVER_CONTENT_REMOVE_FAILED", "SERVER_CONTENT_ADOPT_FAILED", "SERVER_DATAPACKS_INSTALL_FAILED", "SERVER_DATAPACKS_SET_VERSION_FAILED", "SERVER_DATAPACKS_TOGGLE_FAILED", "SERVER_DATAPACKS_REMOVE_FAILED", "SERVER_DATAPACKS_ADOPT_FAILED", "SSH_DISCONNECTED", "SSH_TIMEOUT", "SSH_HOST_KEY_UNKNOWN", "SSH_HOST_KEY_CHANGED", "SSH_AUTH_REQUIRED_OR_FAILED", "UNSUPPORTED_PROTOCOL", "UNSUPPORTED_PLATFORM"]);
+const codes = new Set(["CONTENT_PROJECT_AMBIGUOUS", "CURSEFORGE_AUTH", "CURSEFORGE_DOWNLOAD_UNAVAILABLE", "CURSEFORGE_KEYCHAIN", "CURSEFORGE_KEY_INPUT", "CURSEFORGE_KEY_INVALID", "CURSEFORGE_KEY_REQUIRED", "CURSEFORGE_NETWORK", "CURSEFORGE_RATE_LIMIT", "CURSEFORGE_REQUEST_INVALID", "BUSY", "INVALID_PARAMS", "SERVER_NOT_FOUND", "SERVER_ALREADY_RUNNING", "SERVER_STATUS_FAILED", "SERVER_LOADER_REQUIRED", "SERVER_PROPERTIES_INVALID", "CONTENT_NOT_FOUND", "NO_COMPATIBLE_VERSION", "INCOMPATIBLE_VERSION", "VERSION_PROJECT_MISMATCH", "CONTENT_CONFLICT", "CONTENT_KIND_MISMATCH", "UNSUPPORTED_PROJECT_TYPE", "DOWNLOAD_UNAVAILABLE", "HTTP_STATUS_ERROR", "RESPONSE_TOO_LARGE", "CONTENT_LIST_FAILED", "SERVER_CONTENT_INSTALL_FAILED", "SERVER_CONTENT_SET_VERSION_FAILED", "SERVER_CONTENT_TOGGLE_FAILED", "SERVER_CONTENT_REMOVE_FAILED", "SERVER_CONTENT_ADOPT_FAILED", "SERVER_DATAPACKS_INSTALL_FAILED", "SERVER_DATAPACKS_SET_VERSION_FAILED", "SERVER_DATAPACKS_TOGGLE_FAILED", "SERVER_DATAPACKS_REMOVE_FAILED", "SERVER_DATAPACKS_ADOPT_FAILED", "SSH_DISCONNECTED", "SSH_TIMEOUT", "SSH_HOST_KEY_UNKNOWN", "SSH_HOST_KEY_CHANGED", "SSH_AUTH_REQUIRED_OR_FAILED", "UNSUPPORTED_PROTOCOL", "UNSUPPORTED_PLATFORM"]);
 const safeCode = (error: unknown) => { const code = typeof error === "object" && error !== null && "code" in error ? error.code : null; return typeof code === "string" && codes.has(code) ? code : "UNKNOWN"; };
 const fail = (code: string): never => { throw { code }; };
 const validIdentifier = (value: string) => !!value.trim() && value === value.trim() && value !== "." && value !== ".." && !/[\\/\0\r\n]/.test(value);
@@ -48,7 +49,7 @@ export class ServerContentController {
     } catch (error) { if (current()) this.update({ refreshError: safeCode(error) }); }
     if (current()) await this.options.refreshStatus?.().catch(() => undefined);
   }
-  private async run(action: (session: ServerContentSession, scope: ServerOperationScope, event: (event: SessionEvent<InstallEvent>) => void) => Promise<unknown>, mutation = true, requireLoader = false): Promise<boolean> {
+  private async run(action: (session: ServerContentSession, scope: ServerOperationScope, event: (event: SessionEvent<InstallEvent>) => void) => Promise<unknown>, mutation = true, requireLoader = false, freshRefresh = false): Promise<boolean> {
     const scope = this.options.scope;
     if (this.pending || !scope || !this.options.isScopeCurrent(scope)) return false;
     const release = acquireServerTarget(scope, this.options.id);
@@ -96,7 +97,23 @@ export class ServerContentController {
       succeeded = true;
     } catch (error) { if (current()) this.update({ error: safeCode(error) }); }
     finally {
-      try { if (session && mutation && current()) await this.refresh(session, scope, current); }
+      try {
+        // Credential-bearing native sessions are retired after the request. Never
+        // reuse one for reads; refresh on an uncredentialed session under the lease.
+        if (session && mutation && current()) {
+          if (freshRefresh) {
+            if (close) await close();
+            this.closeSession = null;
+            if (current()) {
+              session = await this.options.openSession();
+              const refreshed = session; let closing: Promise<void> | null = null;
+              close = () => closing ??= Promise.resolve().then(() => refreshed.close()).catch(() => undefined);
+              this.closeSession = close;
+            }
+          }
+          if (current()) await this.refresh(session, scope, current);
+        }
+      }
       catch (error) { if (current()) this.update({ refreshError: safeCode(error) }); }
       finally {
         try { if (close) await close(); }
@@ -106,15 +123,18 @@ export class ServerContentController {
     return succeeded && current();
   }
   load = () => this.run(async () => {}, false);
-  install = (project: string, versionId: string) => this.run((session, scope, event) => {
+  install = (project: string, versionId: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, scope, event) => {
     if (!validIdentifier(project) || !validIdentifier(versionId)) fail("INVALID_PARAMS");
-    const options = { provider: "modrinth" as const, version_id: versionId, with_dependencies: true };
+    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(versionId))) fail("INVALID_PARAMS");
+    const options = { provider, version_id: versionId, with_dependencies: true };
     return this.options.kind === "mods" ? session.serverModsInstall(scope.directory, this.options.id, project, options, event) : session.serverDatapacksInstall(scope.directory, this.options.id, project, options, event);
-  }, true, true);
-  setVersion = (project: string, versionId: string) => this.run((session, scope, event) => {
+  }, true, true, provider === "curseforge");
+  setVersion = (project: string, versionId: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, scope, event) => {
+    if (hasAmbiguousContentProject(this.snapshot.content?.entries ?? [], project)) fail("CONTENT_PROJECT_AMBIGUOUS");
     if (!validIdentifier(project) || !validIdentifier(versionId)) fail("INVALID_PARAMS");
-    return this.options.kind === "mods" ? session.serverModsSetVersion(scope.directory, this.options.id, project, versionId, {}, event) : session.serverDatapacksSetVersion(scope.directory, this.options.id, project, versionId, {}, event);
-  });
+    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(versionId))) fail("INVALID_PARAMS");
+    return this.options.kind === "mods" ? session.serverModsSetVersion(scope.directory, this.options.id, project, versionId, provider === "curseforge" ? { provider } : {}, event) : session.serverDatapacksSetVersion(scope.directory, this.options.id, project, versionId, provider === "curseforge" ? { provider } : {}, event);
+  }, true, false, provider === "curseforge");
   private validateSelector(target: ServerContentTarget) {
     const project = "project" in target ? target.project : undefined;
     const file = "file" in target ? target.file : undefined;

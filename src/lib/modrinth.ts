@@ -3,7 +3,7 @@
  * the GUI talks to directory APIs directly, then hands the chosen
  * provider+project+version to the core via `<kind>.install`.
  *
- * CurseForge needs a caller-supplied API key and is not wired yet.
+ * CurseForge uses the separate native-owned credential/catalog bridge.
  */
 import { fetch } from "@tauri-apps/plugin-http";
 import type { ContentKind, LoaderName } from "./types";

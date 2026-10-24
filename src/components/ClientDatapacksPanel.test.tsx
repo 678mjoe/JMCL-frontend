@@ -59,3 +59,41 @@ test("cancel while catalog is debouncing cannot reopen results", async () => {
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
   expect(dom.document.body.textContent).not.toContain("Late project"); expect(dom.document.querySelector('[aria-label="Search compatible datapacks"]')).toBeNull();
 });
+test("CurseForge world search keeps provider identity and blocks restricted downloads", async () => {
+  const cf = await import("@/lib/curseforge");
+  spies.push(spyOn(cf, "searchCurseForgeProjects").mockResolvedValue([{ project_id: "123", slug: "fixture", title: "CF fixture", available: true, author: "", description: "Synthetic", downloads: 0, icon_url: null }]));
+  spies.push(spyOn(cf, "curseForgeVersions").mockResolvedValue([
+    { id: "456", name: "Allowed", version_number: "456", game_versions: ["1.21.4"], loaders: [], date_published: "2026-01-01", available: true },
+    { id: "455", name: "Restricted", version_number: "455", game_versions: ["1.21.4"], loaders: [], date_published: "2026-01-01", available: false },
+  ]));
+  const { calls } = await setup({ datapacksList: async () => ({ stage: "datapacks.list", world: "World A", entries: [{ kind: "datapack", file: "datapacks/collision.zip", enabled: true, source: { provider: "modrinth", project_id: "123", version_id: "old" } }], unmanaged: [] }) as never });
+  await click("Search CurseForge");
+  expect(dom.document.body.textContent).toContain("Settings → CurseForge");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+  await click("CF fixtureSynthetic");
+  expect(button("Author has disabled third-party downloads").disabled).toBe(true);
+  expect(button("Switch version")).toBeUndefined();
+  await click("Install");
+  expect(calls[0]?.[5]).toMatchObject({ provider: "curseforge", version_id: "456" });
+  expect(JSON.stringify(calls)).not.toContain("api_key");
+});
+test("CurseForge provider navigation drops a pending catalog response", async () => {
+  const cf = await import("@/lib/curseforge");
+  let resolve!: (value: Awaited<ReturnType<typeof cf.searchCurseForgeProjects>>) => void;
+  spies.push(spyOn(cf, "searchCurseForgeProjects").mockImplementation(() => new Promise(done => { resolve = done; })));
+  await setup(); await click("Search CurseForge");
+  await act(async () => { await new Promise(done => setTimeout(done, 300)); });
+  await click("Search Modrinth");
+  await act(async () => resolve([{ project_id: "123", title: "Stale CF result", available: true, slug: "late", description: "", author: "", downloads: 0, icon_url: null }]));
+  expect(dom.document.body.textContent).not.toContain("Stale CF result");
+});
+for (const reverse of [false, true]) test(`world datapacks block ambiguous cross-provider ID/slug selector (${reverse})`, async () => {
+  const cf = await import("@/lib/curseforge");
+  spies.push(spyOn(cf, "curseForgeVersions").mockResolvedValue([{ id: "456", name: "Allowed", version_number: "456", game_versions: ["1.21.4"], loaders: [], date_published: "2026-01-01", available: true }]));
+  const entries = [{ kind: "datapack", file: "datapacks/cf.zip", enabled: true, source: { provider: "curseforge", project_id: "123", version_id: "454" } }, { kind: "datapack", file: "datapacks/modrinth.zip", enabled: true, source: { provider: "modrinth", project_id: "other", slug: "123", version_id: "old" } }];
+  const { calls } = await setup({ datapacksList: async () => ({ stage: "datapacks.list", world: "World A", entries: reverse ? entries.reverse() : entries, unmanaged: [] }) as never });
+  const row = [...dom.document.querySelectorAll("article")].find(el => el.textContent?.includes("datapacks/cf.zip"))!;
+  await act(async () => (row.querySelector("button") as unknown as HTMLButtonElement).click());
+  expect(button("Switch version").disabled).toBe(true); expect(dom.document.body.textContent).toContain("version switching is unsafe");
+  await click("Switch version"); expect(calls).toHaveLength(0);
+});

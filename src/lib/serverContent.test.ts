@@ -84,3 +84,33 @@ describe("server content controller",()=>{
   });
   test("wrong list target is not displayed, status failures erase old authority",async()=>{const h=harness("mods",{serverModsList:async()=>({stage:"server.mods.list",id:"other",entries:[],unmanaged:[]})});await h.controller.load();expect(h.controller.getSnapshot().content).toBeNull();expect(h.controller.getSnapshot().refreshError).toBe("INVALID_PARAMS");});
 });
+for (const kind of ["mods", "datapacks"] as const) test(`CurseForge ${kind} preserves server scope and passes no key`, async () => {
+  const h = harness(kind);
+  expect(await h.controller.install("123", "456", "curseforge")).toBe(true);
+  expect(await h.controller.setVersion("123", "455", "curseforge")).toBe(true);
+  expect(h.mutations[0]?.slice(0, 4)).toEqual(["/synthetic", "demo", "123", { provider: "curseforge", version_id: "456", with_dependencies: true }]);
+  expect(h.mutations[1]?.slice(0, 5)).toEqual(["/synthetic", "demo", "123", "455", { provider: "curseforge" }]);
+  expect(JSON.stringify(h.mutations)).not.toContain("api_key");
+  expect(await h.controller.install("123", "invalid", "curseforge")).toBe(false);
+  expect(h.mutations).toHaveLength(2);
+});
+test("CF mutation refresh uses a fresh session while retaining the target lease", async () => {
+  let opens = 0, retired = false;
+  const first = harness("mods", { serverModsInstall: async () => { retired = true; return { id: "demo" } as never; }, serverModsList: async () => { if (retired) throw new Error("retired"); return { stage: "server.mods.list", id: "demo", entries: [], unmanaged: [] }; } });
+  const clean = harness();
+  const c = new ServerContentController({ id: "demo", kind: "mods", scope: first.scope, isScopeCurrent: () => true, openSession: async () => { opens++; expect(serverTargetBusy(first.scope, "demo")).toBe(true); return opens === 1 ? first.session : clean.session; } });
+  expect(await c.install("123", "456", "curseforge")).toBe(true);
+  expect(opens).toBe(2); expect(c.getSnapshot().refreshError).toBeNull(); expect(c.getSnapshot().status?.running).toBe(false); expect(first.closes).toBe(1); expect(clean.closes).toBe(1); expect(serverTargetBusy(first.scope, "demo")).toBe(false);
+});
+test("CF refresh session arriving after cancellation closes without restoring content", async () => {
+  const first = harness(), clean = harness(), late = deferred<ServerContentSession>(); let opens = 0;
+  const c = new ServerContentController({ id: "demo", kind: "mods", scope: first.scope, isScopeCurrent: () => true, openSession: async () => ++opens === 1 ? first.session : late.promise });
+  const operation = c.install("123", "456", "curseforge"); await flush(); expect(opens).toBe(2); c.cancel();
+  expect(serverTargetBusy(first.scope, "demo")).toBe(true); late.resolve(clean.session); expect(await operation).toBe(false);
+  expect(c.getSnapshot().content).toBeNull(); expect(clean.closes).toBe(1); expect(serverTargetBusy(first.scope, "demo")).toBe(false);
+});
+test("missing server CF key retains actionable code but no native diagnostic", async () => {
+  const h = harness("mods", { serverModsInstall: async () => { throw { code: "CURSEFORGE_KEY_REQUIRED", message: "PRIVATE" }; } });
+  expect(await h.controller.install("123", "456", "curseforge")).toBe(false);
+  expect(h.controller.getSnapshot().error).toBe("CURSEFORGE_KEY_REQUIRED"); expect(JSON.stringify(h.controller.getSnapshot())).not.toContain("PRIVATE");
+});
