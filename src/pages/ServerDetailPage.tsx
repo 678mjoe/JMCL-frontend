@@ -1,4 +1,5 @@
 import { useServerTargetBusy } from "@/lib/serverTargetLock";
+import { ServerContentPanel } from "@/components/ServerContentPanel";
 import { ServerWorldsPanel } from "@/components/ServerWorldsPanel";
 import { ServerAdvancedPanel } from "@/components/ServerAdvancedPanel";
 import { useState } from "react";
@@ -80,6 +81,7 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
     {knownLifecycle && <ServerConsolePanel server={server} running={cached.state === "running"} />}
     <ServerAdvancedPanel server={server} state={cached?.state === "running" || cached?.state === "stopped" ? cached.state : "unknown"} />
     <ServerWorldsPanel server={server} state={cached?.state === "running" || cached?.state === "stopped" ? cached.state : "unknown"} />
+    <ServerContentPanel server={server} state={cached?.state === "running" || cached?.state === "stopped" ? cached.state : "unknown"} />
     <ServerInstallDialog open={installOpen} onOpenChange={setInstallOpen} server={server} />
     <DeleteServerDialog open={deleteOpen} onOpenChange={setDeleteOpen} server={server} onDeleted={onBack} />
   </div>;

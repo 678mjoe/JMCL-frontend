@@ -209,6 +209,22 @@ describe("server RPC wire shapes", () => {
       expect(call.params).not.toHaveProperty("minecraft_version");
       expect(call.params).not.toHaveProperty("loader");
     }
+    expect(calls.slice(3).map((call) => call.params)).toEqual([
+      { directory: "/srv/servers", id: "demo" },
+      { directory: "/srv/servers", id: "demo", project: "sodium", provider: "modrinth", version_id: "mod-version", with_dependencies: false, store_directory: "/srv/store", workers: 3, retries: 2 },
+      { directory: "/srv/servers", id: "demo", project: "sodium", version_id: "new-version", workers: 2 },
+      { directory: "/srv/servers", id: "demo", project: "sodium" },
+      { directory: "/srv/servers", id: "demo", file: "mods/local.jar" },
+      { directory: "/srv/servers", id: "demo", project: "sodium" },
+      { directory: "/srv/servers", id: "demo", store_directory: "/srv/store" },
+      { directory: "/srv/servers", id: "demo" },
+      { directory: "/srv/servers", id: "demo", project: "terralith", provider: "curseforge", api_key: "cf-key" },
+      { directory: "/srv/servers", id: "demo", project: "terralith", version_id: "pack-version" },
+      { directory: "/srv/servers", id: "demo", project: "terralith" },
+      { directory: "/srv/servers", id: "demo", file: "datapacks/local.zip" },
+      { directory: "/srv/servers", id: "demo", project: "terralith" },
+      { directory: "/srv/servers", id: "demo" },
+    ]);
     expect(calls[11].params).toEqual({
       directory: "/srv/servers",
       id: "demo",
