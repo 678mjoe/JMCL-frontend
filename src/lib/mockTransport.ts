@@ -1,6 +1,7 @@
 import type {
   AccountProfile,
   ContentKind,
+  ContentEntry,
   InstanceManifest,
   ManagedJavaRuntime,
   WorldBackupEntry,
@@ -19,6 +20,7 @@ import {
   type ServerMockScenario,
   type ServerMockState,
 } from "./serverMock";
+import { instanceMutationKeyFromGameDirectory } from "./instanceCoordinator";
 import { isMockTransport } from "./transportMode";
 import type { EndpointConfigV1 } from "./endpoints";
 import { endpointMockConfig, resetEndpointMock, writeEndpointMockConfig } from "./endpointMock";
@@ -42,11 +44,14 @@ export type MockScenario = ServerMockScenario;
 
 export interface MockFixture {
   instances: InstanceManifest[];
+  instanceRoots: Record<string, InstanceManifest[]>;
   contents: Record<
     string,
     Record<ContentKind, { entries: MockContentEntry[]; unmanaged: string[] }>
   >;
   worlds: Record<string, WorldEntry[]>;
+  datapacks: Record<string, Record<string, { entries: ContentEntry[]; unmanaged: string[] }>>;
+  datapackArchives: Record<string, string[]>;
   backups: Record<string, WorldBackupEntry[]>;
   accounts: AccountProfile[];
   runtimes: ManagedJavaRuntime[];
@@ -210,8 +215,11 @@ function defaultWorlds(): MockFixture["worlds"] {
 function defaultFixture(): MockFixture {
   return {
     instances: defaultInstances(),
+    instanceRoots: {},
     contents: defaultContents(),
     worlds: defaultWorlds(),
+    datapacks: {},
+    datapackArchives: {},
     backups: {
       "vanilla-1214": [
         {
@@ -317,6 +325,23 @@ function entryFor(id: string, kind: ContentKind) {
   return byKind[kind];
 }
 
+function datapacksFor(scope: string, world: string, instance: string) {
+  const byWorld = fixture.datapacks[scope] ??= {};
+  return byWorld[world] ??= instance === "vanilla-1214" && world === "Survival"
+    ? { entries: [{ kind: "datapack", file: "datapacks/terralith.zip", sha1: "d".repeat(40), size: 8192,
+      source: { provider: "modrinth", project_id: "terralith", slug: "terralith", version_id: "mock-v1" },
+      enabled: true, as_dependency: false }], unmanaged: ["datapacks/local-pack.zip"] }
+    : { entries: [], unmanaged: [] };
+}
+
+function archivedDatapacks(store: { entries: ContentEntry[]; unmanaged: string[] }): string[] {
+  return [...store.unmanaged, ...store.entries.map((entry) => entry.enabled ? entry.file : `${entry.file}.disabled`)];
+}
+
+function installedDatapack(entry: ContentEntry) {
+  return { file: entry.file, sha1: entry.sha1, size: entry.size, slug: entry.source.slug ?? null, as_dependency: entry.as_dependency };
+}
+
 function worldEntry(name: string): WorldEntry {
   return {
     name,
@@ -402,7 +427,16 @@ export async function mockRequest<T>(
   }
 
   const id = typeof params.id === "string" ? params.id : "";
-  const instance = instanceId(String(params.directory ?? ""));
+  const directory = String(params.directory ?? "");
+  const instance = instanceId(directory);
+  const worldScope = instanceMutationKeyFromGameDirectory(directory);
+  const rootScope = method.startsWith("install.") || method.startsWith("launch.")
+    ? worldScope.slice(0, worldScope.lastIndexOf("/")) : worldScope;
+  const instances = fixture.instanceRoots[rootScope] ??= structuredClone(fixture.instances);
+  if (method.startsWith("worlds.") || method.startsWith("datapacks.")) {
+    fixture.worlds[worldScope] ??= structuredClone(fixture.worlds[instance] ?? []);
+    fixture.backups[worldScope] ??= structuredClone(fixture.backups[instance] ?? []);
+  }
   if (method === "core.version")
     return { name: "jmcl-core", version: "0.1.0-mock", protocol: 1 } as T;
   if (method === "ping") return { pong: true } as T;
@@ -434,22 +468,20 @@ export async function mockRequest<T>(
   }
   if (method === "instance.list")
     return {
-      instances: [...fixture.instances].sort((a, b) =>
-        a.id.localeCompare(b.id),
-      ),
+      instances: structuredClone(instances).sort((a, b) => a.id.localeCompare(b.id)),
     } as T;
   if (method === "instance.get") {
-    const found = fixture.instances.find((item) => item.id === id);
+    const found = instances.find((item) => item.id === id);
     if (!found)
       throw {
         kind: "rpc",
         code: "INSTANCE_NOT_FOUND",
         message: "Mock instance not found",
       };
-    return found as T;
+    return structuredClone(found) as T;
   }
   if (method === "instance.create") {
-    if (fixture.instances.some((item) => item.id === id))
+    if (instances.some((item) => item.id === id))
       throw {
         kind: "rpc",
         code: "INSTANCE_EXISTS",
@@ -470,20 +502,23 @@ export async function mockRequest<T>(
       source: params.source === "bmclapi" ? "bmclapi" : "official",
       installed: false,
     };
-    fixture.instances.push(created);
-    return created as T;
+    instances.push(created);
+    return structuredClone(created) as T;
   }
   if (method === "instance.delete") {
-    const index = fixture.instances.findIndex((item) => item.id === id);
+    const index = instances.findIndex((item) => item.id === id);
     if (index < 0)
       throw {
         kind: "rpc",
         code: "INSTANCE_NOT_FOUND",
         message: "Mock instance not found",
       };
-    fixture.instances.splice(index, 1);
+    instances.splice(index, 1);
     delete fixture.contents[id];
-    delete fixture.worlds[id];
+    const deletedScope = instanceMutationKeyFromGameDirectory(`${directory}/${id}/.minecraft`);
+    fixture.worlds[deletedScope] = [];
+    fixture.backups[deletedScope] = [];
+    delete fixture.datapacks[deletedScope];
     return null as T;
   }
   if (method === "install.execute") {
@@ -509,22 +544,38 @@ export async function mockRequest<T>(
         bytes_total: 4000,
       },
     });
-    const manifest = fixture.instances.find((item) => item.id === instance);
+    const manifest = instances.find((item) => item.id === instance);
     if (manifest) manifest.installed = true;
     return { files_installed: 4, files_skipped: 0 } as T;
   }
   if (method === "install.prepare")
     return { native_directory: `${String(params.directory)}/natives` } as T;
-  if (method === "modpack.install")
+  if (method === "modpack.install") {
+    if (!directory || !id || id.length > 64 || !/^[a-z0-9][a-z0-9._-]*$/.test(id) || id.endsWith(".") || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(id) || !params.file)
+      rpcFailure("INVALID_PARAMS", "Mock modpack requires directory, valid id and file");
+    if (instances.some((item) => item.id === id))
+      rpcFailure("INSTANCE_EXISTS", "Mock instance already exists");
+    const file = String(params.file);
+    // Explicit synthetic archive names only: no filesystem or download work.
+    if (/curseforge|manifest/i.test(file))
+      rpcFailure("INVALID_PARAMS", "CurseForge import requires an application API key; unavailable in this mock");
+    if (!/\.(mrpack|zip)$/i.test(file))
+      rpcFailure("UNKNOWN_MODPACK_FORMAT", "Mock archive is not a recognized modpack");
+    if (/unsafe/i.test(file)) rpcFailure("UNSAFE_MODPACK", "Mock archive contains unsafe paths");
+    if (/missing/i.test(file)) rpcFailure("MODPACK_NOT_FOUND", "Mock archive not found");
+    const loader = /fabric/i.test(file) ? { name: "fabric" as const, version: "0.16.10" } : null;
+    const created: InstanceManifest = {
+      id, name: id, version_id: "1.21.4", fabric_loader: loader?.version ?? null,
+      neoforge_version: null, forge_version: null, source: "official", installed: false,
+    };
+    instances.push(created);
+    emit(handler, { event: "started", source: "official", started: { stage: "download", version_id: created.version_id, files_total: 4, bytes_total: 4000 } });
+    emit(handler, { event: "progress", source: "official", progress: { files_completed: 4, files_total: 4, bytes_processed: 4000, bytes_verified: 4000, bytes_transferred: 4000, bytes_total: 4000 } });
     return {
-      id: String(params.id),
-      name: String(params.id),
-      version_id: "1.21.4",
-      loader: null,
-      files_installed: 4,
-      files_skipped: 0,
-      overrides_written: 0,
+      stage: "modpack.install", id, name: created.name, version_id: created.version_id,
+      loader, files_installed: 4, files_skipped: 0, overrides_written: 1,
     } as T;
+  }
   if (method === "launch.execute") {
     handler?.({
       kind: "diagnostic",
@@ -636,72 +687,136 @@ export async function mockRequest<T>(
       });
     return { installed: true } as T;
   }
+  if (method.startsWith("datapacks.")) {
+    const operation = method.slice("datapacks.".length);
+    const world = String(params.world ?? "");
+    if (!directory || !world || /[\\/\0]/.test(world) || world === "." || world === "..")
+      rpcFailure("INVALID_PARAMS", "Mock datapacks require a valid directory and world");
+    requireWorld(worldScope, world);
+    if (operation !== "list") requireMutableWorld(worldScope, world);
+    const store = datapacksFor(worldScope, world, instance);
+    const base = { stage: method, world };
+    if (operation === "list") return structuredClone({ ...base, ...store }) as T;
+    if (operation === "adopt") {
+      const adopted: ReturnType<typeof installedDatapack>[] = [];
+      for (const file of store.unmanaged.filter((name) => /\.zip(?:\.disabled)?$/i.test(name))) {
+        const entry: ContentEntry = { kind: "datapack", file: file.replace(/\.disabled$/, ""), sha1: "e".repeat(40), size: 4096,
+          source: { provider: "manual" }, enabled: !file.endsWith(".disabled"), as_dependency: false };
+        store.entries.push(entry);
+        adopted.push(installedDatapack(entry));
+      }
+      store.unmanaged = store.unmanaged.filter((name) => !/\.zip(?:\.disabled)?$/i.test(name));
+      return { ...base, adopted } as T;
+    }
+    if (["enable", "disable", "remove"].includes(operation)) {
+      if ((typeof params.project === "string") === (typeof params.file === "string"))
+        rpcFailure("INVALID_PARAMS", "Exactly one selector is required");
+      const entry = store.entries.find((item) => params.file !== undefined ? item.file === params.file : item.source.project_id === params.project || item.source.slug === params.project);
+      if (!entry) rpcFailure("CONTENT_NOT_FOUND", "No matching registered datapack");
+      if (operation === "remove") {
+        store.entries = store.entries.filter((item) => item !== entry);
+        return structuredClone({ ...base, removed: entry }) as T;
+      }
+      const enabled = operation === "enable";
+      const changed = entry.enabled !== enabled;
+      entry.enabled = enabled;
+      return structuredClone({ ...base, changed, entry }) as T;
+    }
+    if (operation !== "install" && operation !== "set-version") rpcFailure("METHOD_NOT_FOUND", "Unknown datapack method");
+    if (!params.minecraft_version || !params.project || params.loader != null ||
+        (operation === "set-version" && !params.version_id))
+      rpcFailure("INVALID_PARAMS", "Datapack version operations require Minecraft version and project, without loader");
+    if (params.provider === "curseforge" || params.api_key != null)
+      rpcFailure("INVALID_PARAMS", "CurseForge credentials are unavailable in this mock");
+    const project = String(params.project);
+    if (!/^[a-zA-Z0-9_-]+$/.test(project)) rpcFailure("INVALID_PARAMS", "Invalid project identifier");
+    if (params.version_id === "incompatible") rpcFailure("INCOMPATIBLE_VERSION", "Synthetic incompatible version");
+    const existing = store.entries.find((entry) => entry.source.project_id === project || entry.source.slug === project);
+    if (operation === "set-version" && !existing) rpcFailure("CONTENT_NOT_FOUND", "No registered datapack project");
+    const version = String(params.version_id ?? "mock-v2");
+    const oldVersion = existing?.source.version_id ?? "";
+    if (existing) {
+      existing.source.version_id = version;
+      if (operation === "set-version") return { ...base, changed: oldVersion !== version, file: existing.file, sha1: existing.sha1,
+        size: existing.size, old_version_id: oldVersion, new_version_id: version } as T;
+      return { ...base, installed: [], skipped: 1 } as T;
+    }
+    const entry: ContentEntry = { kind: "datapack", file: `datapacks/${project}.zip`, sha1: "f".repeat(40), size: 8192,
+      source: { provider: "modrinth", project_id: project, slug: project, version_id: version }, enabled: true, as_dependency: false };
+    store.entries.push(entry);
+    emit(handler, { event: "progress", source: "official", progress: { files_completed: 1, files_total: 1, bytes_processed: 8192, bytes_verified: 8192, bytes_transferred: 8192, bytes_total: 8192 } });
+    return { ...base, installed: [installedDatapack(entry)], skipped: 0 } as T;
+  }
   if (method === "worlds.list")
-    return { worlds: fixture.worlds[instance] ?? [] } as T;
+    return { worlds: fixture.worlds[worldScope] ?? [] } as T;
   if (method === "worlds.get") {
-    const found = requireWorld(instance, String(params.world));
+    const found = requireWorld(worldScope, String(params.world));
     return {
       world: found,
       icon_png_base64: found?.has_icon ? "" : null,
     } as T;
   }
   if (method === "worlds.backups")
-    return { backups: fixture.backups[instance] ?? [] } as T;
+    return { backups: fixture.backups[worldScope] ?? [] } as T;
   if (method === "worlds.rename") {
-    const old = requireMutableWorld(instance, String(params.world));
+    const old = requireMutableWorld(worldScope, String(params.world));
     const name = String(params.new_name);
     if (
       name !== old.name &&
-      (fixture.worlds[instance] ?? []).some((world) => world.name === name)
+      (fixture.worlds[worldScope] ?? []).some((world) => world.name === name)
     )
       rpcFailure("WORLD_EXISTS", "Mock world already exists");
+    const packs = datapacksFor(worldScope, old.name, instance);
+    const oldName = old.name;
+    fixture.datapacks[worldScope][name] = packs;
+    if (oldName !== name) delete fixture.datapacks[worldScope][oldName];
     old.name = name;
     old.level_name = name;
     return { world: old } as T;
   }
   if (method === "worlds.duplicate") {
-    requireMutableWorld(instance, String(params.world));
-    return {
-      world: replaceWorld(instance, String(params.new_name), false),
-    } as T;
+    requireMutableWorld(worldScope, String(params.world));
+    const source = datapacksFor(worldScope, String(params.world), instance);
+    const world = replaceWorld(worldScope, String(params.new_name), false);
+    fixture.datapacks[worldScope][world.name] = structuredClone(source);
+    return { world } as T;
   }
   if (method === "worlds.import") {
-    return {
-      world: replaceWorld(
-        instance,
-        String(params.name ?? "Imported World"),
-        params.replace === true,
-      ),
-    } as T;
+    const world = replaceWorld(worldScope, String(params.name ?? "Imported World"), params.replace === true);
+    (fixture.datapacks[worldScope] ??= {})[world.name] = {
+      entries: [], unmanaged: [...(fixture.datapackArchives[String(params.file)] ?? [])],
+    };
+    return { world } as T;
   }
   if (method === "worlds.restore") {
-    const backup = (fixture.backups[instance] ?? []).find(
+    const backup = (fixture.backups[worldScope] ?? []).find(
       (item) => item.file === params.backup,
     );
     if (!backup) rpcFailure("BACKUP_NOT_FOUND", "Mock backup not found");
-    return {
-      world: replaceWorld(
-        instance,
-        String(params.name ?? backup.world),
-        params.replace === true,
-      ),
-    } as T;
+    const world = replaceWorld(worldScope, String(params.name ?? backup.world), params.replace === true);
+    (fixture.datapacks[worldScope] ??= {})[world.name] = {
+      entries: [], unmanaged: [...(fixture.datapackArchives[`${worldScope}/${backup.file}`] ?? [])],
+    };
+    return { world } as T;
   }
   if (method === "worlds.delete") {
-    const world = requireMutableWorld(instance, String(params.world));
-    fixture.worlds[instance] = (fixture.worlds[instance] ?? []).filter(
+    const world = requireMutableWorld(worldScope, String(params.world));
+    fixture.worlds[worldScope] = (fixture.worlds[worldScope] ?? []).filter(
       (item) => item !== world,
     );
+    delete fixture.datapacks[worldScope]?.[String(params.world)];
     return { deleted: String(params.world) } as T;
   }
   if (method === "worlds.export") {
-    requireMutableWorld(instance, String(params.world));
+    requireMutableWorld(worldScope, String(params.world));
+    fixture.datapackArchives[String(params.file)] = archivedDatapacks(datapacksFor(worldScope, String(params.world), instance));
     return { file: String(params.file), size_bytes: 8192, files: 3 } as T;
   }
   if (method === "worlds.backup") {
-    requireMutableWorld(instance, String(params.world));
+    requireMutableWorld(worldScope, String(params.world));
     const file = `${String(params.world)}-mock.zip`;
-    (fixture.backups[instance] ??= []).unshift({
+    fixture.datapackArchives[`${worldScope}/${file}`] = archivedDatapacks(datapacksFor(worldScope, String(params.world), instance));
+    (fixture.backups[worldScope] ??= []).unshift({
       file,
       world: String(params.world),
       created_ms: Date.now(),
@@ -710,13 +825,14 @@ export async function mockRequest<T>(
     return { backup: file } as T;
   }
   if (method === "worlds.backups.delete") {
-    const existing = (fixture.backups[instance] ?? []).some(
+    const existing = (fixture.backups[worldScope] ?? []).some(
       (backup) => backup.file === params.backup,
     );
     if (!existing) rpcFailure("BACKUP_NOT_FOUND", "Mock backup not found");
-    fixture.backups[instance] = (fixture.backups[instance] ?? []).filter(
+    fixture.backups[worldScope] = (fixture.backups[worldScope] ?? []).filter(
       (backup) => backup.file !== params.backup,
     );
+    delete fixture.datapackArchives[`${worldScope}/${String(params.backup)}`];
     return { deleted: String(params.backup) } as T;
   }
   if (method === "java.detect")

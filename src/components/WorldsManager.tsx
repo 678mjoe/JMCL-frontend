@@ -40,6 +40,7 @@ import { errorText, useLauncher } from "@/lib/launcher";
 import type { MessageKey } from "@/lib/i18n";
 import { useSettings } from "@/lib/settings";
 import type { InstanceManifest, WorldBackupEntry, WorldEntry } from "@/lib/types";
+import { ClientDatapacksPanel } from "./ClientDatapacksPanel";
 import { openDialog, saveDialog } from "@/lib/native";
 
 const GAME_MODES: Record<string, MessageKey> = {
@@ -206,10 +207,15 @@ function NameDialog({ state, existingNames, busy, onCancel, onSubmit }: NameDial
  * shared session; worlds.* calls are single request/result with no events.
  */
 export function WorldsManager({ instance }: { instance: InstanceManifest }) {
+  const { settings } = useSettings();
+  return <ScopedWorldsManager key={JSON.stringify([settings.instancesDir, instance.id, instance.version_id])} instance={instance} />;
+}
+function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
   const { session } = useLauncher();
   const { settings, t } = useSettings();
   const directory = `${settings.instancesDir}/${instance.id}/.minecraft`;
 
+  const [datapackWorld, setDatapackWorld] = useState<string | null>(null);
   const [worlds, setWorlds] = useState<WorldEntry[] | null>(null);
   const [backups, setBackups] = useState<WorldBackupEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -446,6 +452,7 @@ export function WorldsManager({ instance }: { instance: InstanceManifest }) {
                         .join(" · ")}
                     </div>
                   </div>
+                  <Button size="sm" variant="outline" onClick={() => setDatapackWorld(world.name)}>{settings.language === "zh" ? "数据包" : "Datapacks"}</Button>
                   {busyWorld && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -587,7 +594,12 @@ export function WorldsManager({ instance }: { instance: InstanceManifest }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">{renderBody()}</CardContent>
+      <CardContent className="space-y-4">{renderBody()}
+        {datapackWorld && worlds?.some(world => world.name === datapackWorld) && <div>
+          <Button variant="outline" onClick={() => setDatapackWorld(null)}>{settings.language === "zh" ? "关闭数据包管理" : "Close datapack management"}</Button>
+          <ClientDatapacksPanel instance={instance} directory={directory} world={worlds.find(world => world.name === datapackWorld)!} />
+        </div>}
+      </CardContent>
 
       {nameDialog && (
         <NameDialog

@@ -90,7 +90,7 @@ export const endpointRepository = new EndpointRepository({
 });
 
 export const openDialog = (options?: OpenDialogOptions) =>
-  isMockTransport() ? Promise.resolve<string | null>("/mock/jmcl/import/world.zip") : tauriOpen(options);
+  isMockTransport() ? Promise.resolve<string | null>(options?.filters?.some((filter) => filter.extensions.includes("mrpack")) ? "/mock/jmcl/import/pack.mrpack" : "/mock/jmcl/import/world.zip") : tauriOpen(options);
 export const saveDialog = (options?: SaveDialogOptions) =>
   isMockTransport() ? Promise.resolve<string | null>(`/mock/jmcl/${options?.defaultPath ?? "world.zip"}`) : tauriSave(options);
 export const openUrl = (url: string) => isMockTransport() ? Promise.resolve(url) : tauriOpenUrl(url);
