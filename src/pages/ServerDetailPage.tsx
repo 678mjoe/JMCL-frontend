@@ -1,3 +1,5 @@
+import { useServerTargetBusy } from "@/lib/serverTargetLock";
+import { ServerAdvancedPanel } from "@/components/ServerAdvancedPanel";
 import { useState } from "react";
 import { ArrowLeft, Play, RefreshCw, RotateCcw, Server as ServerIcon, Square, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,8 +20,9 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
   const [installOpen, setInstallOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { t, settings } = useSettings();
-  const { manifests, cache, loading, listError, statusErrors, pendingStatus, directory, endpointId, refreshServerStatus, coreStatus, coreError } = useServers();
+  const { manifests, cache, loading, listError, statusErrors, pendingStatus, directory, endpointId, refreshServerStatus, coreStatus, coreError, captureOperationScope } = useServers();
   const { operationFor, start, stop, restart } = useServerOperations();
+  const targetBusy = useServerTargetBusy(captureOperationScope(), serverId);
   const server = manifests.find((item) => item.id === serverId);
   const selectedScope = cache.scopes[endpointId];
   const cached = selectedScope?.directory === directory ? selectedScope.servers[serverId] : undefined;
@@ -31,7 +34,7 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
   if (!server) return <DetailMessage icon="error" title={t("servers.notFound")} description={t("servers.notFoundHint")} backLabel={t("servers.back")} onBack={onBack} />;
 
   const operation = operationFor(server.id);
-  const busy = operation?.pending === true;
+  const busy = operation?.pending === true || targetBusy;
   const derived = deriveServerState({
     manifest: server,
     status: cached?.state === "running" || cached?.state === "stopped" ? { running: cached.state === "running", stale_state: false } : null,
@@ -74,6 +77,7 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
     </div>
     {busy && <p className="mt-3 text-sm text-muted-foreground">{t(operation?.stage === "finishing" ? "serverInstall.finishing" : "serverLifecycle.pending")}</p>}
     {knownLifecycle && <ServerConsolePanel server={server} running={cached.state === "running"} />}
+    <ServerAdvancedPanel server={server} state={cached?.state === "running" || cached?.state === "stopped" ? cached.state : "unknown"} />
     <ServerInstallDialog open={installOpen} onOpenChange={setInstallOpen} server={server} />
     <DeleteServerDialog open={deleteOpen} onOpenChange={setDeleteOpen} server={server} onDeleted={onBack} />
   </div>;
