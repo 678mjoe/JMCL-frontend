@@ -17,7 +17,9 @@ JMCL 是 Minecraft: Java Edition 的桌面启动器。本仓库包含 React/Type
 - 安装进度以及 stdout、stderr、core 诊断日志；
 - 中英文界面、主题、官方/BMCLAPI 源和可配置目录。
 
-GUI 已支持本地服务器管理，以及通过系统 OpenSSH 建立按 endpoint 隔离的远程会话。SSH 使用严格的 `known_hosts` 校验、固定远程命令 `exec jmcl-core rpc`，并继承用户的 SSH 配置和 agent；JMCL 不保存 SSH 凭据。fake-SSH 测试覆盖了 transport 行为；macOS/Windows 原生验证单独记录，目前尚未全部完成。客户端数据包、完整整合包/CurseForge 支持及高级启动选项不在当前范围内。
+GUI 已支持本地服务器管理，以及通过系统 OpenSSH 建立按 endpoint 隔离的远程会话。SSH 使用严格的 `known_hosts` 校验、固定远程命令 `exec jmcl-core rpc`，并继承用户的 SSH 配置和 agent；JMCL 不保存 SSH 凭据。fake-SSH 测试覆盖了 transport 行为；macOS/Windows 原生验证单独记录，目前尚未全部完成。客户端世界数据包、Modrinth/CurseForge 内容及整合包导入、存储清理和高级启动选项已实现。Unix 资源包/光影激活仅支持已有且可识别的配置格式；Windows 写入与 OptiFine 配置不支持。实现不代表真实游戏或原生 UI 验收通过。自动更新及签名首发版本尚不可用。
+
+使用开发版本前请阅读[用户指南](docs/user-guide.md)、[发布门槛](docs/release.md)及[验收记录](docs/verification/)。
 
 ## 技术栈与开发依赖
 
