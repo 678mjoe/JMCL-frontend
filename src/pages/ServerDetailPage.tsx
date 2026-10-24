@@ -1,4 +1,5 @@
 import { useServerTargetBusy } from "@/lib/serverTargetLock";
+import { ServerWorldsPanel } from "@/components/ServerWorldsPanel";
 import { ServerAdvancedPanel } from "@/components/ServerAdvancedPanel";
 import { useState } from "react";
 import { ArrowLeft, Play, RefreshCw, RotateCcw, Server as ServerIcon, Square, Trash2 } from "lucide-react";
@@ -78,6 +79,7 @@ export function ServerDetailPage({ serverId, onBack }: ServerDetailPageProps) {
     {busy && <p className="mt-3 text-sm text-muted-foreground">{t(operation?.stage === "finishing" ? "serverInstall.finishing" : "serverLifecycle.pending")}</p>}
     {knownLifecycle && <ServerConsolePanel server={server} running={cached.state === "running"} />}
     <ServerAdvancedPanel server={server} state={cached?.state === "running" || cached?.state === "stopped" ? cached.state : "unknown"} />
+    <ServerWorldsPanel server={server} state={cached?.state === "running" || cached?.state === "stopped" ? cached.state : "unknown"} />
     <ServerInstallDialog open={installOpen} onOpenChange={setInstallOpen} server={server} />
     <DeleteServerDialog open={deleteOpen} onOpenChange={setDeleteOpen} server={server} onDeleted={onBack} />
   </div>;
