@@ -1,0 +1,66 @@
+name: Diagnose DMG packaging
+on:
+  push:
+    branches: [build/dmg-diagnosis]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: dmg-diagnosis-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  dmg:
+    if: github.event.repository.visibility == 'public'
+    runs-on: macos-15
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Retrieve exact previously verified ARM app artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dmg-input dmg-output dmg-logs
+          gh api repos/678mjoe/JMCL-frontend/actions/artifacts/12561473926/zip > dmg-input/artifact.zip
+          echo 'c1fe20852b784f196ddbeb0e42a057dec5672562f5a03a19311fd2ee82f588e7  dmg-input/artifact.zip' | shasum -a 256 -c -
+          python3 scripts/prepare-dmg-diagnosis.py
+      - name: Fetch checksum-pinned Tauri 2.11.4 packaging scripts
+        run: |
+          mkdir -p dmg-tools/bin dmg-tools/share/create-dmg/support
+          base=https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.11.4/crates/tauri-bundler/src/bundle/macos/dmg
+          curl -fLsS --retry 2 "$base/bundle_dmg" -o dmg-tools/bin/bundle_dmg.sh
+          curl -fLsS --retry 2 "$base/template.applescript" -o dmg-tools/share/create-dmg/support/template.applescript
+          curl -fLsS --retry 2 "$base/eula-resources-template.xml" -o dmg-tools/share/create-dmg/support/eula-resources-template.xml
+          shasum -a 256 -c <<'HASHES'
+          3b21448e5eef9b7c4f6bd8593e6c5f577ee5c64db2a237a4908e63fb6d81a89e  dmg-tools/bin/bundle_dmg.sh
+          13727c7930c50be639a1eb191e893f1ebc72c270268d4611391b41410a3e862a  dmg-tools/share/create-dmg/support/template.applescript
+          7d61d948ba7f118306d61107fead78f04e3338585e2ec729abb65d5d2e21012d  dmg-tools/share/create-dmg/support/eula-resources-template.xml
+          HASHES
+      - name: Trace original DMG packaging without recompiling or signing
+        run: |
+          root="$PWD"
+          cd dmg-input/unpacked
+          bash -x "$root/dmg-tools/bin/bundle_dmg.sh" --volname jmcl --icon jmcl.app 180 170 --app-drop-link 480 170 --window-size 660 400 --hide-extension jmcl.app --volicon "$root/src-tauri/icons/icon.icns" --skip-jenkins "$root/dmg-output/jmcl_0.1.0_aarch64.dmg" jmcl.app 2>&1 | tee "$root/dmg-logs/bundle-dmg.log"
+      - name: Verify DMG payload and Core handshake
+        run: python3 scripts/verify-dmg-diagnosis.py
+      - name: Upload verified unsigned DMG
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jmcl-dmg-aarch64-${{ github.sha }}
+          path: dmg-output/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Preserve diagnostic trace even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dmg-diagnostic-trace-${{ github.sha }}
+          path: dmg-logs/
+          if-no-files-found: ignore
+          retention-days: 14
