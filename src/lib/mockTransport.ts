@@ -565,7 +565,7 @@ export async function mockRequest<T>(
     if (/missing/i.test(file)) rpcFailure("MODPACK_NOT_FOUND", "Mock archive not found");
     const loader = /fabric/i.test(file) ? { name: "fabric" as const, version: "0.16.10" } : null;
     const created: InstanceManifest = {
-      id, name: id, version_id: "1.21.4", fabric_loader: loader?.version ?? null,
+      id, name: `${file.toLowerCase().endsWith(".zip") ? "Synthetic CurseForge Pack" : "Synthetic Modrinth Pack"} 1.0.0`, version_id: "1.21.4", fabric_loader: loader?.version ?? null,
       neoforge_version: null, forge_version: null, source: "official", installed: false,
     };
     instances.push(created);

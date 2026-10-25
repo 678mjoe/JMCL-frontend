@@ -72,3 +72,27 @@ test('diagnostics: browser-only fallback is explicit and actions cannot write', 
   await expect(logs.getByRole('button', { name: 'Enable recording', exact: true })).toBeDisabled();
   await logs.screenshot({ path: 'test-results/diagnostic-browser-fallback.png' });
 });
+
+test('modpack: confirmed preview, background navigation and completion summary', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' });
+  await page.getByRole('button', { name: 'Import modpack', exact: true }).click();
+  let dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: 'Confirm and install', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Choose archive', exact: true }).click();
+  await expect(dialog.getByRole('region', { name: 'Installation summary' })).toContainText('Synthetic Modrinth Pack');
+  await expect(dialog.getByLabel('New instance ID')).toHaveValue('synthetic-modrinth-pack');
+  await dialog.getByRole('button', { name: 'Confirm and install', exact: true }).click();
+  // Either fast terminal completion or active work may occur before this click.
+  await dialog.getByRole('button', { name: /^(Continue in background|Close)$/ }).last().click();
+  await nav.getByRole('button', { name: 'Settings', exact: true }).click();
+  const jobs = page.getByRole('region', { name: 'Installation tasks' });
+  await expect(jobs).toContainText('synthetic-modrinth-pack');
+  await jobs.getByRole('button', { name: 'View task', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Ready to open', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(dialog.getByRole('region', { name: 'Imported pack summary' })).toContainText('Skipped');
+  await dialog.getByRole('button', { name: 'Open instance', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Back to Instances', exact: true })).toBeVisible();
+});

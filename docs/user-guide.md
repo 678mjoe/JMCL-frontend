@@ -61,3 +61,23 @@ The app-data `diagnostics` directory retains at most four 256 KiB log files. Bus
 - Updates: updater code is present, but default builds have no update service or signed update artifacts configured. The app must not claim “up to date.” Follow future maintainer release instructions only after a release is explicitly approved and verified. Do not disable signature checks to install an update.
 
 更新代码已实现，但默认构建的自动更新渠道未配置；“不可用”不表示“已是最新”。正式版本需完成[发布门槛](release.md)，本指南不授权发布、登录真实账户或操作真实服务器。
+
+### Modpack installation tasks
+
+Choose a local Modrinth `.mrpack` or CurseForge `.zip`, review its manifest metadata,
+then confirm the editable instance ID and destination. The preview reads bounded
+archive metadata only; it does not validate every archive member, download
+availability, disk requirements or Java requirements. Existing instances are not
+overwritten. CurseForge imports use the key saved in the native credential store;
+the Settings detour preserves the selected archive and ID while the app stays open.
+
+Closing the import view or navigating elsewhere leaves the installation visible in
+**Installation tasks**. Keep the application open: this is not durable restart
+recovery, and closing the view does not cancel Core. File counts, retries, Java
+steps and processor steps are shown when Core reports them; no overall completion
+percentage is invented. Ordinary instance installation uses the same progress view.
+
+Known failures offer an editable form or a game-setup-only resume when safe. An
+unknown RPC outcome is retained for inspection and is not blindly replayed. The
+completion summary uses Core's returned pack name, loader and installed/skipped
+counts; skipped files are not individually identified by the current protocol.

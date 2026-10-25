@@ -9,6 +9,9 @@ import { SettingsProvider, useSettings } from "@/lib/settings";
 import { EndpointContextProvider } from "@/lib/endpointContext";
 import { ServersProvider } from "@/lib/servers";
 import { TasksProvider } from "@/lib/tasks";
+import { ModpackTasksProvider } from "@/lib/modpackTasks";
+import { ModpackImportDialog } from "@/components/ModpackImportDialog";
+import { InstallationTasksPanel } from "@/components/InstallationTasksPanel";
 import { ServerOperationsProvider } from "@/lib/serverOperations";
 import { MicrosoftLoginDialog } from "@/components/MicrosoftLoginDialog";
 import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
@@ -106,6 +109,7 @@ function Shell() {
         </div>
       </aside>
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <InstallationTasksPanel />
         {route.page === "server" && route.serverId ? (
           <ServerDetailPage
             serverId={route.serverId}
@@ -145,6 +149,7 @@ function Shell() {
       </main>
       <Toaster richColors position="bottom-right" />
       <MicrosoftLoginDialog />
+      <ModpackImportDialog onOpenSettings={() => setRoute({ page: "settings" })} onOpenInstance={instanceId => setRoute({ page: "instance", instanceId })} />
     </div>
   );
 }
@@ -158,7 +163,7 @@ export default function App() {
             <MicrosoftAccountsProvider>
               <ServerOperationsProvider>
                 <TasksProvider>
-                  <Shell />
+                  <ModpackTasksProvider><Shell /></ModpackTasksProvider>
                 </TasksProvider>
               </ServerOperationsProvider>
             </MicrosoftAccountsProvider>

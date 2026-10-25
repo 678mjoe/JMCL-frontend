@@ -479,3 +479,64 @@ fn account_metadata_requires_account_envelope_and_round_trips() {
         session.close().await;
     });
 }
+
+#[test]
+fn bounded_modpack_preview_matches_real_core_import_metadata_without_network() {
+    use std::io::Write;
+    runtime().block_on(async {
+        let fixture = FixtureRoot::new("modpack-preview-contract");
+        let path = fixture.0.join("synthetic.mrpack");
+        let manifest = json!({
+            "formatVersion": 1, "game": "minecraft", "name": "Synthetic Preview Pack",
+            "versionId": "fixture-v1", "files": [],
+            "dependencies": { "minecraft": "1.20.1", "fabric-loader": "0.15.0" }
+        });
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        archive.start_file("modrinth.index.json", options).unwrap();
+        archive
+            .write_all(&serde_json::to_vec(&manifest).unwrap())
+            .unwrap();
+        archive
+            .start_file("overrides/config/synthetic.txt", options)
+            .unwrap();
+        archive.write_all(b"synthetic local override").unwrap();
+        archive.finish().unwrap();
+        let archive_before = std::fs::read(&path).unwrap();
+        let preview = jmcl_lib::modpack_preview::preview(path.to_str().unwrap()).unwrap();
+        assert_eq!(preview.provider, "modrinth");
+        assert_eq!(preview.files_declared, 0);
+        let session = open().await;
+        // Empty content references: no downloads, account, keychain, or game launch.
+        let imported = session.request("modpack.install", json!({
+            "directory": fixture.0.join("instances"), "store_directory": fixture.0.join("store"),
+            "id": "preview-contract", "file": path,
+        }), |_| {}).await.unwrap();
+        // Core builds the instance display name from manifest name + pack version.
+        assert_eq!(
+            imported["name"],
+            format!("{} {}", preview.name, preview.version.as_deref().unwrap())
+        );
+        assert_eq!(imported["version_id"], preview.minecraft_version);
+        let loader = preview.loader.unwrap();
+        assert_eq!(
+            imported["loader"],
+            json!({"name": loader.kind, "version": loader.version})
+        );
+        assert_eq!(imported["files_installed"], 0);
+        assert_eq!(imported["files_skipped"], 0);
+        assert_eq!(imported["overrides_written"], 1);
+        assert_eq!(
+            std::fs::read(
+                fixture
+                    .0
+                    .join("instances/preview-contract/.minecraft/config/synthetic.txt")
+            )
+            .unwrap(),
+            b"synthetic local override"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), archive_before);
+        session.close().await;
+    });
+}

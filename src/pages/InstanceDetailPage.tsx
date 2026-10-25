@@ -78,7 +78,7 @@ export function InstanceDetailPage({
 
   const coreReady = status === "ready";
   const dirs = { instancesDir: settings.instancesDir, storeDir: settings.storeDir };
-  const installTask = taskFor("install", instanceId);
+  const installTask = taskFor("install", instanceId, settings.instancesDir);
   const launchTask = taskFor("launch", instanceId);
   const validateTask = taskFor("validate", instanceId);
   const installing = installTask?.status === "running";
@@ -171,7 +171,7 @@ export function InstanceDetailPage({
     try {
       await session.instanceDelete(settings.instancesDir, manifest.id);
       clearTask("validate", manifest.id);
-      clearTask("install", manifest.id);
+      clearTask("install", manifest.id, settings.instancesDir);
       clearTask("launch", manifest.id);
       setDeleteOpen(false);
       toast.success(t("detail.deleted", { name: manifest.name }));

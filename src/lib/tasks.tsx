@@ -11,6 +11,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -23,6 +24,8 @@ import {
 } from "./launchRunner";
 import { instanceLaunchOptions } from "./instanceLaunch";
 import { withOpenedSession } from "./sessionLifecycle";
+import { instanceMutationKey } from "./instanceCoordinator";
+import { initialInstallProgress, reduceInstallProgress, type InstallProgressState } from "./installProgress";
 
 export type TaskKind = "install" | "launch" | "validate";
 export type TaskStatus = "running" | "success" | "error";
@@ -43,6 +46,7 @@ export interface Task {
   key: string;
   kind: TaskKind;
   instanceId: string;
+  instancesDir?: string;
   status: TaskStatus;
   /** i18n key for the current stage. */
   stage:
@@ -53,6 +57,7 @@ export interface Task {
     | "task.stage.java"
     | "task.stage.launch";
   progress: TaskProgress | null;
+  installProgress?: InstallProgressState;
   pid: number | null;
   lines: LogLine[];
   /** Terminal summary or error text. */
@@ -68,7 +73,7 @@ interface StartDirs {
 
 interface TasksContextValue {
   tasks: Record<string, Task>;
-  taskFor: (kind: TaskKind, instanceId: string) => Task | undefined;
+  taskFor: (kind: TaskKind, instanceId: string, instancesDir?: string) => Task | undefined;
   /** Resolves the version+loader online on a dedicated session; returns success. */
   startValidate: (instance: InstanceManifest) => Promise<boolean>;
   startInstall: (instance: InstanceManifest, dirs: StartDirs) => Promise<void>;
@@ -79,13 +84,18 @@ interface TasksContextValue {
     javaOverride?: string | null,
     options?: LaunchOptions,
   ) => Promise<void>;
-  clearTask: (kind: TaskKind, instanceId: string) => void;
+  clearTask: (kind: TaskKind, instanceId: string, instancesDir?: string) => void;
 }
 
 const TasksContext = createContext<TasksContextValue | null>(null);
 
-function taskKey(kind: TaskKind, instanceId: string): string {
-  return `${kind}:${instanceId}`;
+function taskKey(kind: TaskKind, instanceId: string, instancesDir?: string): string {
+  // Install jobs are owned by a concrete instance path, not an ID that can be
+  // reused after switching roots. Unscoped lookups deliberately cannot match
+  // scoped installations. Launch/validation retain their existing semantics.
+  return kind === "install" && instancesDir !== undefined
+    ? `install:${instanceMutationKey(instancesDir, instanceId)}`
+    : `${kind}:${instanceId}`;
 }
 
 export function loaderFieldsOf(m: InstanceManifest): LoaderFields {
@@ -97,6 +107,7 @@ export function loaderFieldsOf(m: InstanceManifest): LoaderFields {
 
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { openSession } = useLauncher();
+  const installsInFlight = useRef(new Set<string>());
   const [tasks, setTasks] = useState<Record<string, Task>>({});
   const patch = useCallback((key: string, p: Partial<Task>) => {
     setTasks((prev) =>
@@ -117,14 +128,15 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const beginTask = useCallback(
-    (kind: TaskKind, instanceId: string, stage: Task["stage"]): string => {
-      const key = taskKey(kind, instanceId);
+    (kind: TaskKind, instanceId: string, stage: Task["stage"], instancesDir?: string): string => {
+      const key = taskKey(kind, instanceId, instancesDir);
       setTasks((prev) => ({
         ...prev,
         [key]: {
           key,
           kind,
           instanceId,
+          ...(instancesDir !== undefined ? { instancesDir } : {}),
           status: "running",
           stage,
           progress: null,
@@ -160,9 +172,14 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   const startInstall = useCallback(
     async (instance: InstanceManifest, dirs: StartDirs) => {
-      const key = beginTask("install", instance.id, "task.stage.download");
+      const flightKey = instanceMutationKey(dirs.instancesDir, instance.id);
+      if (installsInFlight.current.has(flightKey)) return;
+      installsInFlight.current.add(flightKey);
+      const key = beginTask("install", instance.id, "task.stage.download", dirs.instancesDir);
       const directory = `${dirs.instancesDir}/${instance.id}/.minecraft`;
       const loaders = loaderFieldsOf(instance);
+      let installProgress = initialInstallProgress();
+      patch(key, { installProgress, instancesDir: dirs.instancesDir });
       try {
         await withOpenedSession(openSession, async (activeSession) => {
             await activeSession.installExecute(
@@ -174,41 +191,17 @@ export function TasksProvider({ children }: { children: ReactNode }) {
                 ...loaders,
               },
               (event) => {
-                if (event.kind !== "event") return;
-                const e = event.data;
-                if (e.event === "progress") {
-                  patch(key, {
-                    progress: {
-                      filesCompleted: e.progress.files_completed,
-                      filesTotal: e.progress.files_total,
-                      bytesProcessed: e.progress.bytes_processed,
-                      bytesTotal: e.progress.bytes_total,
-                    },
-                  });
-                } else if (e.event === "started") {
-                  patch(key, {
-                    stage: "task.stage.download",
-                    progress: {
-                      filesCompleted: 0,
-                      filesTotal: e.started.files_total,
-                      bytesProcessed: 0,
-                      bytesTotal: e.started.bytes_total,
-                    },
-                  });
-                } else if (e.event === "processor_started") {
-                  patch(key, {
-                    stage: "task.stage.processor",
-                    progress: {
-                      filesCompleted: e.processor_started.index,
-                      filesTotal: e.processor_started.total,
-                      bytesProcessed: 0,
-                      bytesTotal: 0,
-                    },
-                  });
-                }
+                const next = reduceInstallProgress(installProgress, event);
+                if (next === installProgress) return;
+                installProgress = next;
+                patch(key, {
+                  stage: next.stage === "java" ? "task.stage.java" : next.stage === "processor" ? "task.stage.processor" : "task.stage.download",
+                  progress: next.progress,
+                  installProgress: next,
+                });
               },
             );
-            patch(key, { stage: "task.stage.prepare", progress: null });
+            patch(key, { stage: "task.stage.prepare", progress: null, installProgress: undefined });
             await activeSession.installPrepare(
               instance.version_id,
               {
@@ -221,6 +214,8 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         patch(key, { status: "success", message: null });
       } catch (e) {
         patch(key, { status: "error", message: errorText(e) });
+      } finally {
+        installsInFlight.current.delete(flightKey);
       }
     },
     [beginTask, openSession, patch],
@@ -315,8 +310,8 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     [appendLine, beginTask, openSession, patch],
   );
 
-  const clearTask = useCallback((kind: TaskKind, instanceId: string) => {
-    const key = taskKey(kind, instanceId);
+  const clearTask = useCallback((kind: TaskKind, instanceId: string, instancesDir?: string) => {
+    const key = taskKey(kind, instanceId, instancesDir);
     setTasks((prev) => {
       const { [key]: _removed, ...rest } = prev;
       return rest;
@@ -326,7 +321,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const value = useMemo<TasksContextValue>(
     () => ({
       tasks,
-      taskFor: (kind, instanceId) => tasks[taskKey(kind, instanceId)],
+      taskFor: (kind, instanceId, instancesDir) => tasks[taskKey(kind, instanceId, instancesDir)],
       startValidate,
       startInstall,
       startLaunch,
@@ -347,6 +342,6 @@ export function useTasks(): TasksContextValue {
 }
 
 /** Exported for LogSheet/tests: parse the terminal message set by startLaunch. */
-export function taskKeyOf(kind: TaskKind, instanceId: string): string {
-  return taskKey(kind, instanceId);
+export function taskKeyOf(kind: TaskKind, instanceId: string, instancesDir?: string): string {
+  return taskKey(kind, instanceId, instancesDir);
 }

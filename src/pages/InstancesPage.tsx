@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Gamepad2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { ModpackImportDialog } from "@/components/ModpackImportDialog";
+import { useModpackTasks } from "@/lib/modpackTasks";
 import { CreateInstanceDialog } from "@/components/CreateInstanceDialog";
 import { DeleteInstanceDialog } from "@/components/DeleteInstanceDialog";
 import { InstanceCard } from "@/components/InstanceCard";
@@ -40,7 +40,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
     setLoaded(current => ({ root: settings.instancesDir, instances: update(current.root === settings.instancesDir ? current.instances : []) }));
   };
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
+  const modpacks = useModpackTasks();
   const [logInstanceId, setLogInstanceId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstanceManifest | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -77,6 +77,13 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const terminalPacks = JSON.stringify(modpacks.registry.list().filter(task => task.controller.input.directory === settings.instancesDir && !task.controller.getSnapshot().busy).map(task => [task.key, task.controller.getSnapshot().phase, task.controller.getSnapshot().error]));
+  useEffect(() => {
+    // Terminal jobs can finish while this page is absent. Refresh once on return
+    // and when a job settles, without tying the task to this page lifecycle.
+    if (terminalPacks !== "[]") void refresh();
+  }, [terminalPacks, settings.instancesDir, refresh]);
 
   // Refresh whenever an install attempt transitions to success. Tracking the
   // previous status (rather than task keys forever) also handles reinstalling
@@ -145,7 +152,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
     try {
       await session.instanceDelete(settings.instancesDir, target.id);
       clearTask("validate", target.id);
-      clearTask("install", target.id);
+      clearTask("install", target.id, settings.instancesDir);
       clearTask("launch", target.id);
       if (logInstanceId === target.id) setLogInstanceId(null);
       setDeleteTarget(null);
@@ -171,7 +178,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
           >
             <RefreshCw />
           </Button>
-          <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!coreReady}>{settings.language === "zh" ? "导入整合包" : "Import modpack"}</Button>
+          <Button variant="outline" onClick={() => modpacks.show()} disabled={!coreReady}>{settings.language === "zh" ? "导入整合包" : "Import modpack"}</Button>
           <Button onClick={() => setDialogOpen(true)} disabled={!coreReady}>
             <Plus />
             {t("instances.new")}
@@ -210,7 +217,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
               key={instance.id}
               instance={instance}
               installed={instance.installed}
-              installTask={taskFor("install", instance.id)}
+              installTask={taskFor("install", instance.id, settings.instancesDir)}
               launchTask={taskFor("launch", instance.id)}
               validateTask={taskFor("validate", instance.id)}
               disabled={!coreReady}
@@ -226,7 +233,6 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
         </div>
       )}
 
-      <ModpackImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => void refresh()} />
       <CreateInstanceDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
