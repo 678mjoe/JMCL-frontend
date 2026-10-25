@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ModpackImportController, validModpackInstanceId, type ModpackSession } from "./modpackImport";
+import { ModpackImportController, validModpackInstanceId, suggestedModpackInstanceId, type ModpackSession } from "./modpackImport";
 import { instanceCoordinator, instanceMutationKey } from "./instanceCoordinator";
 import type { InstanceManifest } from "./types";
 const input = { directory: "/fixture/instances", storeDirectory: "/fixture/store", id: "pack", file: "/fixture/pack.mrpack" };
@@ -99,4 +99,33 @@ describe("modpack import staged ownership", () => {
     await controller.run(); await controller.run(); expect(writes).toBe(1); expect(controller.getSnapshot().error).toBe("INVALID_INSTANCE_RESULT"); expect(controller.getSnapshot().canResume).toBe(false);
   });
 
+});
+
+test("safe ID suggestions do not turn names into paths or reserved Windows names", () => {
+  expect(suggestedModpackInstanceId("My Pack 1.2")).toBe("my-pack-1.2");
+  for (const name of ["CON", "...", "整合包", "../CON", "A".repeat(90)]) expect(validModpackInstanceId(suggestedModpackInstanceId(name))).toBe(true);
+});
+test("known setup failures stay specific while transport uncertainty cannot resume", async () => {
+  for (const code of ["DOWNLOAD_FAILED", "JAVA_DOWNLOAD_FAILED", "PROCESSOR_FAILED", "CACHE_INVALID", "UNSAFE_ARCHIVE", "PREPARE_CONFLICT"]) {
+    const { controller } = setup({ installExecute: async () => { throw { code, message: "PRIVATE" }; } });
+    await controller.run(); expect(controller.getSnapshot().error).toBe(code); expect(controller.getSnapshot().canResume).toBe(true);
+  }
+  const { controller } = setup({ installExecute: async () => { throw { code: "TRANSPORT_EOF" }; } });
+  await controller.run(); expect(controller.getSnapshot().error).toBe("IMPORT_OUTCOME_UNKNOWN"); expect(controller.getSnapshot().canResume).toBe(false);
+});
+test("retains real modpack summary and rejects malformed identities before game mutation", async () => {
+  const good = setup(); await good.controller.run(); expect(good.controller.getSnapshot().summary?.files_installed).toBe(2);
+  const bad = setup({ modpackInstall: async () => ({ id: "another", name: "Pack", version_id: "1.21.4", loader: null, files_installed: 0, files_skipped: 0, overrides_written: 0 }) });
+  await bad.controller.run(); expect(bad.controller.getSnapshot().error).toBe("INVALID_INSTANCE_RESULT"); expect(bad.calls).not.toContain("install");
+});
+
+test("malformed progress events are ignored without changing import outcome", async () => {
+  const { controller } = setup({ installExecute: async (_version, _options, emit) => {
+    for (const progress of [undefined, null, [], {}, { files_completed: -1 }]) emit?.({ kind: "event", data: { event: "progress", progress } } as never);
+    emit?.({ kind: "event", data: null } as never);
+    return {};
+  } });
+  await controller.run();
+  expect(controller.getSnapshot().phase).toBe("success");
+  expect(controller.getSnapshot().progress).toBeNull();
 });

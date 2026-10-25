@@ -4,6 +4,7 @@ pub mod credentials;
 pub mod curseforge;
 pub mod diagnostics;
 pub mod endpoints;
+pub mod modpack_preview;
 pub mod pack_activation;
 pub mod pool;
 pub mod server_status_cache;
@@ -71,6 +72,18 @@ async fn endpoint_sessions_close(
     let result = pool.close_endpoint(&endpoint_id).await;
     operation.finish_session(&result);
     result
+}
+
+/// Inspect only bounded local manifest metadata; never extract or download.
+#[tauri::command]
+async fn modpack_preview(
+    file: String,
+) -> Result<modpack_preview::ModpackPreview, modpack_preview::PreviewError> {
+    tauri::async_runtime::spawn_blocking(move || modpack_preview::preview(&file))
+        .await
+        .map_err(|_| modpack_preview::PreviewError {
+            code: "MODPACK_PREVIEW_READ_FAILED",
+        })?
 }
 
 const INSTALL_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -268,6 +281,7 @@ pub fn run() {
             diagnostics::diagnostics_record,
             updater::updater_status,
             updater::updater_action,
+            modpack_preview,
             core_open,
             endpoint_session_open,
             core_close,

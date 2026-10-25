@@ -1,107 +1,119 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useLauncher } from "@/lib/launcher";
 import { useSettings } from "@/lib/settings";
 import { curseForgeKeyStatus } from "@/lib/curseforge";
 import { openDialog } from "@/lib/native";
-import { ModpackImportController, validModpackInstanceId } from "@/lib/modpackImport";
+import { suggestedModpackInstanceId, validModpackInstanceId } from "@/lib/modpackImport";
+import { previewModpack, modpackPreviewErrorCode, type ModpackPreview } from "@/lib/modpackPreview";
+import { useModpackTasks } from "@/lib/modpackTasks";
+import { modpackError, modpackPhase } from "@/lib/modpackMessages";
+import { InstallProgressView } from "./InstallProgressView";
 
-interface Props { open: boolean; onOpenChange: (open: boolean) => void; onImported: () => void; pickArchive?: () => Promise<string | string[] | null>; keyStatus?: () => Promise<boolean> }
-const chooseArchive = () => openDialog({ multiple: false, filters: [{ name: "Modpack", extensions: ["mrpack", "zip"] }] });
-const empty = { phase: "idle", busy: false, error: null, progress: null, canResume: false, instance: null } as const;
-const noSubscribe = () => () => {};
-const noSnapshot = () => empty;
-export function ModpackImportDialog(props: Props) {
-  const { settings } = useSettings();
-  return props.open ? <ImportForm key={`${settings.instancesDir}\0${settings.storeDir}`} {...props} /> : null;
+interface Props {
+  onOpenSettings?: () => void;
+  onOpenInstance?: (id: string) => void;
+  pickArchive?: () => Promise<string | string[] | null>;
+  inspectArchive?: (file: string) => Promise<ModpackPreview>;
+  keyStatus?: () => Promise<boolean>;
 }
-function ImportForm({ onOpenChange, onImported, pickArchive = chooseArchive, keyStatus = curseForgeKeyStatus }: Props) {
+const chooseArchive = () => openDialog({ multiple: false, filters: [{ name: "Modpack", extensions: ["mrpack", "zip"] }] });
+export function ModpackImportDialog(props: Props) {
+  const jobs = useModpackTasks();
   const { settings } = useSettings();
-  const { openSession } = useLauncher();
+  return jobs.open ? <ImportForm key={`${settings.instancesDir}\0${settings.storeDir}\0${jobs.selected ?? "draft"}`} {...props} /> : null;
+}
+function ImportForm({ onOpenSettings, onOpenInstance, pickArchive = chooseArchive, inspectArchive = previewModpack, keyStatus = curseForgeKeyStatus }: Props) {
+  const { settings } = useSettings();
+  const jobs = useModpackTasks();
   const zh = settings.language === "zh";
   const say = (en: string, cn: string) => zh ? cn : en;
-  const [id, setId] = useState("");
-  const [file, setFile] = useState("");
-  const [provider, setProvider] = useState<"modrinth" | "curseforge">("modrinth");
+  const task = jobs.registry.list().find(task => task.key === jobs.selected);
+  const controller = task?.controller;
+  const state = controller?.getSnapshot();
+  const draft = jobs.registry.draft(settings.instancesDir, settings.storeDir);
+  const preview = draft.preview;
   const [hasKey, setHasKey] = useState(false);
   const [keyChecking, setKeyChecking] = useState(false);
   const [keyError, setKeyError] = useState(false);
   const [keyRevision, setKeyRevision] = useState(0);
   const [picking, setPicking] = useState(false);
-  const [pickerError, setPickerError] = useState(false);
-  const [controller, setController] = useState<ModpackImportController | null>(null);
-  const owned = useRef<ModpackImportController | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const alive = useRef(true);
   const pickingRef = useRef(false);
-  const state = useSyncExternalStore(controller?.subscribe ?? noSubscribe, controller?.getSnapshot ?? noSnapshot);
-  const notified = useRef(false);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; owned.current?.dispose(); }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
-    if ((state.phase === "success" || state.phase === "error") && !state.busy && !notified.current) {
-      notified.current = true; onImported();
-    }
-  }, [state.phase, state.busy, onImported]);
-  useEffect(() => {
-    if (provider !== "curseforge") return;
+    if (preview?.provider !== "curseforge" || controller) return;
     let active = true; setHasKey(false); setKeyChecking(true); setKeyError(false);
-    void keyStatus().then((value) => { if (active) setHasKey(value); }).catch(() => { if (active) setKeyError(true); }).finally(() => { if (active) setKeyChecking(false); });
+    void keyStatus().then(value => { if (active) setHasKey(value); }).catch(() => { if (active) setKeyError(true); }).finally(() => { if (active) setKeyChecking(false); });
     return () => { active = false; };
-  }, [provider, keyStatus, keyRevision]);
+  }, [preview?.provider, controller, keyStatus, keyRevision]);
   const pick = async () => {
-    if (pickingRef.current || owned.current) return;
-    pickingRef.current = true; setPicking(true); setPickerError(false);
+    if (pickingRef.current || controller) return;
+    pickingRef.current = true; setPicking(true); setPreviewError(null);
     try {
       const selected = await pickArchive();
-      if (alive.current && typeof selected === "string") setFile(selected);
-    } catch { if (alive.current) setPickerError(true); }
-    finally { pickingRef.current = false; if (alive.current) setPicking(false); }
+      if (!alive.current || typeof selected !== "string") return;
+      // Remove stale metadata before reading another file. A failed preview cannot
+      // submit the previous file under the newly displayed selection.
+      jobs.registry.setDraft(settings.instancesDir, settings.storeDir, { ...draft, file: selected, preview: null });
+      const result = await inspectArchive(selected);
+      if (!alive.current) return;
+      jobs.registry.setDraft(settings.instancesDir, settings.storeDir, { file: selected, preview: result, id: draft.id || suggestedModpackInstanceId(result.name) });
+    } catch (error) {
+      if (alive.current) {
+        setPreviewError(modpackPreviewErrorCode(error));
+      }
+    } finally { pickingRef.current = false; if (alive.current) setPicking(false); }
   };
+  const ready = !!preview && validModpackInstanceId(draft.id) && !picking && (preview.provider !== "curseforge" || (hasKey && !keyChecking));
   const start = () => {
-    if (owned.current || pickingRef.current || (provider === "curseforge" && (!hasKey || keyChecking)) || !file || !validModpackInstanceId(id)) return;
-    const next = new ModpackImportController({ directory: settings.instancesDir, storeDirectory: settings.storeDir, id, file, provider }, openSession);
-    owned.current = next; setController(next); void next.run();
+    if (!ready || controller || pickingRef.current) return;
+    jobs.start({ directory: settings.instancesDir, storeDirectory: settings.storeDir, id: draft.id, file: draft.file, provider: preview!.provider });
   };
-  const close = () => { if (!owned.current?.getSnapshot().busy) onOpenChange(false); };
-  const errors: Record<string, string> = {
-    INSTANCE_BUSY: state.canResume ? say("This instance is busy. No new setup request was submitted; wait for the other operation to finish, then resume game setup.", "此实例正忙，尚未提交新的游戏准备请求；请等待其他操作结束后恢复游戏准备。") : say("This instance is busy with another operation. The archive was not submitted. Wait for that operation to finish, then close and retry the import.", "此实例正在执行其他操作，归档尚未提交。请等待该操作结束，然后关闭并重新导入。"),
-    INSTANCE_EXISTS: say("That instance ID already exists. Nothing was overwritten; close and choose a new ID.", "实例 ID 已存在，未覆盖任何内容；请关闭并使用新的 ID。"),
-    INVALID_PARAMS: say("Invalid archive or parameters. Check the archive and instance ID; for CurseForge archives select CurseForge and configure its key.", "归档或参数无效，请检查归档及实例 ID；CurseForge 归档需选择 CurseForge 并配置密钥。"),
-    CURSEFORGE_KEY_REQUIRED: say("No CurseForge API key is saved. Save it explicitly in Settings → CurseForge, then start a new import.", "未保存 CurseForge API key。请在设置 → CurseForge 中明确保存密钥，然后重新开始导入。"),
-    CURSEFORGE_KEY_INVALID: say("The saved CurseForge API key is invalid. Replace it in Settings → CurseForge.", "已保存的 CurseForge API key 无效，请在设置 → CurseForge 中替换。"),
-    CURSEFORGE_KEYCHAIN: say("The OS credential store could not be accessed. Check Settings → CurseForge.", "无法访问系统凭据库，请检查设置 → CurseForge。"),
-    UNKNOWN_MODPACK_FORMAT: say("This archive is not a recognized modpack.", "此归档不是可识别的整合包。"),
-    UNSUPPORTED_MODPACK_FORMAT: say("This modpack format version is unsupported.", "不支持此整合包格式版本。"),
-    UNSUPPORTED_LOADER: say("This pack uses an unsupported loader.", "此整合包使用不支持的加载器。"),
-    LOADER_CONFLICT: say("This pack declares conflicting loaders.", "此整合包声明了冲突的加载器。"),
-    MODPACK_NOT_FOUND: say("The selected archive no longer exists.", "所选归档已不存在。"),
-    UNSAFE_MODPACK: say("Core rejected unsafe paths in the archive.", "Core 拒绝了归档中的不安全路径。"),
-    DOWNLOAD_UNAVAILABLE: say("A pack file is unavailable for third-party download.", "整合包文件不允许第三方下载。"),
-  };
-  const phaseNames: Record<string, string> = {
-    checking: say("Checking instance ID", "检查实例 ID"), archive: say("Importing archive", "正在导入归档"), manifest: say("Reading imported instance", "读取导入的实例"), install: say("Installing game files", "安装游戏文件"), prepare: say("Preparing game", "准备游戏"), success: say("Import and game preparation completed.", "导入和游戏准备完成。"),
-  };
-  return <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
-    <DialogContent showCloseButton={!state.busy} className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{say("Import modpack", "导入整合包")}</DialogTitle><DialogDescription>{say("Creates a new isolated instance, then downloads and prepares its game files. Existing instances are never overwritten.", "创建新的隔离实例，然后下载和准备游戏文件，不覆盖已有实例。")}</DialogDescription></DialogHeader>
-      <Label htmlFor="pack-provider">{say("Archive provider", "归档来源")}</Label>
-      <select id="pack-provider" value={provider} disabled={!!controller || picking} onChange={(event) => setProvider(event.target.value as "modrinth" | "curseforge")} className="rounded border p-2"><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select>
-      {provider === "curseforge" && <div className="space-y-2"><p role="status">{keyChecking ? say("Checking saved key…", "正在检查已保存的密钥…") : hasKey ? say("Uses the API key saved in the OS credential store. Core enforces author download permissions; unavailable files are not fetched from guessed URLs.", "使用系统凭据库中已保存的 API key。Core 遵守作者下载权限，不会猜测不可用文件的下载地址。") : say("No usable saved API key. Open Settings → CurseForge and explicitly save your key, then refresh its status here.", "尚无可用的已保存 API key。请打开设置 → CurseForge 并明确保存密钥，然后在此刷新状态。")}</p>{keyError && <p role="alert">{say("Cannot access the native credential store.", "无法访问原生凭据库。")}</p>}<Button variant="outline" disabled={keyChecking || !!controller} onClick={() => setKeyRevision((value) => value + 1)}>{say("Refresh key status", "刷新密钥状态")}</Button></div>}
-      <>
-        <Label htmlFor="pack-instance-id">{say("New instance ID", "新实例 ID")}</Label><Input id="pack-instance-id" value={id} disabled={!!controller} onChange={(event) => setId(event.target.value)} />
-        <p className="text-xs text-muted-foreground">{say("1–64 lowercase letters, digits, dots, underscores or hyphens; start with a letter or digit. Reserved Windows names are not allowed.", "1–64 位小写字母、数字、点、下划线或连字符，以字母或数字开头，不可使用 Windows 保留名称。")}</p>
-        <Button variant="outline" onClick={() => void pick()} disabled={!!controller || picking}>{say("Choose archive", "选择归档")}</Button>
-        {file && <p className="break-all text-sm">{file}</p>}
-        {pickerError && <p role="alert">{say("Could not open the file picker. Try choosing the archive again.", "无法打开文件选择器，请重试。")}</p>}
-        <p className="text-sm text-muted-foreground">{say("Core detects the format from the archive contents; renaming a CurseForge archive does not bypass its API-key requirement. Downloads cannot be cancelled once submitted.", "Core 依据归档内容识别格式；重命名不能绕过 CurseForge API key 要求。提交后的下载不可取消。")}</p>
-        {phaseNames[state.phase] && <p role="status">{phaseNames[state.phase]}</p>}
-        {state.progress && <p role="status">{state.progress.files} / {state.progress.total} {say("files", "文件")} · {state.progress.bytes} / {state.progress.bytesTotal} bytes</p>}
-        {state.error && <div role="alert"><p>{state.error}: {errors[state.error] ?? say("The operation failed. Check the instance list before taking another action.", "操作失败，请先检查实例列表再进行下一步操作。")}</p><p>{state.error === "INSTANCE_BUSY" ? "" : state.canResume ? say("Archive import succeeded. Resume only game installation/preparation; the archive will not be imported again.", "归档导入已成功；仅恢复游戏安装/准备，不会再次导入归档。") : say("Archive import will not be repeated automatically. If the connection was interrupted, its outcome is unknown; inspect the instance before starting a new import.", "不会自动重复导入归档。若连接中断，结果可能未知；开始新导入前请检查实例。")}</p></div>}
-        {!controller && <Button onClick={start} disabled={!file || !validModpackInstanceId(id) || picking || (provider === "curseforge" && (!hasKey || keyChecking))}>{say("Import into new instance", "导入到新实例")}</Button>}
-        {state.canResume && <Button onClick={() => { notified.current = false; void controller?.run(); }} disabled={state.busy}>{say("Resume game setup", "恢复游戏准备")}</Button>}
-      </>
-      <Button variant="outline" onClick={close} disabled={state.busy}>{say("Close", "关闭")}</Button>
+  const currentRoot = !controller || controller.input.directory === settings.instancesDir;
+  const openInstance = () => { if (!controller || !currentRoot) return; jobs.hide(); onOpenInstance?.(controller.input.id); };
+  return <Dialog open onOpenChange={open => { if (!open) jobs.hide(); }}>
+    <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{say("Import modpack", "导入整合包")}</DialogTitle><DialogDescription>{say("Create a new isolated instance. Existing instances are never overwritten.", "创建新的隔离实例，不覆盖已有实例。")}</DialogDescription></DialogHeader>
+      {!controller ? <div className="space-y-4">
+        <Button variant="outline" onClick={() => void pick()} disabled={picking}>{picking ? say("Reading archive…", "读取归档…") : say("Choose archive", "选择归档")}</Button>
+        {draft.file && <p className="break-all text-sm">{draft.file}</p>}
+        {previewError && <p role="alert">{previewError}: {say("Could not preview this archive within the safe inspection limits. Choose a supported local .mrpack or CurseForge .zip file. No installation was started.", "无法在安全检查限制内预览归档，请选择支持的本地 .mrpack 或 CurseForge .zip 文件。尚未开始安装。")}</p>}
+        {preview && <section aria-label={say("Installation summary", "安装摘要")} className="space-y-2 rounded-md border p-3 text-sm">
+          <h3 className="font-medium break-words">{preview.name}</h3>
+          <p>{preview.provider === "modrinth" ? "Modrinth" : "CurseForge"}{preview.version ? ` · ${preview.version}` : ""}</p>
+          <p>Minecraft {preview.minecraft_version} · {preview.loader ? `${preview.loader.kind} ${preview.loader.version}` : say("Vanilla", "原版")}</p>
+          <p>{say("Declared files", "声明的文件")}: {preview.files_declared}</p>
+          <p className="text-muted-foreground">{say("Metadata preview only. Core validates the complete archive during import; download availability, total size and Java requirements are not verified here.", "此处仅预览元数据，Core 会在导入时验证完整归档；尚未验证下载可用性、总大小或 Java 要求。")}</p>
+        </section>}
+        <div className="space-y-2"><Label htmlFor="pack-instance-id">{say("New instance ID", "新实例 ID")}</Label><Input id="pack-instance-id" value={draft.id} disabled={picking} onChange={event => jobs.registry.setDraft(settings.instancesDir, settings.storeDir, { ...draft, id: event.target.value })} />
+          <p className="text-xs text-muted-foreground">{say("Suggested from the pack name; you can change it. Use 1–64 lowercase letters, digits, dots, underscores or hyphens. Reserved names are not allowed.", "已根据整合包名称建议 ID，可自行修改。使用 1–64 位小写字母、数字、点、下划线或连字符，不可使用保留名称。")}</p></div>
+        <dl className="text-sm space-y-1"><dt>{say("Instance location", "实例位置")}</dt><dd className="break-all">{settings.instancesDir}/{draft.id || "…"}</dd><dt>{say("Shared file store", "共享文件存储")}</dt><dd className="break-all">{settings.storeDir}</dd></dl>
+        {preview?.provider === "curseforge" && <div className="space-y-2 rounded-md border p-3"><p role="status">{keyChecking ? say("Checking saved key…", "检查已保存密钥…") : hasKey ? say("Uses your saved OS credential-store key. Author download restrictions remain enforced.", "使用系统凭据库中已保存的密钥，仍遵守作者下载限制。") : say("A saved CurseForge key is required. Open Settings, save it, then return; your selection is kept.", "需要已保存的 CurseForge 密钥。请打开设置保存后返回，所选内容会保留。")}</p>{keyError && <p role="alert">{say("Cannot access the native credential store.", "无法访问原生凭据库。")}</p>}
+          {onOpenSettings && <Button variant="outline" onClick={() => { jobs.hide(); onOpenSettings(); }}>{say("Open Settings", "打开设置")}</Button>}
+          <Button variant="outline" disabled={keyChecking} onClick={() => setKeyRevision(value => value + 1)}>{say("Refresh key status", "刷新密钥状态")}</Button>
+        </div>}
+        <Button onClick={start} disabled={!ready}>{say("Confirm and install", "确认并安装")}</Button>
+      </div> : <div className="space-y-3">
+        <p className="font-medium break-all">{controller.input.id}</p><p className="text-xs break-all text-muted-foreground">{controller.input.directory}/{controller.input.id}</p>
+        <p role="status">{modpackPhase(state!.phase, zh)}</p>
+        {state!.installProgress && <InstallProgressView state={state!.installProgress} />}
+        {state!.error && <div role="alert" className="space-y-2"><p>{state!.error}: {modpackError(state!.error, zh)}</p>{state!.canResume && <p>{say("Pack import succeeded. Resume only game setup; the archive will not be imported again.", "整合包导入已成功，仅恢复游戏准备，不会再次导入归档。")}</p>}</div>}
+        {state!.summary && <section className="rounded-md border p-3 text-sm space-y-1" aria-label={say("Imported pack summary", "已导入整合包摘要")}>
+          <p className="font-medium">{state!.summary.name}</p><p>Minecraft {state!.summary.version_id}{state!.summary.loader ? ` · ${state!.summary.loader.name} ${state!.summary.loader.version}` : ""}</p>
+          <p>{say("Installed pack files", "已安装整合包文件")}: {state!.summary.files_installed} · {say("Skipped", "已跳过")}: {state!.summary.files_skipped} · overrides: {state!.summary.overrides_written}</p>
+          {state!.summary.files_skipped > 0 && <p>{say("Skipped files may be optional or not applicable to clients. Core does not return their individual names.", "跳过的文件可能为可选项或不适用于客户端，Core 未返回逐项名称。")}</p>}
+        </section>}
+        {state!.canResume && <Button disabled={state!.busy} onClick={() => void controller.run()}>{say("Resume game setup", "恢复游戏准备")}</Button>}
+        {state!.canEdit && <Button variant="outline" onClick={jobs.edit}>{say("Edit selection and retry", "修改选择并重试")}</Button>}
+        {state!.error?.startsWith("CURSEFORGE_") && onOpenSettings && <Button variant="outline" onClick={() => { jobs.hide(); onOpenSettings(); }}>{say("Open Settings", "打开设置")}</Button>}
+        {!state!.busy && onOpenInstance && <Button variant="outline" disabled={!currentRoot} onClick={openInstance}>{state!.phase === "success" ? say("Open instance", "打开实例") : say("Inspect instance", "检查实例")}</Button>}
+        {!currentRoot && <p>{say("This task belongs to a different instances directory. Switch back in Settings to open it.", "此任务属于另一个实例目录，请到设置切回后打开。")}</p>}
+      </div>}
+      <p className="text-xs text-muted-foreground">{say("You can close this view and keep installing while the app stays open. Closing a view is not cancellation; stopping an active install is not supported yet.", "应用保持打开时，可关闭此窗口让安装在后台继续。关闭窗口不等于取消，目前不支持停止正在执行的安装。")}</p>
+      <Button variant="outline" onClick={jobs.hide}>{state?.busy ? say("Continue in background", "在后台继续") : say("Close", "关闭")}</Button>
     </DialogContent>
   </Dialog>;
 }
