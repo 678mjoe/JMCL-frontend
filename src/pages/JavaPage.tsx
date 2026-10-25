@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { downloadOptions } from "@/lib/downloadOptions";
+import { useEffect, useRef, useState } from "react";
 import { Coffee, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBytes } from "@/components/InstallTaskProgress";
@@ -124,14 +125,28 @@ export function JavaPage() {
   const [confirmName, setConfirmName] = useState<string | null>(null);
   const [removingName, setRemovingName] = useState<string | null>(null);
 
+  const mounted = useRef(false);
+  const busy = useRef(false);
+  const currentStore = useRef(settings.storeDir);
+  const scopeRevision = useRef(0);
+  if (currentStore.current !== settings.storeDir) { currentStore.current = settings.storeDir; scopeRevision.current++; }
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { setConfirmName(null); setProgress(null); }, [settings.storeDir]);
+
   const install = async (major: number) => {
+    if (busy.current || !settings.storeDir) return;
+    busy.current = true;
+    const store = settings.storeDir;
+    const tuning = downloadOptions(settings);
+    const revision = scopeRevision.current;
+    const current = () => mounted.current && scopeRevision.current === revision;
     setInstallingMajor(major);
     setProgress(null);
     let session: CoreSession | null = null;
     try {
       session = await openSession();
       const trackProgress: EventHandler = (event) => {
-        if (event.kind !== "event") return;
+        if (!current() || event.kind !== "event") return;
         const e = event.data as {
           event?: string;
           progress?: { bytes_processed: number; bytes_total: number };
@@ -145,36 +160,40 @@ export function JavaPage() {
       };
       await session.javaRuntimeInstall(
         { major },
-        { store_directory: settings.storeDir },
+        { store_directory: store, ...tuning },
         trackProgress,
       );
-      toast.success(t("java.installedToast", { major }));
-      await reload();
+      if (current()) { toast.success(t("java.installedToast", { major })); await reload(); }
     } catch (e) {
-      toast.error(errorText(e));
+      if (current()) toast.error(errorText(e));
     } finally {
       if (session) void session.close();
-      setInstallingMajor(null);
-      setProgress(null);
+      busy.current = false;
+      if (mounted.current) { setInstallingMajor(null); setProgress(null); }
     }
   };
 
   const remove = async (name: string) => {
+    if (busy.current || !settings.storeDir) return;
+    busy.current = true;
+    const store = settings.storeDir;
+    const revision = scopeRevision.current;
+    const current = () => mounted.current && scopeRevision.current === revision;
     setRemovingName(name);
     setConfirmName(null);
     try {
       const session = await openSession();
       try {
-        await session.javaRuntimeRemove(name, settings.storeDir);
+        await session.javaRuntimeRemove(name, store);
       } finally {
         void session.close();
       }
-      toast.success(t("java.removedToast"));
-      await reload();
+      if (current()) { toast.success(t("java.removedToast")); await reload(); }
     } catch (e) {
-      toast.error(errorText(e));
+      if (current()) toast.error(errorText(e));
     } finally {
-      setRemovingName(null);
+      busy.current = false;
+      if (mounted.current) setRemovingName(null);
     }
   };
 
@@ -207,6 +226,7 @@ export function JavaPage() {
           <CardTitle>{t("java.installMajor")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
+          <p className="w-full text-xs text-muted-foreground">{settings.language === "zh" ? "可用性仅为版本及目标架构匹配提示，启动时 Core 仍会重新探测。即使已有本地同版本 Java，也可以选择安装托管版本。" : "Availability indicates major/target-architecture matches only; Core re-probes on launch. You may install a managed runtime even when a local runtime has the same major."}</p>
           {INSTALLABLE_MAJORS.map((major) => {
             const satisfied = satisfiedMajors.has(major);
             const installing = installingMajor === major;
@@ -214,7 +234,7 @@ export function JavaPage() {
               <Button
                 key={major}
                 variant={satisfied ? "secondary" : "outline"}
-                disabled={satisfied || installingMajor !== null}
+                disabled={!settings.storeDir || installingMajor !== null || removingName !== null}
                 onClick={() => void install(major)}
               >
                 {installing && <Loader2 className="animate-spin" />}
@@ -254,7 +274,7 @@ export function JavaPage() {
                 <ManagedRow
                   key={runtime.name}
                   runtime={runtime}
-                  pending={removingName === runtime.name}
+                  pending={removingName !== null || installingMajor !== null}
                   confirming={confirmName === runtime.name}
                   onAskRemove={() => setConfirmName(runtime.name)}
                   onCancelRemove={() => setConfirmName(null)}

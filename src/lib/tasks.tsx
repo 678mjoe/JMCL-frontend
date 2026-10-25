@@ -1,3 +1,4 @@
+import { installationJavaOptions, type JavaPreferences } from "./javaPreferences";
 /**
  * Long-running task manager: game installs and launches.
  *
@@ -67,6 +68,8 @@ export interface Task {
 const MAX_LOG_LINES = 5000;
 
 interface StartDirs {
+  workers?: number;
+  retries?: number;
   instancesDir: string;
   storeDir: string;
 }
@@ -76,12 +79,12 @@ interface TasksContextValue {
   taskFor: (kind: TaskKind, instanceId: string, instancesDir?: string) => Task | undefined;
   /** Resolves the version+loader online on a dedicated session; returns success. */
   startValidate: (instance: InstanceManifest) => Promise<boolean>;
-  startInstall: (instance: InstanceManifest, dirs: StartDirs) => Promise<void>;
+  startInstall: (instance: InstanceManifest, dirs: StartDirs, java?: JavaPreferences) => Promise<void>;
   startLaunch: (
     instance: InstanceManifest,
     dirs: StartDirs,
     auth: AuthSession,
-    javaOverride?: string | null,
+    javaOverride?: JavaPreferences | string | null,
     options?: LaunchOptions,
   ) => Promise<void>;
   clearTask: (kind: TaskKind, instanceId: string, instancesDir?: string) => void;
@@ -171,7 +174,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   );
 
   const startInstall = useCallback(
-    async (instance: InstanceManifest, dirs: StartDirs) => {
+    async (instance: InstanceManifest, dirs: StartDirs, java?: JavaPreferences) => {
+      const javaOptions = installationJavaOptions(java);
+      dirs = { ...dirs }; // Snapshot before opening an asynchronous session.
       const flightKey = instanceMutationKey(dirs.instancesDir, instance.id);
       if (installsInFlight.current.has(flightKey)) return;
       installsInFlight.current.add(flightKey);
@@ -187,6 +192,8 @@ export function TasksProvider({ children }: { children: ReactNode }) {
               {
                 directory,
                 store_directory: dirs.storeDir,
+                workers: dirs.workers, retries: dirs.retries,
+                ...javaOptions,
                 source: instance.source,
                 ...loaders,
               },
@@ -226,7 +233,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       instance: InstanceManifest,
       dirs: StartDirs,
       auth: AuthSession,
-      javaOverride?: string | null,
+      javaOverride?: JavaPreferences | string | null,
       options: LaunchOptions = {},
     ) => {
       const key = beginTask("launch", instance.id, "task.stage.launch");

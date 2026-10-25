@@ -1,3 +1,4 @@
+import { downloadOptions } from "@/lib/downloadOptions";
 import { hasAmbiguousContentProject } from "@/lib/contentIdentity";
 import { searchCurseForgeProjects, curseForgeVersions } from "@/lib/curseforge";
 type CatalogProject = ModrinthProject & { available?: boolean };
@@ -190,6 +191,7 @@ export function ContentSearchDialog({
             {
               ...(provider === "curseforge" ? { provider } : {}),
               ...(kind === "mods" && loader ? { loader } : {}),
+              ...downloadOptions(settings),
               store_directory: settings.storeDir,
             },
             trackProgress,
@@ -204,6 +206,7 @@ export function ContentSearchDialog({
               version_id: version.id,
               provider,
               ...(kind === "mods" && loader ? { loader } : {}),
+              ...downloadOptions(settings),
               store_directory: settings.storeDir,
             },
             trackProgress,
@@ -231,6 +234,8 @@ export function ContentSearchDialog({
       instance.version_id,
       loader,
       settings.storeDir,
+      settings.downloadWorkers,
+      settings.downloadRetries,
       settings.language,
       t,
       onChanged,

@@ -107,3 +107,20 @@ describe("ordinary installation root identity", () => {
     expect(current().taskFor("install", instance.id, "/root-b")?.status).toBe("success");
   });
 });
+
+test("ordinary install captures download tuning and root before async session opening", async () => {
+  let resolve!: (session: CoreSession) => void;
+  const calls: unknown[] = [];
+  const current = await mount(() => new Promise<CoreSession>(done => { resolve = done; }));
+  const dirs = { instancesDir: "/root-a", storeDir: "/store-a", workers: 4, retries: 0 };
+  let pending!: Promise<void>;
+  await act(async () => { pending = current().startInstall(instance, dirs); });
+  dirs.instancesDir = "/root-b"; dirs.storeDir = "/store-b"; dirs.workers = 32; dirs.retries = 5;
+  await act(async () => {
+    resolve({ close: async () => {}, installExecute: async (_id: string, options: unknown) => { calls.push(options); }, installPrepare: async () => ({}) } as unknown as CoreSession);
+    await pending;
+  });
+  expect(calls).toEqual([{ directory: "/root-a/fixture/.minecraft", store_directory: "/store-a", source: "official", workers: 4, retries: 0 }]);
+  expect(current().taskFor("install", instance.id, "/root-a")?.status).toBe("success");
+  expect(current().taskFor("install", instance.id, "/root-b")).toBeUndefined();
+});

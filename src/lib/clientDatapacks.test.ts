@@ -19,8 +19,8 @@ describe("client world datapack controller", () => {
   });
   test("uses Modrinth explicit compatible version and never a loader or server API", async () => {
     const f = fixture(); await f.controller.install("project", "v2"); await f.controller.setVersion("project", "v1");
-    expect(f.calls[0]?.slice(0, 6)).toEqual(["Install", "/instances/a/.minecraft", "World A", "1.21.4", "project", { provider: "modrinth", version_id: "v2", with_dependencies: true, store_directory: "/store" }]);
-    expect(f.calls[1]?.slice(0, 7)).toEqual(["SetVersion", "/instances/a/.minecraft", "World A", "1.21.4", "project", "v1", { store_directory: "/store" }]);
+    expect(f.calls[0]?.slice(0, 6)).toEqual(["Install", "/instances/a/.minecraft", "World A", "1.21.4", "project", { provider: "modrinth", version_id: "v2", with_dependencies: true, workers: 8, retries: 2, store_directory: "/store" }]);
+    expect(f.calls[1]?.slice(0, 7)).toEqual(["SetVersion", "/instances/a/.minecraft", "World A", "1.21.4", "project", "v1", { workers: 8, retries: 2, store_directory: "/store" }]);
   });
   test("fresh world lock blocks mutation; a missing/mismatched world is not silently targeted", async () => {
     const f = fixture({ worldsGet: async () => ({ world: { name: "World A", locked: true } }) as never });
@@ -62,8 +62,8 @@ test("CurseForge world datapacks send provider hints, numeric IDs and no credent
   const f = fixture();
   expect(await f.controller.install("123", "456", "curseforge")).toBe(true);
   expect(await f.controller.setVersion("123", "455", "curseforge")).toBe(true);
-  expect(f.calls[0]?.[5]).toEqual({ provider: "curseforge", version_id: "456", with_dependencies: true, store_directory: "/store" });
-  expect(f.calls[1]?.[6]).toEqual({ provider: "curseforge", store_directory: "/store" });
+  expect(f.calls[0]?.[5]).toEqual({ provider: "curseforge", version_id: "456", with_dependencies: true, workers: 8, retries: 2, store_directory: "/store" });
+  expect(f.calls[1]?.[6]).toEqual({ provider: "curseforge", workers: 8, retries: 2, store_directory: "/store" });
   expect(JSON.stringify(f.calls)).not.toContain("api_key");
   expect(await f.controller.install("not-numeric", "456", "curseforge")).toBe(false);
   expect(await f.controller.setVersion("123", "0", "curseforge")).toBe(false);
@@ -89,4 +89,16 @@ test("missing CF key retains actionable code but no native diagnostic", async ()
   const f = fixture({ datapacksInstall: async () => { throw { code: "CURSEFORGE_KEY_REQUIRED", message: "PRIVATE" }; } });
   expect(await f.controller.install("123", "456", "curseforge")).toBe(false);
   expect(f.controller.getSnapshot().error).toBe("CURSEFORGE_KEY_REQUIRED"); expect(JSON.stringify(f.controller.getSnapshot())).not.toContain("PRIVATE");
+});
+
+test("download tuning is captured before asynchronous session opening", async () => {
+  const gate = deferred<ClientDatapackSession>(); const f = fixture();
+  const c = new ClientDatapackController({ directory: "/a", world: "World A", version: "1.21.4", openSession: () => gate.promise });
+  c.setDownloadOptions({ workers: 3, retries: 0 });
+  const pending = c.install("project", "v1");
+  c.setDownloadOptions({ workers: 32, retries: 5 });
+  gate.resolve(f.session); expect(await pending).toBe(true);
+  expect(f.calls[0]?.[5]).toMatchObject({ workers: 3, retries: 0 });
+  await c.setVersion("project", "v2");
+  expect(f.calls[1]?.[6]).toMatchObject({ workers: 32, retries: 5 });
 });

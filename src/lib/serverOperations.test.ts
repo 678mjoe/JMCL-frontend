@@ -15,7 +15,7 @@ function deferred<T>() {
 function harness(overrides: Partial<ServerOperationsRpc> = {}) {
   let cache: ServerStatusCacheV1 = createEmptyServerStatusCache();
   const calls: string[] = [];
-  const installParams: Array<{ directory: string; id: string; options: { accept_eula: true; store_directory?: string } }> = [];
+  const installParams: Array<{ directory: string; id: string; options: { workers?: number; retries?: number; accept_eula: true; store_directory?: string } }> = [];
   const rpc = {
     install: async (directory, id, options, event) => { installParams.push({ directory, id, options }); calls.push(`install:${id}:${options.accept_eula}`); event?.({ event: "progress", source: "official", progress: { files_completed: 1, files_total: 1, bytes_verified: 10, bytes_total: 10, bytes_processed: 10, bytes_transferred: 10 } }); return { stage: "server.install", id, version_id: "1.21.4", source: "official", java: { path: "/java", version: "21", major_version: 21, vendor: "test" }, properties_created: true, files_total: 1, files_downloaded: 1, files_cached: 0, files_hard_linked: 0, files_copied: 0, bytes_verified: 10, bytes_transferred: 10 }; },
     get: async (_d, id) => { calls.push(`get:${id}`); return { stage: "server.get", ...installed }; },
@@ -73,12 +73,12 @@ describe("ServerOperationsController", () => {
   test("sends store_directory for local installs and omits it for SSH installs", async () => {
     const local = harness();
     await local.controller.install(manifest, true);
-    expect(local.installParams).toEqual([{ directory: "/servers", id: "alpha", options: { accept_eula: true, store_directory: "/store" } }]);
+    expect(local.installParams).toEqual([{ directory: "/servers", id: "alpha", options: { workers: 8, retries: 2, accept_eula: true, store_directory: "/store" } }]);
 
     const remote = harness();
     remote.setScope({ endpointId: "ssh-remote", kind: "ssh", directory: "/remote/servers", sourceRevision: 2 });
     await remote.controller.install(manifest, true);
-    expect(remote.installParams).toEqual([{ directory: "/remote/servers", id: "alpha", options: { accept_eula: true } }]);
+    expect(remote.installParams).toEqual([{ directory: "/remote/servers", id: "alpha", options: { workers: 8, retries: 2, accept_eula: true } }]);
   });
 
   test("same server is exclusive while different servers run independently", async () => {
@@ -297,3 +297,13 @@ for (const code of localCoreTransportCodes) {
     expect(h.records).toEqual([]); expect(h.closeCount).toBe(1);
   });
 }
+
+test("server install snapshots download tuning and local store before opening", async () => {
+  const h = harness();
+  h.controller.setDownloadOptions({ workers: 3, retries: 0 });
+  const pending = h.controller.install(manifest, true);
+  h.controller.setDownloadOptions({ workers: 32, retries: 5 });
+  h.controller.setStoreDirectory("/new-store");
+  await pending;
+  expect(h.installParams[0]).toMatchObject({ options: { workers: 3, retries: 0, store_directory: "/store" } });
+});

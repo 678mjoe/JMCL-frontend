@@ -129,3 +129,16 @@ test("malformed progress events are ignored without changing import outcome", as
   expect(controller.getSnapshot().phase).toBe("success");
   expect(controller.getSnapshot().progress).toBeNull();
 });
+
+test("modpack archive and game stages retain copied root and tuning on resume", async () => {
+  const fixture = setup(); let attempts = 0;
+  const original = { ...input, workers: 3, retries: 0 };
+  const session = { ...fixture.session, installExecute: async (...args: Parameters<ModpackSession["installExecute"]>) => { fixture.args.push(args); if (++attempts === 1) throw { code: "INSTALL_FAILED" }; return {}; } };
+  const controller = new ModpackImportController(original, async () => session);
+  original.directory = "/other"; original.workers = 32; original.retries = 5;
+  await controller.run(); expect(controller.getSnapshot().canResume).toBe(true);
+  await controller.run(); expect(controller.getSnapshot().phase).toBe("success");
+  expect(fixture.args[0]?.[3]).toMatchObject({ workers: 3, retries: 0 });
+  expect(fixture.args[1]?.[1]).toMatchObject({ workers: 3, retries: 0, directory: "/fixture/instances/pack/.minecraft" });
+  expect(fixture.args[2]?.[1]).toMatchObject({ workers: 3, retries: 0 });
+});

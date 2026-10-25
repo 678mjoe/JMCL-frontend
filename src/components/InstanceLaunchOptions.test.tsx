@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { SettingsProvider, useSettings } from "@/lib/settings";
+import { withJavaPreferences } from "@/lib/javaPreferences";
 import type { InstanceManifest } from "@/lib/types";
 const dom=new Window({url:"http://localhost/"});
 Object.assign(globalThis,{window:dom,document:dom.document,localStorage:dom.localStorage,HTMLElement:dom.HTMLElement,Element:dom.Element,Node:dom.Node,Event:dom.Event,MouseEvent:dom.MouseEvent,HTMLInputElement:dom.HTMLInputElement,IS_REACT_ACT_ENVIRONMENT:true});
@@ -12,7 +13,7 @@ const instance={id:"demo",name:"Demo"} as InstanceManifest;
 const button=(name:string)=>[...dom.document.querySelectorAll("button")].find(b=>b.textContent===name)!;
 const click=async(name:string)=>{await act(async()=>button(name).click());};
 const fill=async(label:string,value:string)=>{await act(async()=>{const el=dom.document.querySelector(`[aria-label="${label}"]`)! as unknown as HTMLInputElement;el.value=value;const key=Object.getOwnPropertyNames(el).find(k=>k.startsWith("__reactProps$"))!;(el as unknown as Record<string,{onChange:(e:{target:HTMLInputElement})=>void}>)[key].onChange({target:el});});};
-function SwitchRoot(){const {update}=useSettings();return <><button onClick={()=>update({instancesDir:"/other"})}>Switch root</button><button onClick={()=>update({storeDir:"/other-store"})}>Switch store</button><button onClick={()=>update({javaOverrides:{demo:"/other-java"}})}>Switch Java</button></>;}
+function SwitchRoot(){const {settings,update}=useSettings();return <><button onClick={()=>update({instancesDir:"/other"})}>Switch root</button><button onClick={()=>update({storeDir:"/other-store"})}>Switch store</button><button onClick={()=>update({javaPreferences:withJavaPreferences(settings.javaPreferences,settings.instancesDir,"demo",{policy:"local",paths:["/other-java"]})})}>Switch Java</button></>;}
 async function setup(preview?: (value:unknown)=>Promise<{launch:{redacted_argv:string[]}}>) { localStorage.setItem("jmcl.settings.v1",JSON.stringify({language:"en",instancesDir:"/synthetic",storeDir:"/store",serversDir:"/servers"}));const host=dom.document.createElement("div");dom.document.body.append(host);root=createRoot(host as unknown as HTMLElement);await act(async()=>root!.render(<SettingsProvider><InstanceLaunchOptions instance={instance} onPreview={preview}/><SwitchRoot/></SettingsProvider>));}
 afterEach(async()=>{await act(async()=>root?.unmount());root=undefined;dom.document.body.replaceChildren();localStorage.clear();});
 test("save, cancel and reopen retain only saved literal argv",async()=>{await setup();await click("Edit launch options");await fill("JVM arguments",'["-Dpath=a b","-Xmx1G","-Xmx2G"]');await click("Save launch options");await click("Edit launch options");expect(dom.document.querySelector("textarea")?.value).toContain("-Xmx2G");await fill("JVM arguments",'["discard"]');await click("Cancel");await click("Edit launch options");expect(dom.document.querySelector("textarea")?.value).not.toContain("discard");expect(localStorage.getItem("jmcl.settings.v1")).not.toContain("discard");});

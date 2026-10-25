@@ -1,3 +1,4 @@
+import { javaPreferencesFor } from "@/lib/javaPreferences";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +10,7 @@ import type { InstanceManifest } from "@/lib/types";
 type Preview = (options: SavedLaunchOptions) => Promise<{ launch: { redacted_argv: string[] } }>;
 export function InstanceLaunchOptions({ instance, onPreview }: { instance: InstanceManifest; onPreview?: Preview }) {
   const { settings } = useSettings();
-  const scope = JSON.stringify([instanceMutationKey(settings.instancesDir, instance.id), settings.storeDir, settings.javaOverrides[instance.id], instance.version_id, instance.source, instance.fabric_loader, instance.neoforge_version, instance.forge_version, settings.playerName, settings.activeAccountId]);
+  const scope = JSON.stringify([instanceMutationKey(settings.instancesDir, instance.id), settings.storeDir, javaPreferencesFor(settings.javaPreferences, settings.instancesDir, instance.id), instance.version_id, instance.source, instance.fabric_loader, instance.neoforge_version, instance.forge_version, settings.playerName, settings.activeAccountId]);
   // Remount before another scope can save old draft state, including same-frame navigation.
   return <Editor key={scope} instanceId={instance.id} onPreview={onPreview} />;
 }

@@ -1,3 +1,5 @@
+import { useSettings } from "./settings";
+import { downloadOptions, type DownloadOptions } from "./downloadOptions";
 import { hasAmbiguousContentProject } from "./contentIdentity";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { CoreSession, type InstallEvent, type SessionEvent } from "./rpc";
@@ -12,6 +14,8 @@ function safeCode(error: unknown) { if (error instanceof InstanceBusyError) retu
 const fail = (code: string): never => { throw { code }; };
 const validId = (value: string) => !!value.trim() && value === value.trim() && value !== "." && value !== ".." && !/[\\/\0\r\n]/.test(value);
 export class ClientDatapackController {
+  private downloads: DownloadOptions = { workers: 8, retries: 2 };
+  setDownloadOptions(options: DownloadOptions) { this.downloads = { ...options }; }
   private snapshot = empty();
   private listeners = new Set<() => void>();
   private generation = 0;
@@ -96,19 +100,27 @@ export class ClientDatapackController {
     return succeeded && current();
   }
   load = () => this.run();
-  install = (project: string, version: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, event) => {
-    if (!validId(project) || !validId(version)) fail("INVALID_PARAMS");
-    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(version))) fail("INVALID_PARAMS");
-    const o = this.options;
-    return session.datapacksInstall(o.directory, o.world, o.version, project, { provider, version_id: version, with_dependencies: true, store_directory: o.storeDirectory }, event);
-  }, provider === "curseforge");
-  setVersion = (project: string, version: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, event) => {
-    if (hasAmbiguousContentProject(this.snapshot.content?.entries ?? [], project)) fail("CONTENT_PROJECT_AMBIGUOUS");
-    if (!validId(project) || !validId(version)) fail("INVALID_PARAMS");
-    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(version))) fail("INVALID_PARAMS");
-    const o = this.options;
-    return session.datapacksSetVersion(o.directory, o.world, o.version, project, version, { ...(provider === "curseforge" ? { provider } : {}), store_directory: o.storeDirectory }, event);
-  }, provider === "curseforge");
+  install = (project: string, version: string, provider: "modrinth" | "curseforge" = "modrinth") => {
+    // Changing preferences must not alter an operation waiting for its session.
+    const downloads = { ...this.downloads };
+    return this.run((session, event) => {
+      if (!validId(project) || !validId(version)) fail("INVALID_PARAMS");
+      if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(version))) fail("INVALID_PARAMS");
+      const o = this.options;
+      return session.datapacksInstall(o.directory, o.world, o.version, project, { provider, version_id: version, with_dependencies: true, ...downloads, store_directory: o.storeDirectory }, event);
+    }, provider === "curseforge");
+  };
+  setVersion = (project: string, version: string, provider: "modrinth" | "curseforge" = "modrinth") => {
+    // Changing preferences must not alter an operation waiting for its session.
+    const downloads = { ...this.downloads };
+    return this.run((session, event) => {
+      if (hasAmbiguousContentProject(this.snapshot.content?.entries ?? [], project)) fail("CONTENT_PROJECT_AMBIGUOUS");
+      if (!validId(project) || !validId(version)) fail("INVALID_PARAMS");
+      if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(version))) fail("INVALID_PARAMS");
+      const o = this.options;
+      return session.datapacksSetVersion(o.directory, o.world, o.version, project, version, { ...(provider === "curseforge" ? { provider } : {}), ...downloads, store_directory: o.storeDirectory }, event);
+    }, provider === "curseforge");
+  };
   private selector(target: { file: string }) {
     if (!target.file.startsWith("datapacks/") || !validId(target.file.slice(10))) fail("INVALID_PARAMS");
     return { file: target.file }; // Exact world-relative registry identity, never basename or joined path.
@@ -122,6 +134,7 @@ export class ClientDatapackController {
 }
 export function useClientDatapacks(directory: string, world: string, version: string, storeDirectory: string) {
   const controller = useMemo(() => new ClientDatapackController({ directory, world, version, storeDirectory, openSession: () => CoreSession.open() }), [directory, world, version, storeDirectory]);
+  controller.setDownloadOptions(downloadOptions(useSettings().settings));
   useEffect(() => () => controller.cancel(), [controller]);
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return { snapshot, load: controller.load, install: controller.install, setVersion: controller.setVersion, toggle: controller.toggle, remove: controller.remove, adopt: controller.adopt, cancel: controller.cancel };

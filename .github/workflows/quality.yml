@@ -106,7 +106,9 @@ jobs:
       - name: Rust unit and isolated local RPC tests (not real services)
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Typed account wrappers against real Core (synthetic metadata only)
-        run: bun scripts/test-account-core.ts
+        run: |
+          bun scripts/test-account-core.ts
+          bun scripts/test-capabilities-core.ts
       # Debug reuses the test/check profile. These packages never leave the runner.
       # --no-sign skips bundler signing; no identities, secrets or release services.
       - name: Generate non-distributed debug package without code signing

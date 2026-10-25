@@ -1,3 +1,5 @@
+import { javaPreferencesFor } from "@/lib/javaPreferences";
+import { downloadOptions } from "@/lib/downloadOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Gamepad2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -46,9 +48,9 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
   const [deleting, setDeleting] = useState(false);
 
   const coreReady = status === "ready";
-  const dirs = { instancesDir: settings.instancesDir, storeDir: settings.storeDir };
+  const dirs = { instancesDir: settings.instancesDir, storeDir: settings.storeDir, ...downloadOptions(settings) };
   const beginInstall = (instance: InstanceManifest) => {
-    void startInstall(instance, dirs);
+    void startInstall(instance, dirs, javaPreferencesFor(settings.javaPreferences, dirs.instancesDir, instance.id));
   };
 
   // Validate the version+loader online first, then auto-install. Validation
@@ -131,7 +133,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
       try {
         const auth = await resolveLaunchAuth();
         if (!mounted.current || generation !== scopeGeneration.current || rootRef.current !== dirs.instancesDir) return;
-        void startLaunch(instance, dirs, auth, settings.javaOverrides[instance.id], launchOptionsFor(settings.launchOptions, dirs.instancesDir, instance.id));
+        void startLaunch(instance, dirs, auth, javaPreferencesFor(settings.javaPreferences, settings.instancesDir, instance.id), launchOptionsFor(settings.launchOptions, dirs.instancesDir, instance.id));
         setLogInstanceId(instance.id);
       } catch (e) {
         toast.error(

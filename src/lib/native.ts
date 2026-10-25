@@ -94,3 +94,10 @@ export const openDialog = (options?: OpenDialogOptions) =>
 export const saveDialog = (options?: SaveDialogOptions) =>
   isMockTransport() ? Promise.resolve<string | null>(`/mock/jmcl/${options?.defaultPath ?? "world.zip"}`) : tauriSave(options);
 export const openUrl = (url: string) => isMockTransport() ? Promise.resolve(url) : tauriOpenUrl(url);
+
+/** Native build target, matching the packaged local Core; no browser architecture guessing. */
+export interface RuntimeTarget { os: "linux" | "windows" | "osx"; arch: "x86" | "x86_64" | "arm" | "arm64" }
+export async function runtimeTarget(): Promise<RuntimeTarget | null> {
+  if (isMockTransport()) return { os: "linux", arch: "x86_64" };
+  return invoke<RuntimeTarget | null>("runtime_target");
+}

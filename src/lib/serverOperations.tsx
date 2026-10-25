@@ -1,3 +1,4 @@
+import { downloadOptions, type DownloadOptions } from "./downloadOptions";
 import { isLocalCoreTransportFailure } from "./transportFailure";
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { acquireServerTarget } from "./serverTargetLock";
@@ -19,7 +20,7 @@ export interface ServerOperation {
 }
 
 export interface ServerOperationsRpc extends ClosableSession {
-  install(directory: string, id: string, options: { accept_eula: true; store_directory?: string }, onEvent?: (event: InstallEvent) => void): Promise<unknown>;
+  install(directory: string, id: string, options: { accept_eula: true; store_directory?: string; workers?: number; retries?: number }, onEvent?: (event: InstallEvent) => void): Promise<unknown>;
   get(directory: string, id: string): Promise<ServerManifestResult>;
   start(directory: string, id: string): Promise<ServerLifecycleStartResult>;
   stop(directory: string, id: string): Promise<ServerStopResult>;
@@ -52,6 +53,8 @@ export function canInstallServer(manifest: ServerManifest, consent: boolean): bo
 }
 
 export class ServerOperationsController {
+  private downloads: DownloadOptions = { workers: 8, retries: 2 };
+  setDownloadOptions(options: DownloadOptions) { this.downloads = { ...options }; }
   private operations: Record<string, { id: string; scope: ServerOperationScope; operation: ServerOperation }> = {};
   private readonly listeners = new Set<() => void>();
   constructor(private options: {
@@ -131,13 +134,15 @@ export class ServerOperationsController {
   }
   install(manifest: ServerManifest, consent: boolean): Promise<boolean> {
     if (!canInstallServer(manifest, consent)) return Promise.reject(new Error("EULA consent is required"));
+    const downloads = { ...this.downloads };
+    const storeDirectory = this.options.storeDirectory;
     return this.run(manifest.id, "install", async (session, scope) => {
       const key = this.operationKey(manifest.id, scope);
       const update = (operation: ServerOperation) => this.update(key, manifest.id, scope, operation);
       update({ ...this.operations[key].operation, stage: "downloading" });
       const installOptions = scope.kind === "local"
-        ? { accept_eula: true as const, store_directory: this.options.storeDirectory || undefined }
-        : { accept_eula: true as const };
+        ? { ...downloads, accept_eula: true as const, store_directory: storeDirectory || undefined }
+        : { ...downloads, accept_eula: true as const };
       await session.install(scope.directory, manifest.id, installOptions, (progress) => {
         const finishedDownload = progress.event === "progress" && progress.progress.files_total > 0 && progress.progress.files_completed >= progress.progress.files_total;
         const stage = finishedDownload || this.operations[key]?.operation.stage === "finishing" ? "finishing" : "downloading";
@@ -166,7 +171,8 @@ export interface OperationsContextValue {
 export const OperationsContext = createContext<OperationsContextValue | null>(null);
 
 export function ServerOperationsProvider({ children }: { children: ReactNode }) {
-  const { storeDir } = useSettings().settings;
+  const settings = useSettings().settings;
+  const { storeDir } = settings;
   const directory = useServers();
   const controller = useMemo(() => new ServerOperationsController({
     openSession: async () => {
@@ -185,6 +191,7 @@ export function ServerOperationsProvider({ children }: { children: ReactNode }) 
     }, directory, storeDirectory: storeDir,
   }), [directory.captureOperationScope, directory.isOperationScopeCurrent, directory.recordInstalled, directory.recordStarted, directory.recordStopped, directory.recordLifecycleError, directory.recordDeleted, directory.openSession]);
   controller.setStoreDirectory(storeDir);
+  controller.setDownloadOptions(downloadOptions(settings));
   useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const value: OperationsContextValue = {
     operationFor: (id) => controller.operationFor(id),

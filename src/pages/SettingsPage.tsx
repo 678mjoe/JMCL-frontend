@@ -225,6 +225,20 @@ export function SettingsPage() {
 
         <Separator />
 
+        <section className="space-y-4">
+          <SectionHeading>{settings.language === "zh" ? "下载" : "Downloads"}</SectionHeading>
+          <p className="text-xs text-muted-foreground">{settings.language === "zh" ? "仅影响新开始的操作；进行中的任务保留开始时的设置。并发数 1–32，重试数 0–5。" : "Applies to newly started operations. Running tasks retain their original settings. Workers: 1–32; retries: 0–5."}</p>
+          {(["downloadWorkers", "downloadRetries"] as const).map(key => (
+            <div className="flex items-center justify-between" key={key}>
+              <Label htmlFor={key}>{key === "downloadWorkers" ? (settings.language === "zh" ? "并发下载数" : "Download workers") : (settings.language === "zh" ? "失败重试数" : "Retries per download")}</Label>
+              <Select value={String(settings[key])} onValueChange={value => { if (value !== null) update({ [key]: Number(value) }); }}>
+                <SelectTrigger id={key} className="w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>{Array.from({ length: key === "downloadWorkers" ? 32 : 6 }, (_, i) => i + (key === "downloadWorkers" ? 1 : 0)).map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ))}
+        </section>
+        <Separator />
         <DiagnosticSettings />
 
         <Separator />
