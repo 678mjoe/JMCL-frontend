@@ -1,3 +1,5 @@
+import { javaPreferencesFor } from "@/lib/javaPreferences";
+import { downloadOptions } from "@/lib/downloadOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -77,7 +79,7 @@ export function InstanceDetailPage({
   const [deleting, setDeleting] = useState(false);
 
   const coreReady = status === "ready";
-  const dirs = { instancesDir: settings.instancesDir, storeDir: settings.storeDir };
+  const dirs = { instancesDir: settings.instancesDir, storeDir: settings.storeDir, ...downloadOptions(settings) };
   const installTask = taskFor("install", instanceId, settings.instancesDir);
   const launchTask = taskFor("launch", instanceId);
   const validateTask = taskFor("validate", instanceId);
@@ -134,7 +136,7 @@ export function InstanceDetailPage({
 
   const beginInstall = () => {
     if (!manifest || manifestScope !== currentScope) return;
-    void startInstall(manifest, dirs);
+    void startInstall(manifest, dirs, javaPreferencesFor(settings.javaPreferences, dirs.instancesDir, manifest.id));
   };
 
   const retryValidate = () => {
@@ -151,7 +153,7 @@ export function InstanceDetailPage({
       try {
         const auth = await resolveLaunchAuth();
         if (!mounted.current || generation !== scopeGeneration.current || scopeRef.current !== currentScope) return;
-        void startLaunch(manifest, dirs, auth, settings.javaOverrides[manifest.id], launchOptionsFor(settings.launchOptions, dirs.instancesDir, manifest.id));
+        void startLaunch(manifest, dirs, auth, javaPreferencesFor(settings.javaPreferences, settings.instancesDir, manifest.id), launchOptionsFor(settings.launchOptions, dirs.instancesDir, manifest.id));
         setLogOpen(true);
       } catch (e) {
         toast.error(
@@ -494,7 +496,7 @@ export function InstanceDetailPage({
           if (!mounted.current || generation !== scopeGeneration.current) throw new Error("Stale instance");
           return previewSession.launchPlan(
             manifest.version_id, directory, `${directory}/.jmcl-preview-natives`, auth,
-            instanceLaunchOptions(manifest, settings.storeDir, settings.javaOverrides[manifest.id], options),
+            instanceLaunchOptions(manifest, settings.storeDir, javaPreferencesFor(settings.javaPreferences, settings.instancesDir, manifest.id), options),
           );
         });
       }} />

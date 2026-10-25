@@ -26,7 +26,7 @@ describe("server content controller",()=>{
   for(const kind of ["mods","datapacks"] as const) test(`${kind}: all mutations route only server RPC with fresh matching authority`,async()=>{
     const h=harness(kind);for(const action of actions){h.calls.length=0;expect(await action(h.controller)).toBe(true);expect(h.calls.slice(0,2)).toEqual(["get","status"]);}
     expect(h.mutations).toHaveLength(6);for(const args of h.mutations)expect(args.slice(0,2)).toEqual(["/synthetic","demo"]);
-    expect(h.mutations[0]?.[3]).toEqual({provider:"modrinth",version_id:"v1",with_dependencies:true});expect(h.closes).toBe(6);
+    expect(h.mutations[0]?.[3]).toEqual({workers:8,retries:2,provider:"modrinth",version_id:"v1",with_dependencies:true});expect(h.closes).toBe(6);
   });
   for(const [name,value,code] of [["running",status(true),"SERVER_ALREADY_RUNNING"],["unknown",{...status(),running:undefined},"SERVER_STATUS_FAILED"],["wrong target",{...status(),id:"else"},"INVALID_PARAMS"]] as const) test(`every mutation rejects ${name}`,async()=>{
     for(const action of actions){const h=harness("mods",{serverStatus:async()=>value as ServerStatus});expect(await action(h.controller)).toBe(false);expect(h.mutations).toHaveLength(0);expect(h.controller.getSnapshot().error).toBe(code);}
@@ -88,8 +88,8 @@ for (const kind of ["mods", "datapacks"] as const) test(`CurseForge ${kind} pres
   const h = harness(kind);
   expect(await h.controller.install("123", "456", "curseforge")).toBe(true);
   expect(await h.controller.setVersion("123", "455", "curseforge")).toBe(true);
-  expect(h.mutations[0]?.slice(0, 4)).toEqual(["/synthetic", "demo", "123", { provider: "curseforge", version_id: "456", with_dependencies: true }]);
-  expect(h.mutations[1]?.slice(0, 5)).toEqual(["/synthetic", "demo", "123", "455", { provider: "curseforge" }]);
+  expect(h.mutations[0]?.slice(0, 4)).toEqual(["/synthetic", "demo", "123", { workers: 8, retries: 2, provider: "curseforge", version_id: "456", with_dependencies: true }]);
+  expect(h.mutations[1]?.slice(0, 5)).toEqual(["/synthetic", "demo", "123", "455", { workers: 8, retries: 2, provider: "curseforge" }]);
   expect(JSON.stringify(h.mutations)).not.toContain("api_key");
   expect(await h.controller.install("123", "invalid", "curseforge")).toBe(false);
   expect(h.mutations).toHaveLength(2);
@@ -113,4 +113,17 @@ test("missing server CF key retains actionable code but no native diagnostic", a
   const h = harness("mods", { serverModsInstall: async () => { throw { code: "CURSEFORGE_KEY_REQUIRED", message: "PRIVATE" }; } });
   expect(await h.controller.install("123", "456", "curseforge")).toBe(false);
   expect(h.controller.getSnapshot().error).toBe("CURSEFORGE_KEY_REQUIRED"); expect(JSON.stringify(h.controller.getSnapshot())).not.toContain("PRIVATE");
+});
+
+test("server mods and datapacks retain download tuning during session opening", async () => {
+  for (const kind of ["mods", "datapacks"] as const) {
+    const gate = deferred<ServerContentSession>(); const h = harness(kind, {}, () => gate.promise);
+    h.controller.setDownloadOptions({ workers: 4, retries: 0 });
+    const pending = h.controller.install("project", "v1");
+    h.controller.setDownloadOptions({ workers: 32, retries: 5 }); gate.resolve(h.session);
+    expect(await pending).toBe(true);
+    expect(h.mutations[0]?.[3]).toMatchObject({ workers: 4, retries: 0 });
+    await h.controller.setVersion("project", "v2");
+    expect(h.mutations[1]?.[4]).toMatchObject({ workers: 32, retries: 5 });
+  }
 });

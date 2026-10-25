@@ -4,7 +4,7 @@ import type { InstanceManifest, ModpackInstallResult } from "./types";
 import { initialInstallProgress, reduceInstallProgress, type InstallProgressState } from "./installProgress";
 
 export type ModpackSession = Pick<CoreSession, "close" | "instanceList" | "instanceGet" | "modpackInstall" | "installExecute" | "installPrepare">;
-export interface ModpackImportInput { directory: string; storeDirectory: string; id: string; file: string; provider?: "modrinth" | "curseforge" }
+export interface ModpackImportInput { workers?: number; retries?: number; directory: string; storeDirectory: string; id: string; file: string; provider?: "modrinth" | "curseforge" }
 export interface ModpackImportState {
   phase: "idle" | "checking" | "archive" | "manifest" | "install" | "prepare" | "success" | "error";
   busy: boolean;
@@ -35,7 +35,7 @@ export class ModpackImportController {
   private archiveConfirmed = false;
   private installed = false;
   private importedIdentity: string | null = null;
-  constructor(readonly input: ModpackImportInput, private readonly open: () => Promise<ModpackSession>) {}
+  constructor(readonly input: ModpackImportInput, private readonly open: () => Promise<ModpackSession>) { this.input = { ...input }; }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   dispose() { this.disposed = true; this.listeners.clear(); }
@@ -58,7 +58,7 @@ export class ModpackImportController {
         const list = await session.instanceList(input.directory); this.active();
         if (list.instances.some((instance) => instance.id === input.id)) throw { code: "INSTANCE_EXISTS" };
         this.patch({ phase: "archive" }); this.archiveAttempted = true;
-        const summary = await session.modpackInstall(input.directory, input.id, input.file, { store_directory: input.storeDirectory, ...(input.provider === "curseforge" ? { provider: "curseforge" as const } : {}) }, this.progress, { coordinate: false });
+        const summary = await session.modpackInstall(input.directory, input.id, input.file, { workers: input.workers, retries: input.retries, store_directory: input.storeDirectory, ...(input.provider === "curseforge" ? { provider: "curseforge" as const } : {}) }, this.progress, { coordinate: false });
         this.archiveConfirmed = true; this.active();
         if (!validModpackSummary(summary, input.id)) throw { code: "INVALID_INSTANCE_RESULT" };
         this.patch({ summary });
@@ -83,7 +83,7 @@ export class ModpackImportController {
       const options = { directory, source: instance.source, ...loaders };
       if (!this.installed) {
         this.patch({ phase: "install", progress: null, installProgress: null });
-        await session.installExecute(instance.version_id, { ...options, store_directory: input.storeDirectory }, this.progress, { coordinate: false });
+        await session.installExecute(instance.version_id, { ...options, workers: input.workers, retries: input.retries, store_directory: input.storeDirectory }, this.progress, { coordinate: false });
         this.installed = true; this.active();
       }
       this.patch({ phase: "prepare", progress: null, installProgress: null });

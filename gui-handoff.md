@@ -12,6 +12,22 @@ session. The core owns all filesystem, network, download-verification, and
 process-supervision work. The GUI owns presentation, catalog search/browse,
 credential storage, and all caller-supplied secrets.
 
+
+## Contract baseline and document ownership
+
+This contract describes the shipping **Zig Core** source at
+[`5a4310debbcee26b3d2391bab2339f79cd6ec52e`](https://github.com/678mjoe/JMCLCore/commit/5a4310debbcee26b3d2391bab2339f79cd6ec52e).
+A later documentation-only commit does not change the frontend's pinned binary.
+The Core copy is `docs/gui-handoff.md`; the frontend mirror is `gui-handoff.md`.
+Keep the shared contract text aligned and verify changes against source, not just
+one document against the other. UI implementation is **not** implied by a method
+appearing here. See [frontend capability status and implementation plan](docs/frontend-core-capability-report.md).
+
+The independent `rust-rewrite` branch is not the packaged sidecar or a finished
+replacement. New Core features are queued for Rust after rewrite readiness;
+Zig main is not the feature-development priority. Cancellation semantics still
+require a separate design decision. Future proposals are not v1 guarantees.
+
 ## 1. Process Model
 
 - Start one child process: `jmcl-core rpc`. It is a **persistent session**:
@@ -28,8 +44,23 @@ credential storage, and all caller-supplied secrets.
   concurrently.
 - Protocol v1 has no cancellation. Long operations (`install.execute`,
   `launch.execute`, `modpack.install`) run to completion; killing the child is
-  the only abort and is safe (atomic writes everywhere), but treat any
-  in-flight credential rotation as needing recovery (see §8).
+  the only abort, not a transaction rollback. Treat an interrupted operation
+  as incomplete: inspect its state and reverify/repair install artifacts before
+  use. The shared store verifies artifacts before reuse, but cross-filesystem
+  copy fallback and Windows destination replacement are not atomic (see
+  [storage boundaries](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/docs/content-addressed-storage.md#atomic-materialization)).
+  Do not blindly replay mutable world operations. Treat any in-flight
+  credential rotation as needing recovery (see §6).
+
+### File-management invariant
+
+Hard-link-based sharing of verified immutable artifacts is a defining design
+constraint: multiple isolated instances may reference the same store object.
+Keep one shared store where possible; a filesystem that cannot hard-link may
+require copy fallback. Never edit a shared object in place to customize one
+instance. Mutable worlds, logs, options and configuration remain instance-private.
+Deleting an instance link is not permission to delete a still-shared store object;
+use Core's lifecycle and GC interfaces, not GUI-side cache cleanup guesses.
 
 ## 2. Wire Format
 
@@ -122,9 +153,17 @@ CLI-equivalent `index`, `total`, and processor `name`; its result reports
 | `java.runtime.remove` | `runtime` | `store_directory` | removes the managed runtime tree |
 
 `launch.plan`, `launch.execute`, and `install.execute` accept
-`java_policy` (`auto` default, `local`, `managed`) and `store_directory`;
+`java_policy` (`auto` default, `local`, `managed`), `java_paths[]` (candidate
+executables), and `store_directory`;
 the launch methods also accept `java_override` (explicit executable, skips
-the exact-major/architecture gates, mutually exclusive with `java_policy`).
+the exact-major/architecture gates, mutually exclusive with non-empty `java_paths`).
+A forced override is not an ordinary selection preference: it bypasses the
+major/architecture gates and does not supply Java to loader processors.
+`local` never uses/downloads managed runtimes; `managed` prefers an installed
+managed runtime, then compatible local Java, then a managed download. It does
+**not** mean managed-only. Candidate probing executes the chosen program; ask
+users to select only trusted Java executables. Preferences must be scoped by
+instances root + instance ID, not the ID alone.
 Default `auto` covers most cases: local exact-major first, then installed
 managed runtimes, then a managed download. Pre-provision with
 `java.runtime.install` when the GUI wants explicit control (for example
@@ -192,8 +231,11 @@ no Windows reserved stems. At most one loader field (`fabric_loader`,
 
 World (save) management operates on the same game `directory` as content
 methods. Worlds are mutable instance-private state: never content-addressed,
-never hard-linked. Mutations are crash-safe staging operations and refuse
-worlds in use by a running game (`session.lock` flock-held -> `WORLD_LOCKED`; stale lock files are tolerated):
+never hard-linked. Mutations use staging and probe for worlds in use by a
+running game (`session.lock` held -> `WORLD_LOCKED`; stale lock files are
+tolerated). The probe does not prevent an external launch after the check;
+callers still coordinate launches and mutations. See [world mutation and
+interruption boundaries](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/docs/worlds.md#mutations):
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
@@ -287,18 +329,24 @@ Treat the server as one of three GUI states. `installed` comes from
 | `server.get/list/status` | yes | yes | yes |
 | `server.install` | yes | yes (repair/reinstall) | no |
 | `server.start` | no | yes | no |
-| `server.stop/restart` | no | no | yes |
+| `server.stop` | succeeds with `termination:not_running` | succeeds with `termination:not_running` | yes |
+| `server.restart` | no (completed install required) | yes (starts it) | yes |
 | `server.logs` | no | after a prior start created the log | yes |
 | `server.command`, RCON, Query | no | no | yes |
 | `server.properties.get` | after properties exist | yes | yes |
 | `server.properties.set` | after properties exist | yes | no |
-| world mutations and backups | no | yes | no |
+| world rename/delete/backup/restore | when required properties/worlds/backup exist; no separate installed-marker gate | yes, with required data | no |
+| backup list/delete | yes, when backup exists for deletion | yes | yes |
 | server mod mutations | yes (loader manifest required) | yes | no |
-| server data-pack mutations | no (properties required) | yes | no |
+| server data-pack mutations | only with usable `level-name` properties | yes | no |
 | `server.delete` | yes | yes | no |
 
-The core re-checks every transition; this table is for enabling controls, not
-for replacing RPC validation. Refresh `server.status` after reconnecting or
+The table describes Core permissions, not a requirement to expose every action
+in every GUI state. In particular, a stopped `restart` can start a server, and
+`stop` is idempotent; the GUI may prefer a Start button while stopped. World
+operations validate actual properties/data rather than requiring the installation
+marker. Backup listing/deletion do not need a stopped-state guard. The core
+re-checks each operation; GUI controls never replace RPC validation. Refresh `server.status` after reconnecting or
 after any lifecycle error. Multiple RPC sessions may inspect different
 servers concurrently, but never issue concurrent mutations for the same
 `directory` + `id`.
@@ -400,8 +448,9 @@ continue from the returned `start_cursor`; `truncated:true` means the initial
 tail omitted older bytes. `stale_state:true` means the core removed a dead or
 identity-mismatched PID file. Start/restart errors the GUI should surface
 distinctly include `SERVER_NOT_INSTALLED`, `SERVER_ALREADY_RUNNING`,
-`JAVA_NOT_FOUND`, and `JAVA_INCOMPATIBLE`; stop/command while stopped return
-`SERVER_NOT_RUNNING`.
+`JAVA_NOT_FOUND`, and `JAVA_INCOMPATIBLE`. A command while stopped returns
+`SERVER_NOT_RUNNING`; stop instead succeeds with `termination:"not_running"`
+and `pid:null`. Restart accepts a stopped, completed installation and starts it.
 
 #### Server error routing
 
@@ -414,7 +463,7 @@ At minimum, give these stable codes distinct GUI handling:
 | `SERVER_NOT_FOUND`, `SERVER_EXISTS` | refresh the server list |
 | `SERVER_NOT_INSTALLED` | offer install/repair |
 | `SERVER_ALREADY_RUNNING` | refresh status; disable stopped-only action |
-| `SERVER_NOT_RUNNING` | refresh status; disable running-only action |
+| `SERVER_NOT_RUNNING` | refresh status; disable command/RCON/Query while stopped (not a stop error) |
 | `SERVER_STATUS_FAILED` | show host/filesystem failure; status is unknown |
 | `EULA_NOT_ACCEPTED` | require an explicit user EULA decision |
 | `SERVER_LOADER_UNSUPPORTED`, `SERVER_LOADER_REQUIRED` | change loader/server choice |
@@ -466,7 +515,7 @@ Data packs (`datapacks.list|install|set-version|enable|disable|remove|adopt`)
 attach to one world instead of the instance: every method takes the game
 `directory` plus a required `world` name. Only `install` and `set-version`
 also require `minecraft_version` (no `loader`); list, toggle, remove and adopt
-do not take a Minecraft version (verified against Core `97b65186`,
+do not take a Minecraft version (verified against Core `5a4310de`,
 `src/protocol/datapacks.zig`). It manages `saves/<world>/datapacks/*.zip`, and keeps its registry at
 `saves/<world>/.jmcl/content.json` — the entry shape is identical but
 relative to the world. Results echo `world`. Mutations refuse a live-game
@@ -537,6 +586,10 @@ auth methods.
    Unlike every other method family, their optional `directory` is a single
    CWD-relative directory *name* (default `accounts`); absolute paths and
    path separators are rejected (`INVALID_PARAMS`). See `docs/accounts.md`.
+   `save` requires `{account:{id,player_name,client_id,xuid?}}`, not flattened
+   profile fields. `xuid` may be null. Its result is `{stage:"save",account}`;
+   `get` returns `{stage:"account_get",account}`, not a bare profile. The GUI
+   must unwrap the envelope; mocks must preserve these same shapes.
 
 If the IPC channel breaks mid-rotation, treat the account as needing recovery
 (new device flow); do not assume the old refresh token is valid.
@@ -582,11 +635,15 @@ nodes. Validation codes are never retryable.
   The GUI calls those HTTP APIs directly (Modrinth needs no key; CurseForge
   uses your key) and passes resolved project/version ids to the core.
 - **Credential storage**: OS keychain is the GUI's job.
-- **`options.txt` editing**: resource pack / shader activation in-game.
+- **`options.txt` editing**: not a Core RPC. The frontend may use its guarded
+  native configuration adapter for supported resource-pack/Iris/Oculus formats;
+  unknown formats require explicit in-game/manual activation, not blind writes.
 - **Shader runtime selection**: installing Iris/Oculus/OptiFine is just
   mod installation; deciding which one an instance needs is a GUI decision.
-- **Concurrent task management/cancellation** (protocol v1): the GUI
-  multiplexes sessions.
+- **Concurrent task management** (protocol v1): the GUI multiplexes sessions.
+  Closing a dialog/backgrounding a task is not cancellation. In-memory task
+  tracking is not restart recovery. There is no task-status/recovery/cancel RPC
+  in this contract; do not advertise one or infer success after a broken pipe.
 
 ## 9. Shipping the Core Binary
 

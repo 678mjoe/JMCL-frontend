@@ -459,6 +459,7 @@ export class CoreSession {
       workers: number;
       retries: number;
       java_policy: JavaPolicy;
+      java_paths: string[];
     }> & LoaderFields = {},
     onEvent?: EventHandler<InstallEvent>,
     requestOptions: RequestOptions = {},

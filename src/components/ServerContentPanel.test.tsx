@@ -99,7 +99,7 @@ test("CurseForge server versions retain native provider hint and explicit side w
   expect(dom.document.body.textContent).toContain("does not verify server-side compatibility");
   expect(button("Author has disabled third-party downloads").disabled).toBe(true);
   await click("Switch version");
-  expect(calls[0]?.slice(0, 6)).toEqual(["Mods.SetVersion", "/fixtures", server.id, "123", "456", { provider: "curseforge" }]);
+  expect(calls[0]?.slice(0, 6)).toEqual(["Mods.SetVersion", "/fixtures", server.id, "123", "456", { provider: "curseforge", workers: 8, retries: 2 }]);
   expect(JSON.stringify(calls)).not.toContain("api_key");
 });
 for (const reverse of [false, true]) test(`server content blocks ambiguous cross-provider ID/slug selector (${reverse})`, async () => {

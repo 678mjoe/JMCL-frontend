@@ -1,3 +1,4 @@
+import { downloadOptions } from "./downloadOptions";
 /**
  * App settings: theme, language, directories, offline player name.
  * Persisted to localStorage; theme is applied to <html> as `.dark`.
@@ -18,6 +19,8 @@ import type { Source } from "./types";
 import { appDataDirectories } from "./native";
 import { emptyLaunchOptions, parseLaunchOptionsStore, type LaunchOptionsStore } from "./launchOptions";
 
+import { parseJavaPreferencesStore, type JavaPreferencesStore } from "./javaPreferences";
+
 export type Theme = "system" | "light" | "dark";
 
 export interface Settings {
@@ -30,11 +33,14 @@ export interface Settings {
   serversDir: string;
   source: Source;
   hideTestVersions: boolean;
+  downloadWorkers: number;
+  downloadRetries: number;
   /** Selected Microsoft account id (public metadata; tokens stay in the keychain). */
   activeAccountId: string | null;
   selectedServerEndpointId: string;
-  /** Per-instance java_override executable paths; absent = auto policy (docs/java.md §Forced Override). */
+  /** Legacy ID-only overrides retained for explicit user migration, never used for launch. */
   javaOverrides: Record<string, string>;
+  javaPreferences: JavaPreferencesStore;
   launchOptions: LaunchOptionsStore;
 }
 
@@ -49,16 +55,19 @@ const defaults: Settings = {
   serversDir: "",
   source: "official",
   hideTestVersions: true,
+  downloadWorkers: 8,
+  downloadRetries: 2,
   activeAccountId: null,
   selectedServerEndpointId: "local",
   javaOverrides: {},
+  javaPreferences: {},
   launchOptions: emptyLaunchOptions(),
 };
 
 export function mergeStoredSettings(stored: unknown): Settings {
   if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return defaults;
   const value = stored as Record<string, unknown>;
-  const result: Settings = { ...defaults, launchOptions: parseLaunchOptionsStore(value.launchOptions), javaOverrides: {} };
+  const result: Settings = { ...defaults, launchOptions: parseLaunchOptionsStore(value.launchOptions), javaOverrides: {}, javaPreferences: parseJavaPreferencesStore(value.javaPreferences) };
   // Validate each field independently so corrupt/new preferences cannot crash
   // startup or erase unrelated valid legacy preferences.
   for (const key of ["playerName", "instancesDir", "storeDir", "serversDir", "selectedServerEndpointId"] as const) {
@@ -72,6 +81,9 @@ export function mergeStoredSettings(stored: unknown): Settings {
   if (value.javaOverrides && typeof value.javaOverrides === "object" && !Array.isArray(value.javaOverrides)) {
     result.javaOverrides = Object.fromEntries(Object.entries(value.javaOverrides).filter(([, path]) => typeof path === "string"));
   }
+  const downloads = downloadOptions(value);
+  result.downloadWorkers = downloads.workers;
+  result.downloadRetries = downloads.retries;
   return result;
 }
 

@@ -1,3 +1,5 @@
+import { useSettings } from "./settings";
+import { downloadOptions, type DownloadOptions } from "./downloadOptions";
 import { hasAmbiguousContentProject } from "./contentIdentity";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { CoreSession, InstallEvent, SessionEvent, ServerContentTarget } from "./rpc";
@@ -21,6 +23,8 @@ export function serverContentLoader(server: ServerManifest): "fabric" | "neoforg
 }
 
 export class ServerContentController {
+  private downloads: DownloadOptions = { workers: 8, retries: 2 };
+  setDownloadOptions(options: DownloadOptions) { this.downloads = { ...options }; }
   private snapshot = empty();
   private listeners = new Set<() => void>();
   private generation = 0;
@@ -123,18 +127,26 @@ export class ServerContentController {
     return succeeded && current();
   }
   load = () => this.run(async () => {}, false);
-  install = (project: string, versionId: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, scope, event) => {
-    if (!validIdentifier(project) || !validIdentifier(versionId)) fail("INVALID_PARAMS");
-    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(versionId))) fail("INVALID_PARAMS");
-    const options = { provider, version_id: versionId, with_dependencies: true };
-    return this.options.kind === "mods" ? session.serverModsInstall(scope.directory, this.options.id, project, options, event) : session.serverDatapacksInstall(scope.directory, this.options.id, project, options, event);
-  }, true, true, provider === "curseforge");
-  setVersion = (project: string, versionId: string, provider: "modrinth" | "curseforge" = "modrinth") => this.run((session, scope, event) => {
-    if (hasAmbiguousContentProject(this.snapshot.content?.entries ?? [], project)) fail("CONTENT_PROJECT_AMBIGUOUS");
-    if (!validIdentifier(project) || !validIdentifier(versionId)) fail("INVALID_PARAMS");
-    if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(versionId))) fail("INVALID_PARAMS");
-    return this.options.kind === "mods" ? session.serverModsSetVersion(scope.directory, this.options.id, project, versionId, provider === "curseforge" ? { provider } : {}, event) : session.serverDatapacksSetVersion(scope.directory, this.options.id, project, versionId, provider === "curseforge" ? { provider } : {}, event);
-  }, true, false, provider === "curseforge");
+  install = (project: string, versionId: string, provider: "modrinth" | "curseforge" = "modrinth") => {
+    // Changing preferences must not alter an operation waiting for its session.
+    const downloads = { ...this.downloads };
+    return this.run((session, scope, event) => {
+      if (!validIdentifier(project) || !validIdentifier(versionId)) fail("INVALID_PARAMS");
+      if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(versionId))) fail("INVALID_PARAMS");
+      const options = { ...downloads, provider, version_id: versionId, with_dependencies: true };
+      return this.options.kind === "mods" ? session.serverModsInstall(scope.directory, this.options.id, project, options, event) : session.serverDatapacksInstall(scope.directory, this.options.id, project, options, event);
+    }, true, true, provider === "curseforge");
+  };
+  setVersion = (project: string, versionId: string, provider: "modrinth" | "curseforge" = "modrinth") => {
+    // Changing preferences must not alter an operation waiting for its session.
+    const downloads = { ...this.downloads };
+    return this.run((session, scope, event) => {
+      if (hasAmbiguousContentProject(this.snapshot.content?.entries ?? [], project)) fail("CONTENT_PROJECT_AMBIGUOUS");
+      if (!validIdentifier(project) || !validIdentifier(versionId)) fail("INVALID_PARAMS");
+      if (provider === "curseforge" && (!/^[1-9]\d*$/.test(project) || !/^[1-9]\d*$/.test(versionId))) fail("INVALID_PARAMS");
+      return this.options.kind === "mods" ? session.serverModsSetVersion(scope.directory, this.options.id, project, versionId, { ...downloads, ...(provider === "curseforge" ? { provider } : {}) }, event) : session.serverDatapacksSetVersion(scope.directory, this.options.id, project, versionId, { ...downloads, ...(provider === "curseforge" ? { provider } : {}) }, event);
+    }, true, false, provider === "curseforge");
+  };
   private validateSelector(target: ServerContentTarget) {
     const project = "project" in target ? target.project : undefined;
     const file = "file" in target ? target.file : undefined;
@@ -162,6 +174,7 @@ export function useServerContent(server: ServerManifest, kind: ServerContentKind
   const scope = servers.captureOperationScope();
   const scopeKey = JSON.stringify(scope);
   const controller = useMemo(() => new ServerContentController({ id: server.id, kind, scope, isScopeCurrent: servers.isOperationScopeCurrent, openSession: servers.openSession, refreshStatus: () => servers.refreshServerStatus(server.id) }), [server.id, kind, scopeKey, servers.isOperationScopeCurrent, servers.openSession, servers.refreshServerStatus]);
+  controller.setDownloadOptions(downloadOptions(useSettings().settings));
   useEffect(() => () => controller.cancel(), [controller]);
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const busy = useServerTargetBusy(scope, server.id);

@@ -1,3 +1,4 @@
+import { downloadOptions } from "@/lib/downloadOptions";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +72,7 @@ function ImportForm({ onOpenSettings, onOpenInstance, pickArchive = chooseArchiv
   const ready = !!preview && validModpackInstanceId(draft.id) && !picking && (preview.provider !== "curseforge" || (hasKey && !keyChecking));
   const start = () => {
     if (!ready || controller || pickingRef.current) return;
-    jobs.start({ directory: settings.instancesDir, storeDirectory: settings.storeDir, id: draft.id, file: draft.file, provider: preview!.provider });
+    jobs.start({ ...downloadOptions(settings), directory: settings.instancesDir, storeDirectory: settings.storeDir, id: draft.id, file: draft.file, provider: preview!.provider });
   };
   const currentRoot = !controller || controller.input.directory === settings.instancesDir;
   const openInstance = () => { if (!controller || !currentRoot) return; jobs.hide(); onOpenInstance?.(controller.input.id); };

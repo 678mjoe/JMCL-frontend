@@ -25,7 +25,7 @@ const project = { project_id: "123", title: "CF fixture", slug: "fixture", autho
 const version = { id: "456", name: "Allowed", version_number: "456", game_versions: ["1.21.4"], loaders: ["fabric"], date_published: "2026-01-01", available: true };
 const instance = { id: "content-fixture", version_id: "1.21.4", fabric_loader: "0.16.10" } as InstanceManifest;
 async function setup(entries: ContentEntry[] = [], session = { close: async () => {} } as CoreSession) {
-  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: "en", instancesDir: "/fixture", storeDir: "/store" }));
+  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: "en", instancesDir: "/fixture", storeDir: "/store", downloadWorkers: 6, downloadRetries: 0 }));
   const host = dom.document.createElement("div"); dom.document.body.append(host); root = createRoot(host as unknown as HTMLElement);
   let changed = 0; let open = true;
   const render = async () => { await act(async () => root!.render(<SettingsProvider><LauncherContext.Provider value={{ status: "ready", core: null, error: null, session, openSession: async () => session }}><ContentSearchDialog kind="mods" instance={instance} entries={entries} open={open} onOpenChange={value => { open = value; }} onChanged={() => { changed++; }} /></LauncherContext.Provider></SettingsProvider>)); };
@@ -43,7 +43,7 @@ test("client content provider identity, restricted versions and repeated click g
   await waitSearch(); const row = [...dom.document.querySelectorAll("button")].find(b => b.textContent?.startsWith("CF fixture"))!; await act(async () => row.click());
   expect(button("Third-party download unavailable").disabled).toBe(true);
   await act(async () => { button("Install").click(); button("Install").click(); });
-  expect(calls).toHaveLength(1); expect(calls[0]?.[4]).toMatchObject({ provider: "curseforge", version_id: "456" });
+  expect(calls).toHaveLength(1); expect(calls[0]?.[4]).toMatchObject({ provider: "curseforge", version_id: "456", workers: 6, retries: 0 });
   expect((dom.document.querySelector('[aria-label="Catalog provider"]') as unknown as HTMLSelectElement).disabled).toBe(true);
   await act(async () => finish()); expect(ui.changes()).toBe(1); expect(JSON.stringify(calls)).not.toContain("api_key");
 });
@@ -53,7 +53,7 @@ test("client content installed CF versions send native key intent", async () => 
   const session = { close: async () => {}, contentSetVersion: async (...args: unknown[]) => { calls.push(args); } } as unknown as CoreSession;
   await setup([{ source: { provider: "curseforge", project_id: "123", version_id: "454" } } as ContentEntry], session);
   await waitSearch(); const row = [...dom.document.querySelectorAll("button")].find(b => b.textContent?.startsWith("CF fixture"))!; await act(async () => row.click());
-  await click("Switch version"); expect(calls[0]?.[5]).toMatchObject({ provider: "curseforge" });
+  await click("Switch version"); expect(calls[0]?.[5]).toMatchObject({ provider: "curseforge", workers: 6, retries: 0 });
 });
 test("late CF results cannot overwrite newer provider or closed dialog", async () => {
   let finish!: (value: typeof project[]) => void;
@@ -81,7 +81,7 @@ test("explicit runtime project opens version selection and rejects mismatched ca
     { ...version, id: "wrong-loader", project_id: "YL57xq9U", loaders: ["forge"] },
     { ...version, id: "wrong-game", project_id: "YL57xq9U", game_versions: ["1.20.1"] },
   ] as modrinth.ModrinthVersion[]));
-  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: "en", instancesDir: "/fixture", storeDir: "/store" }));
+  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: "en", instancesDir: "/fixture", storeDir: "/store", downloadWorkers: 6, downloadRetries: 0 }));
   const calls: unknown[][] = [];
   const session = { close: async () => {}, contentInstall: async (...args: unknown[]) => { calls.push(args); } } as unknown as CoreSession;
   const host = dom.document.createElement("div"); dom.document.body.append(host); root = createRoot(host as unknown as HTMLElement);

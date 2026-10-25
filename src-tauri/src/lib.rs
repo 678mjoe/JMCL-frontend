@@ -22,6 +22,51 @@ use tauri::{ipc::Channel, Manager, State};
 use pool::SessionPool;
 use session::{SessionError, SessionEvent};
 
+/// Build target of the bundled local sidecar; never infer architecture from WebView UA.
+#[tauri::command]
+fn runtime_target() -> Value {
+    normalized_runtime_target(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn normalized_runtime_target(os: &str, arch: &str) -> Value {
+    let os = match os {
+        "macos" => "osx",
+        "linux" => "linux",
+        "windows" => "windows",
+        _ => return Value::Null,
+    };
+    let arch = match arch {
+        "aarch64" => "arm64",
+        "x86_64" => "x86_64",
+        "x86" => "x86",
+        "arm" => "arm",
+        _ => return Value::Null,
+    };
+    json!({ "os": os, "arch": arch })
+}
+
+#[cfg(test)]
+mod runtime_target_tests {
+    use super::*;
+    #[test]
+    fn normalizes_supported_build_targets_and_rejects_unknown() {
+        assert_eq!(
+            normalized_runtime_target("macos", "aarch64"),
+            json!({"os":"osx","arch":"arm64"})
+        );
+        assert_eq!(
+            normalized_runtime_target("windows", "x86_64"),
+            json!({"os":"windows","arch":"x86_64"})
+        );
+        assert_eq!(
+            normalized_runtime_target("linux", "x86"),
+            json!({"os":"linux","arch":"x86"})
+        );
+        assert_eq!(normalized_runtime_target("unknown", "x86_64"), Value::Null);
+        assert_eq!(normalized_runtime_target("linux", "unknown"), Value::Null);
+    }
+}
+
 /// Open a new RPC session; returns its id and the core's identity.
 #[tauri::command]
 async fn core_open(
@@ -273,6 +318,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            runtime_target,
             diagnostics::diagnostics_status,
             diagnostics::diagnostics_set_enabled,
             diagnostics::diagnostics_read,
