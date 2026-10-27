@@ -119,6 +119,16 @@ tests need an approved target, known connectivity, sufficient resources, and a
 cleanup plan. A Cloud VM is not implicitly a persistent server host. Historical
 restrictions on a particular Pi are not resource measurements of a Cloud VM.
 
+Minecraft may be launched for scoped acceptance in isolated test instances when
+the required runtime, game files and platform prerequisites are available.
+There is no project-wide prohibition on launching Minecraft. Follow applicable
+environment access and account authorization requirements; this permission does
+not implicitly authorize additional network access or downloads, changes to daily
+instances, releases, or promotion to `main`. Record actual launch results
+separately from synthetic tests and historical evidence; fixture-specific
+no-process guards remain valid. A successful launch does not itself establish
+completion of Java runtime acquisition implementation.
+
 Existing plans and verification records retain their original evidence and
 stage gates. Their machine names, old worker instructions, local paths, and
 desktop tools do not select today's environment. Record new verification evidence
