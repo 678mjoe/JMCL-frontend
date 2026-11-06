@@ -8,11 +8,11 @@ import { MicrosoftAccountsProvider } from "@/lib/auth";
 import { ModpackTasksProvider, useModpackTasks } from "@/lib/modpackTasks";
 import type { ModpackSession } from "@/lib/modpackImport";
 import type { EventHandler, InstallEvent } from "@/lib/rpc";
-import { TasksProvider } from "@/lib/tasks";
+import { TasksProvider, useTasks } from "@/lib/tasks";
 import { CoreSession } from "@/lib/rpc";
 import type { InstanceManifest } from "@/lib/types";
 const dom = new Window({url:"http://localhost/"});
-Object.assign(globalThis,{window:dom,document:dom.document,localStorage:dom.localStorage,HTMLElement:dom.HTMLElement,Element:dom.Element,Node:dom.Node,Event:dom.Event,MouseEvent:dom.MouseEvent,IS_REACT_ACT_ENVIRONMENT:true});
+Object.assign(globalThis,{window:dom,document:dom.document,localStorage:dom.localStorage,HTMLElement:dom.HTMLElement,Element:dom.Element,Node:dom.Node,Event:dom.Event,MouseEvent:dom.MouseEvent,requestAnimationFrame:dom.requestAnimationFrame.bind(dom),cancelAnimationFrame:dom.cancelAnimationFrame.bind(dom),ResizeObserver:dom.ResizeObserver,MutationObserver:dom.MutationObserver,getComputedStyle:dom.getComputedStyle.bind(dom),IS_REACT_ACT_ENVIRONMENT:true});
 const { InstancesPage } = await import("./InstancesPage");
 let root: Root | undefined;
 afterEach(async()=>{await act(async()=>root?.unmount());root=undefined;dom.document.body.replaceChildren();localStorage.clear();});
@@ -116,4 +116,68 @@ for (const page of ["list", "detail"] as const) for (const interruption of ["roo
   await act(async()=>finish({state:"authenticated",refresh_token:"synthetic-rotated",session:{player_name:"Synthetic",uuid:"synthetic",access_token:"synthetic-access"}}));
   expect(launchCount).toBe(0);
   mockCredentialDelete("synthetic-account");
+});
+
+
+for (const page of ["list", "detail"] as const) test(`${page}: switching roots hides another launch's PID, logs and disabled state`, async () => {
+  const { InstanceDetailPage } = await import("./InstanceDetailPage");
+  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: "en", instancesDir: "/first", storeDir: "/store", serversDir: "/servers" }));
+  const session = CoreSession.createForTesting(async (method, params) => {
+    if (method === "instance.list") return { instances: [manifest(String(params.directory))] } as never;
+    if (method === "instance.get") return manifest(String(params.directory)) as never;
+    if (method === "account.microsoft.list") return { accounts: [] } as never;
+    if (method === "java.runtime.list" || method === "java.detect") return { runtimes: [] } as never;
+    if (method === "worlds.list") return { worlds: [] } as never;
+    if (method === "worlds.backups") return { backups: [] } as never;
+    return {} as never;
+  });
+  let emit!: (event: { kind: "event"; data: Record<string, unknown> }) => void;
+  let finish!: () => void;
+  const launchSession = {
+    close: async () => {},
+    launchExecute: async (_id: string, _directory: string, _auth: unknown, _options: unknown, onEvent: typeof emit) => {
+      emit = onEvent;
+      await new Promise<void>(resolve => { finish = resolve; });
+      return { process: { termination: "exited", exit_code: 0 } };
+    },
+  } as unknown as CoreSession;
+  let tasks!: ReturnType<typeof useTasks>;
+  function CaptureTasks() { tasks = useTasks(); return null; }
+  const host = dom.document.createElement("div"); dom.document.body.append(host); root = createRoot(host as unknown as HTMLElement);
+  await act(async () => root!.render(
+    <SettingsProvider><LauncherContext.Provider value={{ status: "ready", core: session.core, error: null, session, openSession: async () => launchSession }}>
+      <MicrosoftAccountsProvider><TasksProvider><ModpackTasksProvider>
+        {page === "list" ? <InstancesPage onOpenDetail={() => {}} onOpenContent={() => {}} /> : <InstanceDetailPage instanceId="same-id" onBack={() => {}} onOpenContent={() => {}} />}
+        <SwitchRoot /><CaptureTasks />
+      </ModpackTasksProvider></TasksProvider></MicrosoftAccountsProvider>
+    </LauncherContext.Provider></SettingsProvider>,
+  ));
+  const launchButton = () => [...dom.document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Launch")!;
+  let pending!: Promise<void>;
+  await act(async () => { pending = tasks.startLaunch(manifest("First"), { instancesDir: "/first", storeDir: "/store" }, { player_name: "Fixture", uuid: "fixture", access_token: "synthetic" }); });
+  try {
+    await act(async () => {
+      emit({ kind: "event", data: { event: "started", started: { pid: 414141 } } });
+      emit({ kind: "event", data: { event: "stdout", stdout: { encoding: "base64", end: "newline", data: btoa("First-root private log") } } });
+    });
+    expect(launchButton().disabled).toBe(true);
+    expect(dom.document.body.textContent).toContain("414141");
+    await act(async () => [...dom.document.querySelectorAll("button")].find(button => button.title === "Log" || button.textContent?.trim() === "Log")!.click());
+    expect(dom.document.body.textContent).toContain("First-root private log");
+    await act(async () => [...dom.document.querySelectorAll("button")].find(button => button.textContent === "Switch root")!.click());
+    expect(launchButton().disabled).toBe(false);
+    expect(dom.document.body.textContent).not.toContain("414141");
+    expect(dom.document.body.textContent).not.toContain("First-root private log");
+    await act(async () => {
+      emit({ kind: "event", data: { event: "started", started: { pid: 515151 } } });
+      emit({ kind: "event", data: { event: "stdout", stdout: { encoding: "base64", end: "newline", data: btoa("Late first-root log") } } });
+    });
+    expect(launchButton().disabled).toBe(false);
+    expect(dom.document.body.textContent).not.toContain("515151");
+    expect(dom.document.body.textContent).not.toContain("Late first-root log");
+    expect(tasks.taskFor("launch", "same-id", "/first")?.pid).toBe(515151);
+    expect(tasks.taskFor("launch", "same-id", "/second")).toBeUndefined();
+  } finally {
+    await act(async () => { finish(); await pending; });
+  }
 });

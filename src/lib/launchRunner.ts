@@ -46,6 +46,22 @@ export function runtimeInstallEvent(event: LaunchEvent): RuntimeInstallEvent | n
     : null;
 }
 
+// A buffer belongs to one launch. Keep decoder state alongside it so UTF-8
+// sequences can span transport records without mixing launches or streams.
+const outputDecoders = new WeakMap<
+  StreamLineBuffer,
+  Record<ProcessStream, TextDecoder>
+>();
+
+function decodersFor(buffer: StreamLineBuffer) {
+  let decoders = outputDecoders.get(buffer);
+  if (!decoders) {
+    decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+    outputDecoders.set(buffer, decoders);
+  }
+  return decoders;
+}
+
 /** Always flushes both stream tails, including when the RPC rejects. */
 export async function runLaunchRequest<T>(
   request: (onEvent: (event: LaunchEvent) => void) => Promise<T>,
@@ -53,9 +69,22 @@ export async function runLaunchRequest<T>(
   appendLine: (line: BufferedLine) => void,
 ): Promise<T> {
   const buffer = new StreamLineBuffer();
+  let active = true;
   try {
-    return await request((event) => handleEvent(event, buffer));
+    return await request((event) => {
+      if (active) handleEvent(event, buffer);
+    });
   } finally {
+    active = false;
+    const decoders = outputDecoders.get(buffer);
+    if (decoders) {
+      for (const stream of ["stdout", "stderr"] as const) {
+        for (const line of buffer.push(stream, decoders[stream].decode(), "more")) {
+          appendLine(line);
+        }
+      }
+      outputDecoders.delete(buffer);
+    }
     for (const line of buffer.flush()) appendLine(line);
   }
 }
@@ -78,13 +107,17 @@ export function appendLaunchOutput(
   if (record?.encoding !== "base64" || typeof record.data !== "string") return;
 
   const binary = atob(record.data);
-  const text = new TextDecoder().decode(
+  // Newline/EOF are byte boundaries too: emit a replacement for any truncated
+  // sequence there, and reset the decoder before another line starts.
+  const complete = record.end === "newline" || record.end === "eof";
+  const text = decodersFor(buffer)[stream].decode(
     Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+    { stream: !complete },
   );
   for (const line of buffer.push(
     stream,
     text,
-    record.end === "newline" ? "newline" : "more",
+    complete ? "newline" : "more",
   )) {
     appendLine(line);
   }
