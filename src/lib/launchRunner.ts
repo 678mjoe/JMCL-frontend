@@ -117,7 +117,7 @@ export function appendLaunchOutput(
   for (const line of buffer.push(
     stream,
     text,
-    complete ? "newline" : "more",
+    record.end === "newline" ? "newline" : record.end === "eof" ? "eof" : "more",
   )) {
     appendLine(line);
   }

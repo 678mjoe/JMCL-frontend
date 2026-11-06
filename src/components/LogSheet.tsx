@@ -89,7 +89,9 @@ export function LogSheet({ instanceId, onOpenChange }: LogSheetProps) {
                 {task?.lines.map((line, i) => (
                   <div
                     key={i}
+                    data-slot="launch-log-line"
                     className={cn(
+                      "min-h-5",
                       line.stream === "stderr" && "text-destructive/80",
                       line.stream === "core" && "text-muted-foreground italic",
                     )}

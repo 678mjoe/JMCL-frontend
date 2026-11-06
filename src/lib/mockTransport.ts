@@ -632,6 +632,16 @@ export async function mockRequest<T>(
         data: b64("[mock] ready\n"),
       },
     });
+    // Match Core's delimiter-free blank-line and EOF records. These must
+    // preserve one visible blank line, without adding another for empty EOF.
+    emit(handler, {
+      event: "stdout",
+      stdout: { sequence: 4, encoding: "base64", end: "newline", data: "" },
+    });
+    emit(handler, {
+      event: "stderr",
+      stderr: { sequence: 5, encoding: "base64", end: "eof", data: "" },
+    });
     return {
       process: {
         termination: "exited",
