@@ -9,16 +9,21 @@ export interface BufferedLine {
 export class StreamLineBuffer {
   private readonly pending: Record<ProcessStream, string> = { stdout: "", stderr: "" };
 
-  push(stream: ProcessStream, data: string, end: "newline" | "more"): BufferedLine[] {
+  push(stream: ProcessStream, data: string, end: "newline" | "eof" | "more"): BufferedLine[] {
     this.pending[stream] += data;
     const parts = this.pending[stream].replaceAll("\r\n", "\n").split("\n");
     const lines: BufferedLine[] = [];
-    const complete = end === "newline" || parts.length > 1;
+    const complete = end !== "more" || parts.length > 1;
     if (!complete) return lines;
     const tail = parts.pop() ?? "";
     for (const text of parts) lines.push({ stream, text });
-    if (end === "newline") {
-      if (tail) lines.push({ stream, text: tail });
+    if (end !== "more") {
+      // Core strips the newline from its payload, so an empty newline record
+      // is still a real line. EOF is only a flush. Older/mock payloads may
+      // contain their own newline; do not append a second ending for those.
+      if (tail || (end === "newline" && parts.length === 0)) {
+        lines.push({ stream, text: tail });
+      }
       this.pending[stream] = "";
     } else {
       this.pending[stream] = tail;

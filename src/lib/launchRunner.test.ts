@@ -85,6 +85,41 @@ const bytesEvent = (
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
 describe("launch output UTF-8 streaming", () => {
+  for (const fails of [false, true]) {
+    test(`preserves real blank lines without adding empty EOF/finally lines on ${fails ? "failure" : "success"}`, async () => {
+      const lines: { stream: string; text: string }[] = [];
+      const request = runLaunchRequest(async (emit) => {
+        emit(bytesEvent("stdout", new Uint8Array(), "newline"));
+        emit(bytesEvent("stdout", new Uint8Array(), "newline"));
+        emit(bytesEvent("stderr", new Uint8Array(), "eof"));
+        emit(bytesEvent("stdout", utf8("tail")));
+        emit(bytesEvent("stdout", new Uint8Array(), "eof"));
+        emit(bytesEvent("stdout", new Uint8Array(), "eof"));
+        emit(bytesEvent("stderr", new Uint8Array(), "newline"));
+        if (fails) throw new Error("synthetic RPC failure");
+      }, (event, buffer) => appendLaunchOutput(event, buffer, line => lines.push(line)),
+      line => lines.push(line));
+      if (fails) await expect(request).rejects.toThrow("synthetic RPC failure");
+      else await request;
+      expect(lines).toEqual([
+        { stream: "stdout", text: "" }, { stream: "stdout", text: "" },
+        { stream: "stdout", text: "tail" }, { stream: "stderr", text: "" },
+      ]);
+    });
+  }
+
+  test("an empty newline finalizes truncated UTF-8 once, followed by a genuine blank line", async () => {
+    const lines: { stream: string; text: string }[] = [];
+    await runLaunchRequest(async (emit) => {
+      emit(bytesEvent("stdout", utf8("中").slice(0, 1)));
+      emit(bytesEvent("stdout", new Uint8Array(), "newline"));
+      emit(bytesEvent("stdout", new Uint8Array(), "newline"));
+      emit(bytesEvent("stdout", new Uint8Array(), "eof"));
+    }, (event, buffer) => appendLaunchOutput(event, buffer, line => lines.push(line)),
+    line => lines.push(line));
+    expect(lines).toEqual([{ stream: "stdout", text: "�" }, { stream: "stdout", text: "" }]);
+  });
+
   test("reassembles a multibyte character across the core's 16 KiB boundary", async () => {
     const text = "a".repeat(16383) + "中";
     const bytes = utf8(text);

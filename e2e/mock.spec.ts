@@ -96,3 +96,25 @@ test('modpack: confirmed preview, background navigation and completion summary',
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Back to Instances', exact: true })).toBeVisible();
 });
+
+test('launch log: a real blank line has height and empty EOF adds no row', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Launch', exact: true }).first().click();
+  const log = page.getByRole('dialog', { name: 'Game Log' });
+  await expect(log).toBeVisible();
+  const rows = log.locator('[data-slot="launch-log-line"]');
+  await expect(rows).toHaveText(['[mock] starting', '[mock] ready', '', '[mock] warning']);
+  const blank = rows.nth(2);
+  expect(await blank.evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(0);
+  expect(await blank.evaluate(element => getComputedStyle(element).minHeight)).toBe('20px');
+  await expect(log).toContainText('Exited with code 0');
+  await log.screenshot({ path: 'test-results/launch-blank-line.png' });
+  await page.keyboard.press('Escape');
+  await expect(log).toHaveCount(0);
+  // Closing the sheet does not delete/replay the completed launch output.
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
+  await expect(rows).toHaveText(['[mock] starting', '[mock] ready', '', '[mock] warning']);
+  expect(errors).toEqual([]);
+});
