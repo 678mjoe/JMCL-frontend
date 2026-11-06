@@ -64,6 +64,30 @@ without a second launch or duplicate rows. Happy DOM does not validate layout.
 The added browser test checks actual row height and close/reopen behavior when
 run in a supported browser environment; that validation has not run locally.
 
+## PR #28 CI expectation correction
+
+The frontend job in [run 42193120522 / job 127809697313](https://github.com/678mjoe/JMCL-frontend/actions/runs/42193120522/job/127809697313),
+on published commit `cf32b2a199ccf86b0fea2ffec5a8723c5479bdf8`, reached the new
+browser scenario but failed its exact row-array assertion. The expected four
+rows omitted the pre-existing `[mock core] launch session connected` diagnostic.
+Actual rows were that diagnostic, `[mock] starting`, `[mock] ready`, an empty
+line, and `[mock] warning`. This was an incomplete test expectation, not evidence
+of a new production output error. Layout and reopen assertions came after that
+failure and were not reached by the scenario.
+
+The follow-up keeps exact five-row assertions before and after reopening and
+checks row index 3 for actual blank-line height. Empty EOF must still add no row.
+The React DOM test now traverses the actual `CoreSession` wrapper and shared
+`mockRequest` dispatcher, rather than emitting a separate partial fixture. It
+therefore includes the same diagnostic and five-row sequence as browser Mock.
+No production source or Mock behavior changes in this follow-up.
+
+Local verification of this correction passed: the focused suite has 17 tests
+and 52 assertions; the full suite has 591 tests and 3,838 assertions across 79
+files; the TypeScript/production build passes with the existing bundle-size
+warning. The already-blocked local Chromium command is not retried. Successful
+browser layout and reopen acceptance still require a passing follow-up CI run.
+
 ## Boundaries
 
 No new live NativeSession launch trace was captured. The separate attempted

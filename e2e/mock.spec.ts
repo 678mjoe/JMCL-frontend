@@ -105,8 +105,9 @@ test('launch log: a real blank line has height and empty EOF adds no row', async
   const log = page.getByRole('dialog', { name: 'Game Log' });
   await expect(log).toBeVisible();
   const rows = log.locator('[data-slot="launch-log-line"]');
-  await expect(rows).toHaveText(['[mock] starting', '[mock] ready', '', '[mock] warning']);
-  const blank = rows.nth(2);
+  const expectedRows = ['[mock core] launch session connected', '[mock] starting', '[mock] ready', '', '[mock] warning'];
+  await expect(rows).toHaveText(expectedRows);
+  const blank = rows.nth(3);
   expect(await blank.evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(0);
   expect(await blank.evaluate(element => getComputedStyle(element).minHeight)).toBe('20px');
   await expect(log).toContainText('Exited with code 0');
@@ -115,6 +116,6 @@ test('launch log: a real blank line has height and empty EOF adds no row', async
   await expect(log).toHaveCount(0);
   // Closing the sheet does not delete/replay the completed launch output.
   await page.getByRole('button', { name: 'Log', exact: true }).first().click();
-  await expect(rows).toHaveText(['[mock] starting', '[mock] ready', '', '[mock] warning']);
+  await expect(rows).toHaveText(expectedRows);
   expect(errors).toEqual([]);
 });
