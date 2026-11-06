@@ -26,9 +26,9 @@ function splitMessage(message: string): [string, string] {
 }
 
 export function LogSheet({ instanceId, onOpenChange }: LogSheetProps) {
-  const { t } = useSettings();
+  const { settings, t } = useSettings();
   const { taskFor } = useTasks();
-  const task = instanceId ? taskFor("launch", instanceId) : undefined;
+  const task = instanceId ? taskFor("launch", instanceId, settings.instancesDir) : undefined;
 
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const lineCount = task?.lines.length ?? 0;
@@ -40,7 +40,7 @@ export function LogSheet({ instanceId, onOpenChange }: LogSheetProps) {
       '[data-slot="scroll-area-viewport"]',
     );
     if (viewport) viewport.scrollTo({ top: viewport.scrollHeight });
-  }, [instanceId, lineCount]);
+  }, [settings.instancesDir, instanceId, lineCount]);
 
   let statusLine: React.ReactNode = null;
   if (task?.status === "running") {

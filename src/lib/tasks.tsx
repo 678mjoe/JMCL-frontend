@@ -93,11 +93,10 @@ interface TasksContextValue {
 const TasksContext = createContext<TasksContextValue | null>(null);
 
 function taskKey(kind: TaskKind, instanceId: string, instancesDir?: string): string {
-  // Install jobs are owned by a concrete instance path, not an ID that can be
-  // reused after switching roots. Unscoped lookups deliberately cannot match
-  // scoped installations. Launch/validation retain their existing semantics.
-  return kind === "install" && instancesDir !== undefined
-    ? `install:${instanceMutationKey(instancesDir, instanceId)}`
+  // Install/launch jobs belong to a concrete instance path. An ID may be
+  // reused after switching roots; unscoped lookups must not match either job.
+  return (kind === "install" || kind === "launch") && instancesDir !== undefined
+    ? `${kind}:${instanceMutationKey(instancesDir, instanceId)}`
     : `${kind}:${instanceId}`;
 }
 
@@ -111,6 +110,7 @@ export function loaderFieldsOf(m: InstanceManifest): LoaderFields {
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { openSession } = useLauncher();
   const installsInFlight = useRef(new Set<string>());
+  const launchesInFlight = useRef(new Set<string>());
   const [tasks, setTasks] = useState<Record<string, Task>>({});
   const patch = useCallback((key: string, p: Partial<Task>) => {
     setTasks((prev) =>
@@ -236,16 +236,23 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       javaOverride?: JavaPreferences | string | null,
       options: LaunchOptions = {},
     ) => {
-      const key = beginTask("launch", instance.id, "task.stage.launch");
+      dirs = { ...dirs }; // Capture the root before an asynchronous session open.
+      const flightKey = instanceMutationKey(dirs.instancesDir, instance.id);
+      if (launchesInFlight.current.has(flightKey)) return;
+      const versionId = instance.version_id;
+      const directory = `${dirs.instancesDir}/${instance.id}/.minecraft`;
+      const launchOptions = instanceLaunchOptions(instance, dirs.storeDir, javaOverride, options);
+      launchesInFlight.current.add(flightKey);
+      const key = beginTask("launch", instance.id, "task.stage.launch", dirs.instancesDir);
       try {
         const result = await withOpenedSession(openSession, async (activeSession) => {
           return runLaunchRequest(
                 (onEvent) =>
                   activeSession.launchExecute(
-                    instance.version_id,
-                    `${dirs.instancesDir}/${instance.id}/.minecraft`,
+                    versionId,
+                    directory,
                     auth,
-                    instanceLaunchOptions(instance, dirs.storeDir, javaOverride, options),
+                    launchOptions,
                     onEvent,
                   ),
                 (event, buffer) => {
@@ -312,6 +319,8 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         });
       } catch (e) {
         patch(key, { status: "error", message: errorText(e) });
+      } finally {
+        launchesInFlight.current.delete(flightKey);
       }
     },
     [appendLine, beginTask, openSession, patch],

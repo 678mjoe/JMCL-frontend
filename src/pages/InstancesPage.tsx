@@ -155,7 +155,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
       await session.instanceDelete(settings.instancesDir, target.id);
       clearTask("validate", target.id);
       clearTask("install", target.id, settings.instancesDir);
-      clearTask("launch", target.id);
+      clearTask("launch", target.id, settings.instancesDir);
       if (logInstanceId === target.id) setLogInstanceId(null);
       setDeleteTarget(null);
       await refresh();
@@ -220,7 +220,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
               instance={instance}
               installed={instance.installed}
               installTask={taskFor("install", instance.id, settings.instancesDir)}
-              launchTask={taskFor("launch", instance.id)}
+              launchTask={taskFor("launch", instance.id, settings.instancesDir)}
               validateTask={taskFor("validate", instance.id)}
               disabled={!coreReady}
               onInstall={() => beginInstall(instance)}
