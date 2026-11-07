@@ -1,11 +1,16 @@
 # Actual Tauri command / RustCore contract candidate
 
-Status: **prepared, not compiled or executed**. Local Linux host is missing
-`gtk+-3.0`, `webkit2gtk-4.1`, `javascriptcoregtk-4.1`, `libsoup-3.0`, and `dbus-1`
-pkg-config packages. No local dependencies were installed and no alternate local environment was
-used. A separately authorized standard Linux CI lane is prepared pending review;
-no CI has yet been triggered. Existing Tauri compile/unit/LocalRPC/package
-coverage is separate evidence, not validation of this new test.
+Status: **revision 2 is prepared and not yet executed**. The first real Linux CI
+attempt compiled the actual Tauri crate and ran exactly one test, which failed at
+its first IPC request because the fixture supplied the wrong platform origin.
+The original rejection and its evidence are retained below. The authorized
+revision preserves that denial as a negative control and reads the actual
+MockRuntime window URL for normal requests. It is pending final review/retry.
+
+The local workspace still lacks GTK/WebKit/JavaScriptCore/libsoup/DBus pkg-config
+packages; nothing was installed locally. The first standard Ubuntu CI runner did
+successfully install those official dependencies. Existing UI/package coverage
+remains separate from this command-layer test.
 
 ## Exact scope
 
@@ -35,7 +40,7 @@ network, game/server launch, or archive operations. Channel parsing participates
 in command argument decoding; no JS event delivery claim is made. Linux x86_64 is the
 only supported runner host; do not extrapolate to four-platform acceptance.
 
-## Prepared invocation (not executed)
+## Invocation (revision 2 not yet executed)
 
 Use a permitted Linux x86_64 host with all native build dependencies and a complete
 Cargo cache. Supply a separately verified RustCore artifact and its SHA-256:
@@ -65,17 +70,14 @@ are a blocker, not permission to download or run unrelated build steps.
 
 ## Next verification gate
 
-Independent review, then compile and execute this one test on an authorized host
-with the listed dependencies. If using CI, prepare a separate opt-in bounded job
-with an artifact manifest and this exact filter; obtain the required authorization
-before any remote write or workflow dispatch. Do not alter existing CI, main,
-production pin, or claim real UI/package acceptance from this result.
+Finish independent review of revision 2, then repeat only this test through the
+already-authorized isolated Linux lane. Do not alter existing CI, main, the
+production sidecar pin, or claim real UI/package acceptance from the result.
 
-Prepared CI template: `docs/acceptance/tauri-rust-core-linux.yml.example`.
-It is deliberately outside `.github/workflows`, installs official Ubuntu native
-build dependencies on a standard public runner, builds only the pinned RustCore
-binary, overlays reviewed fixtures onto the frozen frontend, and runs the one
-contract. It has not been published, triggered, or validated by execution.
+`docs/acceptance/tauri-rust-core-linux.yml.example` is an inactive example. The
+active branch-scoped workflow is `.github/workflows/tauri-rust-core-command-linux.yml`.
+Its initial revision was published and executed in run 42394126182. The updated
+revision shown here, including the chunked evidence emitter, is not yet run.
 
 Guard validation: nine pure/fake Python tests pass, including zero/multiple test
 inventories, missing/duplicate marker, wrong binary hash, production source drift,
@@ -89,4 +91,39 @@ The example template prints lossless base64/length/hash evidence. The separately
 authorized active candidate `.github/workflows/tauri-rust-core-command-linux.yml`
 is restricted to the exact `tauri-rust-core-command-linux-20261107` branch and
 fixture paths, and reads the immutable `github.sha` overlay after checking its
-seven-entry SHA-256 manifest. It has not yet been published or triggered.
+nine-entry SHA-256 manifest (the initial run used seven entries).
+
+## First real CI attempt and authorized fixture correction
+
+Run https://github.com/678mjoe/JMCL-frontend/actions/runs/42394126182 compiled
+the actual Tauri crate successfully, listed exactly one test, then failed that
+one test at the first IPC request: `core_open not allowed. Plugin not found`.
+The immutable initial execution commit was
+`cca42c8d8a987384414a59f9457fa18d8698da4b`, tree
+`89853ac6f659373c65c5feb1dcd6a0667136df34`. No Core session was opened.
+The original 581-byte test log SHA-256 is
+`debb4b4d0f0df7e1cf65ea0100601d828f537136ab020c41e68d900b4d42bc39`.
+The native test exited 101, without timeout or leftover owned processes.
+
+Read-only review of Tauri 2.12.5 proved the fixture's hardcoded
+`http://tauri.localhost` was a remote origin on Linux, whose actual MockRuntime
+window uses `tauri://localhost`. The ACL rejection was correct, and was retained.
+It was not a RustCore error or a missing production plugin. Production ACLs do
+not authorize that remote origin; loading production config alone would not fix
+this fixture error.
+
+The explicitly authorized correction reads the actual window URL through
+`window.url()`, asserts its Linux local scheme/host and absence of credentials
+or port, and does not navigate or change any config/permission. Before the same
+two-session lifecycle, it retains the original remote request as an explicit
+rejection negative control and requires an empty Pool. Both negative-control
+and completion markers are required. No ACL is disabled or expanded and no
+command is replaced by a direct Rust function call. This revision is pending
+independent review and execution, not yet an acceptance pass.
+
+Evidence emission is separately changed to 12 KiB raw-byte chunks with explicit
+group/file/index/count, per-chunk and full-file lengths/SHA-256, report/test first,
+and a two-minute step timeout. Missing groups, oversized files or symlinks fail
+explicitly after emitting other available evidence. The first run's complete
+raw evidence was recovered and hash-verified; its large-line output delay is
+recorded separately from the functional test failure.

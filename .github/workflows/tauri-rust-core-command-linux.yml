@@ -10,6 +10,8 @@ on:
       - 'src-tauri/src/tauri_rust_core_contract.rs'
       - 'scripts/test-tauri-rust-core.py'
       - 'scripts/test-tauri-rust-core-guards.py'
+      - 'scripts/emit-tauri-evidence.py'
+      - 'scripts/test-emit-tauri-evidence.py'
       - 'docs/acceptance/tauri-overlay.sha256'
 permissions:
   contents: read
@@ -64,6 +66,7 @@ jobs:
           rustfmt --edition 2021 --check frontend/src-tauri/src/tauri_rust_core_contract.rs
           git -C frontend diff --check
           PYTHONDONTWRITEBYTECODE=1 python frontend/scripts/test-tauri-rust-core-guards.py
+          PYTHONDONTWRITEBYTECODE=1 python fixture/scripts/test-emit-tauri-evidence.py
       - name: Build only the pinned RustCore binary and populate locked Cargo cache
         run: |
           mkdir -p "$RUNNER_TEMP/core-build-evidence"
@@ -80,13 +83,11 @@ jobs:
             --core-binary "$RUNNER_TEMP/core-target/debug/jmcl-core-rust" \
             --expected-core-sha256 "$(cut -d ' ' -f1 "$RUNNER_TEMP/core-build-evidence/binary.sha256")" \
             --output "$RUNNER_TEMP/tauri-command-evidence"
-      - name: Print raw evidence even on failure (no binary/artifact publication)
+      - name: Print bounded lossless evidence even on failure
         if: always()
+        timeout-minutes: 2
         run: |
-          for dir in "$RUNNER_TEMP/core-build-evidence" "$RUNNER_TEMP/tauri-command-evidence"; do
-            if [[ -d "$dir" ]]; then
-              python -c 'import base64,hashlib,json,pathlib,sys; [print(json.dumps({"file":p.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest(),"base64":base64.b64encode(data).decode()})) for p in sorted(pathlib.Path(sys.argv[1]).iterdir()) if p.is_file() for data in [p.read_bytes()]]' "$dir"
-            fi
-          done
+          python fixture/scripts/emit-tauri-evidence.py "$RUNNER_TEMP/tauri-command-evidence" "$RUNNER_TEMP/core-build-evidence"
+
 # No Chromium, real WebView, Java, services, credentials, shipping package,
 # existing workflow edits, production sidecar pin updates, or artifact upload.

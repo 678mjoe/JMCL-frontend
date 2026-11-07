@@ -21,7 +21,7 @@ class Guards(unittest.TestCase):
                 runner.verify_inventory(value)
 
     def test_result(self):
-        marker = 'TAURI_RUST_CORE_CONTRACT_OK sessions=2 dispatch=actual runtime=mock ui=false\n'
+        marker = 'TAURI_REMOTE_ORIGIN_REJECTED pool_empty=true\nTAURI_RUST_CORE_CONTRACT_OK sessions=2 dispatch=actual runtime=mock ui=false\n'
         summary = 'test result: ok. 1 passed; 0 failed; 0 ignored; 3 filtered out; finished in 0.1s\n'
         runner.verify_result(marker + summary)
         for value in [summary, marker + marker + summary, marker + summary.replace('1 passed', '0 passed'), marker + summary.replace('0 failed', '1 failed')]:

@@ -4,10 +4,11 @@ use super::*;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, MockRuntime};
 
-fn invoke(
+fn invoke_from(
     window: &tauri::WebviewWindow<MockRuntime>,
     cmd: &str,
     body: Value,
+    origin: url::Url,
 ) -> Result<Value, Value> {
     get_ipc_response(
         window,
@@ -15,13 +16,29 @@ fn invoke(
             cmd: cmd.into(),
             callback: tauri::ipc::CallbackFn(0),
             error: tauri::ipc::CallbackFn(1),
-            url: "http://tauri.localhost".parse().unwrap(),
+            url: origin,
             body: tauri::ipc::InvokeBody::Json(body),
             headers: Default::default(),
             invoke_key: tauri::test::INVOKE_KEY.into(),
         },
     )
     .map(|body| body.deserialize::<Value>().unwrap())
+}
+
+fn invoke(
+    window: &tauri::WebviewWindow<MockRuntime>,
+    cmd: &str,
+    body: Value,
+) -> Result<Value, Value> {
+    // Read the actual window URL; do not navigate or invent a privileged origin.
+    // This lane is Linux-only, whose Tauri app protocol is tauri://localhost.
+    let origin = window.url().unwrap();
+    assert_eq!(origin.scheme(), "tauri");
+    assert_eq!(origin.host_str(), Some("localhost"));
+    assert_eq!(origin.port(), None);
+    assert_eq!(origin.username(), "");
+    assert_eq!(origin.password(), None);
+    invoke_from(window, cmd, body, origin)
 }
 
 fn request(
@@ -72,6 +89,22 @@ fn actual_invoke_rust_core_lifecycle() {
         .unwrap();
     let pool = app.state::<SessionPool>();
     let outcome = catch_unwind(AssertUnwindSafe(|| {
+        // Preserve the original remote-origin rejection as a negative control.
+        // It must remain denied, without opening a session or weakening ACLs.
+        let remote_error = invoke_from(
+            &window,
+            "core_open",
+            json!({"binaryPath": binary.to_str().unwrap()}),
+            "http://tauri.localhost".parse().unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            remote_error,
+            json!("core_open not allowed. Plugin not found")
+        );
+        assert!(tauri::async_runtime::block_on(pool.endpoint_session_ids("local")).is_empty());
+        assert!(tauri::async_runtime::block_on(pool.get(1)).is_none());
+        println!("\nTAURI_REMOTE_ORIGIN_REJECTED pool_empty=true");
         let mut ids = Vec::new();
         for _ in 0..2 {
             let opened = invoke(

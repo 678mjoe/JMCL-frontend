@@ -63,7 +63,7 @@ def verify_inventory(text):
 def verify_result(text):
     marker = 'TAURI_RUST_CORE_CONTRACT_OK sessions=2 dispatch=actual runtime=mock ui=false'
     summaries = re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;', text, re.M)
-    if summaries != [('1', '0', '0')] or text.splitlines().count(marker) != 1:
+    if summaries != [('1', '0', '0')] or text.splitlines().count(marker) != 1 or text.splitlines().count('TAURI_REMOTE_ORIGIN_REJECTED pool_empty=true') != 1:
         raise RuntimeError('missing exact pass count or unique completion marker')
 
 
