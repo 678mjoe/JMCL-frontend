@@ -3,11 +3,21 @@ import config from "../../src-tauri/tauri.conf.json";
 import capabilities from "../../src-tauri/capabilities/default.json";
 import { unconfiguredUpdate, canUpdate } from "./updates";
 
+function nativeTauriVersion(lock: string): string | undefined {
+  return lock.match(/name = "tauri"\r?\nversion = "(\d+\.\d+)\./)?.[1];
+}
+
 describe("release security gates", () => {
+  test("Cargo version gate accepts LF and Windows CRLF without accepting another package", () => {
+    for (const newline of ["\n", "\r\n"]) {
+      expect(nativeTauriVersion(`name = "tauri"${newline}version = "2.12.1"`)).toBe("2.12");
+      expect(nativeTauriVersion(`name = "not-tauri"${newline}version = "2.12.1"`)).toBeUndefined();
+    }
+  });
   test("locked Rust and JavaScript Tauri packages use the same major/minor", async () => {
     const cargo = await Bun.file(new URL("../../src-tauri/Cargo.lock", import.meta.url)).text();
     const bun = await Bun.file(new URL("../../bun.lock", import.meta.url)).text();
-    const native = cargo.match(/name = "tauri"\nversion = "(\d+\.\d+)\./)?.[1];
+    const native = nativeTauriVersion(cargo);
     const guest = bun.match(/"@tauri-apps\/api": \["@tauri-apps\/api@(\d+\.\d+)\./)?.[1];
     expect(native).toBeDefined();
     expect(guest).toBe(native);
