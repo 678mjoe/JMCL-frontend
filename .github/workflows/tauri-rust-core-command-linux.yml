@@ -1,0 +1,92 @@
+name: Bounded actual Tauri RustCore commands (Linux MockRuntime)
+on:
+  push:
+    branches: [tauri-rust-core-command-linux-20261107]
+    paths:
+      - '.github/workflows/tauri-rust-core-command-linux.yml'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/src/tauri_rust_core_contract.rs'
+      - 'scripts/test-tauri-rust-core.py'
+      - 'scripts/test-tauri-rust-core-guards.py'
+      - 'docs/acceptance/tauri-overlay.sha256'
+permissions:
+  contents: read
+concurrency:
+  group: tauri-rust-core-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  commands:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/tauri-rust-core-command-linux-20261107'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: fixture
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: 678mjoe/JMCL-frontend
+          ref: 9c0fd81ce8109c1e35229560fee31308ca114ef5
+          path: frontend
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: bdd6cb3e55d69cb9e0e02037d251635e289207a8
+          path: core
+          persist-credentials: false
+      - name: Install official distribution native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential pkg-config libgtk-3-dev libdbus-1-dev libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt
+          rustup default 1.99.1
+          test "$(rustc -vV | sed -n 's/^host: //p')" = x86_64-unknown-linux-gnu
+      - name: Overlay only the reviewed test fixture on frozen frontend
+        run: |
+          test "$(git -C frontend rev-parse HEAD^{tree})" = 48ea91981bdb7b375bca8e9bc47738b6c3dde4d1
+          test "$(git -C core rev-parse HEAD^{tree})" = 0e8e901bc587cf3c6d7dc1ba78821c4701785e20
+          (cd fixture && sha256sum --check docs/acceptance/tauri-overlay.sha256)
+          for path in src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/lib.rs src-tauri/src/tauri_rust_core_contract.rs scripts/test-tauri-rust-core.py scripts/test-tauri-rust-core-guards.py; do
+            cp "fixture/$path" "frontend/$path"
+          done
+          rustfmt --edition 2021 --check frontend/src-tauri/src/tauri_rust_core_contract.rs
+          git -C frontend diff --check
+          PYTHONDONTWRITEBYTECODE=1 python frontend/scripts/test-tauri-rust-core-guards.py
+      - name: Build only the pinned RustCore binary and populate locked Cargo cache
+        run: |
+          mkdir -p "$RUNNER_TEMP/core-build-evidence"
+          git -C fixture rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/core-build-evidence/fixture-source.txt"
+          git -C core status --porcelain > "$RUNNER_TEMP/core-build-evidence/core-status.txt"
+          test ! -s "$RUNNER_TEMP/core-build-evidence/core-status.txt"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/core-target" cargo build --locked --manifest-path core/rust/Cargo.toml --bin jmcl-core-rust 2>&1 | tee "$RUNNER_TEMP/core-build-evidence/build.log"
+          sha256sum "$RUNNER_TEMP/core-target/debug/jmcl-core-rust" | tee "$RUNNER_TEMP/core-build-evidence/binary.sha256"
+          cargo fetch --locked --manifest-path frontend/src-tauri/Cargo.toml
+      - name: Execute exactly one actual Tauri invoke contract
+        run: |
+          python frontend/scripts/test-tauri-rust-core.py \
+            --core-source "$GITHUB_WORKSPACE/core" \
+            --core-binary "$RUNNER_TEMP/core-target/debug/jmcl-core-rust" \
+            --expected-core-sha256 "$(cut -d ' ' -f1 "$RUNNER_TEMP/core-build-evidence/binary.sha256")" \
+            --output "$RUNNER_TEMP/tauri-command-evidence"
+      - name: Print raw evidence even on failure (no binary/artifact publication)
+        if: always()
+        run: |
+          for dir in "$RUNNER_TEMP/core-build-evidence" "$RUNNER_TEMP/tauri-command-evidence"; do
+            if [[ -d "$dir" ]]; then
+              python -c 'import base64,hashlib,json,pathlib,sys; [print(json.dumps({"file":p.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest(),"base64":base64.b64encode(data).decode()})) for p in sorted(pathlib.Path(sys.argv[1]).iterdir()) if p.is_file() for data in [p.read_bytes()]]' "$dir"
+            fi
+          done
+# No Chromium, real WebView, Java, services, credentials, shipping package,
+# existing workflow edits, production sidecar pin updates, or artifact upload.

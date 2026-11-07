@@ -53,3 +53,10 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Opt-in only: production defaults and dependency versions stay unchanged.
+[features]
+tauri-rust-core-contract = ["tauri/test"]
+
+[dev-dependencies]
+tempfile = "=3.27.0"
