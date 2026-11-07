@@ -1,0 +1,7 @@
+{
+  "frontend_base": "f3d67b668680804c55b77a5154f17e6343b7cc30",
+  "frontend_base_tree": "48ea91981bdb7b375bca8e9bc47738b6c3dde4d1",
+  "provenance_sha256": "335d1d70a1f47be11c42fcf92b40ea77743587fa7f8f47b0cc6777dc92330597",
+  "source_commit_verified": "b7b7b9abe5360054819ace0733599163feabe25f",
+  "capture_artifact_commit": "0b3c8bd531947f3686203ab168817185d47bf2fd"
+}

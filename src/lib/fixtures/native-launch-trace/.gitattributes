@@ -1,0 +1,2 @@
+# Preserve the original captured test output, including its final blank line.
+test-output.txt whitespace=-blank-at-eof
