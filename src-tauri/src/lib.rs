@@ -361,3 +361,6 @@ pub fn run() {
             }
         });
 }
+
+#[cfg(all(test, feature = "tauri-rust-core-contract"))]
+mod tauri_rust_core_contract;
