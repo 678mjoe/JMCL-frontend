@@ -154,10 +154,7 @@ fn actual_invoke_rust_core_release_context() {
             "http://tauri.localhost".parse().unwrap(),
         )
         .unwrap_err();
-        assert_eq!(
-            remote_error,
-            json!("core_open not allowed. Plugin not found")
-        );
+        assert_eq!(remote_error, json!("Command core_open not allowed by ACL"));
         assert!(tauri::async_runtime::block_on(pool.endpoint_session_ids("local")).is_empty());
         assert!(tauri::async_runtime::block_on(pool.get(1)).is_none());
         println!("\nTAURI_REMOTE_ORIGIN_REJECTED pool_empty=true");
