@@ -1,0 +1,341 @@
+{
+  "status": "passed",
+  "run_id": 42399164806,
+  "job_id": 128482992387,
+  "commit": "bcf7efbfac0843c3f5ae3e0aed4c859f32857bdc",
+  "tree": "f1367e2c0bb1f7b548610e343fbc3f934e062ead",
+  "tests_executed": 1,
+  "files_installed": 1,
+  "cached_attempts": 0,
+  "payload_bytes": 35,
+  "captured_channel_messages": 2,
+  "callback": 731,
+  "indices": [
+    0,
+    1
+  ],
+  "phase_count": 13,
+  "all_phase_groups_empty": true,
+  "recovered_files": 44,
+  "recovered_chunks": 65,
+  "source_hashes_unchanged": true,
+  "binary_hashes_unchanged": true,
+  "core_binary_sha256": "07fcbf083222fc48ec5491c2a7f60749739cee3c30e22ba3f82ae7332cc8b935",
+  "test_binary_sha256": "4b18266e957d25f9ee729d9d48f542ac42c044ff3d9341842e8f8c331dc07ce2",
+  "spawn_binary_sha256": "8b0a1519448bb281921f52a1a477c94ccc4af0d619045c3f54e7ee49d3a1bcee",
+  "boundary": "Official Rust Channel serialization outlet under Linux guard; not JS/WebView/end/unregister/UI/production-context/cache-miss integration",
+  "source_run": "https://github.com/678mjoe/JMCL-frontend/actions/runs/42399164806",
+  "raw_evidence_file": "raw-evidence.json",
+  "raw_evidence_sha256": "0577c09aaa61c6e95249d6ddc91302764853cf31fb47c20d5d71938512cd62b8",
+  "raw_evidence_files": [
+    {
+      "group": "tauri-channel-evidence",
+      "file": "report.json",
+      "bytes": 7553,
+      "sha256": "9e5f455afd68b6ad467859754a252f0e824bd9b2d19206d253e8162ebd9ece22",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "test.log",
+      "bytes": 2441,
+      "sha256": "e8107473a39060647aadf21d6d3bba286054f40c89d34fb9db35edcde0c0ce47",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "inventory.log",
+      "bytes": 86,
+      "sha256": "f3db0b9203d288b3a1e92e10bccbd8de9ef9735b35a16edfefbaa847bcf191c6",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "build.log",
+      "bytes": 439093,
+      "sha256": "480ba18d68c97938ee7a0e24c8d7abbcd53f78e5aab8d6320b8d2d095a33f59e",
+      "chunks": 36
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "build.phase.json",
+      "bytes": 769,
+      "sha256": "4dd55ce5935d30752d461105bc5735a54a5e5860aa7c92f08c4ebacef64adbbf",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "build.stderr.log",
+      "bytes": 11811,
+      "sha256": "04e7faea095072f324116406f1a60e6e3e48ffd74055a3b53025c601e14b6123",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "core-head.log",
+      "bytes": 41,
+      "sha256": "786dd5a0f6ecc3b28b583a8e01f4f79fb8fd249860ed0467a30e60c62c77097d",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "core-head.phase.json",
+      "bytes": 536,
+      "sha256": "8801476ecf6152500d026dc74db21a6ec8a4b4968e955b0943bb5ae76e927f41",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "core-head.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "core-tree.log",
+      "bytes": 41,
+      "sha256": "b8a3791db49a061e9b557bd849b15ccc20431c885ee397d147dd948b9ca021ee",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "core-tree.phase.json",
+      "bytes": 543,
+      "sha256": "55b2a7d3bf96217a5a7f441184b1d42f529351a3aa5a60bcadd9dbcb5afd07c5",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "core-tree.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "frontend-head.log",
+      "bytes": 41,
+      "sha256": "9aec2f89342440050ff3b8f14f0d09760f18b7a9a44a8bd8c86cd7bce2bc39e5",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "frontend-head.phase.json",
+      "bytes": 544,
+      "sha256": "492fe4b01daa4f9e8a9b673af46153da2dd0b5f19d76c3c35f3b36655b35ad9d",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "frontend-head.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "frontend-tree.log",
+      "bytes": 41,
+      "sha256": "876e0e0e43a3d18f15056ced1b46cec3d05839f9b6a91d4d4c08dc1d07dc8c3f",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "frontend-tree.phase.json",
+      "bytes": 551,
+      "sha256": "88911c067b03715efbe40056ce144a643cb771b89482270642a321d9916eea35",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "frontend-tree.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "guard-selftest.log",
+      "bytes": 264,
+      "sha256": "388ad7938d1710522abed13f4255ff9005fe3944ecd7e4db8d819900d44a6ee1",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "guard-selftest.phase.json",
+      "bytes": 669,
+      "sha256": "cc5b73e26b7c663b91cbb44f5521994d13a0d5c724f115b5594ba8b278466409",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "guard-selftest.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "inventory.phase.json",
+      "bytes": 862,
+      "sha256": "f216efb9fdbc2665a35159626045068f174d12844320e7a625ae0c1e5deb964c",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "inventory.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "rustc-host.log",
+      "bytes": 196,
+      "sha256": "f22d5e4e9ced367e774ce5bc140d9e6b1235c1882fec80d011044851f3ae6369",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "rustc-host.phase.json",
+      "bytes": 523,
+      "sha256": "c91581d5a99dd907a93bb002137d87b361ab6f2bd614225c21824f375cde80e1",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "rustc-host.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-build.phase.json",
+      "bytes": 739,
+      "sha256": "d87273a3a3cf27bc17d8332e4e6851f5e0a4a7eadb4e00896e20d37d62d2bdfc",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-build.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-missing.log",
+      "bytes": 32,
+      "sha256": "f929135ed5b2b942260bfa680a2a7af41ed43c21e3ed0ba2c7879d3b57a46bef",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-missing.phase.json",
+      "bytes": 771,
+      "sha256": "9e5f41f94e349ca2a6ece6d51bb54704e71470525dd717405f2a94f038e077a9",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-missing.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-success.log",
+      "bytes": 54,
+      "sha256": "6691d121ad40cfc3c35b58747fcb296e2293c70f50672171f4404fd75940e41d",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-success.phase.json",
+      "bytes": 771,
+      "sha256": "6bd902528be7fbb01241e32e520d61eef5aa354c4c93d23ec005849537145c70",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "spawn-success.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "system-dependencies.log",
+      "bytes": 36,
+      "sha256": "32a0334ed1971de1836a273c45f28ba1ff1fa45f3e8d89f36f8b4e768cc6e790",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "system-dependencies.phase.json",
+      "bytes": 654,
+      "sha256": "2f09b2510f738ea7587234f7d338275feed2ad343b400f7acf6f9d1eda80794c",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "system-dependencies.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "test.phase.json",
+      "bytes": 883,
+      "sha256": "3513fde7e4f4933ea43beb2714962bd418ac57537bd68027f1c52ceff06890ab",
+      "chunks": 1
+    },
+    {
+      "group": "tauri-channel-evidence",
+      "file": "test.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "core-build-evidence",
+      "file": "binary.sha256",
+      "bytes": 123,
+      "sha256": "9e109c26d64c8a6cb30832e6a6a560d47e028ba020878c2b3c33d9b2295fe10b",
+      "chunks": 1
+    },
+    {
+      "group": "core-build-evidence",
+      "file": "build.log",
+      "bytes": 8442,
+      "sha256": "96c7469a958f208579547e48e8a093e089b84faf4e5c573f62682438e92eac5f",
+      "chunks": 1
+    },
+    {
+      "group": "core-build-evidence",
+      "file": "core-status.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 0
+    },
+    {
+      "group": "core-build-evidence",
+      "file": "fixture-source.txt",
+      "bytes": 82,
+      "sha256": "dc6ed859f16c9b9e63017e1cbda826bd61da4c55a7224efb9d5f683289dec36b",
+      "chunks": 1
+    }
+  ],
+  "source_kind": "Public GitHub Actions run; per-file original bytes reconstructed from lossless chunks and independently checked."
+}
