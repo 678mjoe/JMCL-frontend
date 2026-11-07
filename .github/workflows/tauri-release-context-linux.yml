@@ -1,0 +1,139 @@
+name: Guarded release Tauri context (Linux MockRuntime)
+on:
+  push:
+    branches: [tauri-release-context-linux-20261107]
+    paths:
+      - '.github/workflows/tauri-release-context-linux.yml'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/src/tauri_rust_core_contract.rs'
+      - 'scripts/launch_network_guard.py'
+      - 'scripts/fixtures/launch_spawn_gate.rs'
+      - 'scripts/test-tauri-rust-core.py'
+      - 'scripts/test-tauri-rust-core-guards.py'
+      - 'scripts/emit-tauri-evidence.py'
+      - 'scripts/test-emit-tauri-evidence.py'
+      - 'docs/acceptance/tauri-overlay.sha256'
+permissions:
+  contents: read
+concurrency:
+  group: tauri-release-context-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release-context:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/tauri-release-context-linux-20261107'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      CARGO_INCREMENTAL: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: fixture
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: 678mjoe/JMCL-frontend
+          ref: 9c0fd81ce8109c1e35229560fee31308ca114ef5
+          path: frontend
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: bdd6cb3e55d69cb9e0e02037d251635e289207a8
+          path: core
+          persist-credentials: false
+      - name: Install official distribution native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential pkg-config libgtk-3-dev libdbus-1-dev libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt
+          rustup default 1.99.1
+          test "$(rustc -vV | sed -n 's/^host: //p')" = x86_64-unknown-linux-gnu
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.4
+      - name: Overlay only the reviewed test fixture on frozen frontend
+        run: |
+          test "$(git -C frontend rev-parse HEAD^{tree})" = 48ea91981bdb7b375bca8e9bc47738b6c3dde4d1
+          test "$(git -C core rev-parse HEAD^{tree})" = 0e8e901bc587cf3c6d7dc1ba78821c4701785e20
+          (cd fixture && sha256sum --check docs/acceptance/tauri-overlay.sha256)
+          mkdir -p frontend/scripts/fixtures
+          for path in src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/lib.rs src-tauri/src/tauri_rust_core_contract.rs scripts/test-tauri-rust-core.py scripts/test-tauri-rust-core-guards.py scripts/launch_network_guard.py scripts/fixtures/launch_spawn_gate.rs; do
+            cp "fixture/$path" "frontend/$path"
+          done
+          rustfmt --edition 2021 --check frontend/src-tauri/src/tauri_rust_core_contract.rs
+          git -C frontend diff --check
+          PYTHONDONTWRITEBYTECODE=1 python frontend/scripts/test-tauri-rust-core-guards.py
+          PYTHONDONTWRITEBYTECODE=1 python fixture/scripts/test-emit-tauri-evidence.py
+      - name: Build real frontend dist and pinned release RustCore; stage with original script
+        run: |
+          mkdir -p "$RUNNER_TEMP/core-build-evidence"
+          git -C fixture rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/core-build-evidence/fixture-source.txt"
+          git -C core status --porcelain > "$RUNNER_TEMP/core-build-evidence/core-status.txt"
+          test ! -s "$RUNNER_TEMP/core-build-evidence/core-status.txt"
+          : > "$RUNNER_TEMP/core-build-evidence/cleared-environment.log"
+          while IFS= read -r name; do
+            case "$name" in
+              JMCL_*|TAURI_*|VITE_*|CARGO_TARGET_*|CARGO_BUILD_*|CARGO_PROFILE_*|CARGO_ENCODED_*|RUSTFLAGS*|RUSTDOCFLAGS*|RUSTC|RUSTDOC|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|NAPI_RS_*|RUSTUP_TOOLCHAIN)
+                printf 'cleared override: %s\n' "$name" >> "$RUNNER_TEMP/core-build-evidence/cleared-environment.log"
+                unset "$name" ;;
+            esac
+            case "${name,,}" in
+              *proxy) unset "$name" ;;
+            esac
+          done < <(compgen -e)
+          test "$(bun --version)" = 1.4.4
+          rustc --version | grep -E "^rustc 1\.99\.1 "
+          python -I -S - "$GITHUB_WORKSPACE/frontend" "$RUNNER_TEMP/core-build-evidence/frontend-inputs-before.json" <<'PY'
+          import importlib.util, json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          spec = importlib.util.spec_from_file_location('runner', root / 'scripts/test-tauri-rust-core.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          checked = module.verify_cargo_config([root / 'src-tauri', root.parent / 'core/rust'])
+          (Path(sys.argv[2]).parent / 'cargo-config-directories.json').write_text(json.dumps(checked, indent=2) + '\n')
+          Path(sys.argv[2]).write_text(json.dumps(module.source_snapshot(root), indent=2) + '\n')
+          PY
+          (cd frontend && bun install --frozen-lockfile && bun run build) 2>&1 | tee "$RUNNER_TEMP/core-build-evidence/frontend-build.log"
+          cargo fetch --locked --manifest-path core/rust/Cargo.toml
+          CARGO_TARGET_DIR="$RUNNER_TEMP/core-target" cargo build --offline --locked --release --manifest-path core/rust/Cargo.toml --bin jmcl-core-rust 2>&1 | tee "$RUNNER_TEMP/core-build-evidence/build.log"
+          sha256sum "$RUNNER_TEMP/core-target/release/jmcl-core-rust" | tee "$RUNNER_TEMP/core-build-evidence/binary.sha256"
+          bash frontend/scripts/prepare-sidecar.sh "$RUNNER_TEMP/core-target/release/jmcl-core-rust" 2>&1 | tee "$RUNNER_TEMP/core-build-evidence/staging.log"
+          sha256sum frontend/src-tauri/binaries/jmcl-core-x86_64-unknown-linux-gnu | tee "$RUNNER_TEMP/core-build-evidence/staged.sha256"
+          cmp "$RUNNER_TEMP/core-target/release/jmcl-core-rust" frontend/src-tauri/binaries/jmcl-core-x86_64-unknown-linux-gnu
+          cargo fetch --locked --manifest-path frontend/src-tauri/Cargo.toml
+          python -I -S - "$GITHUB_WORKSPACE/frontend" "$RUNNER_TEMP/core-build-evidence" <<'PY'
+          import importlib.util, json, sys
+          from pathlib import Path
+          root, out = Path(sys.argv[1]), Path(sys.argv[2])
+          spec = importlib.util.spec_from_file_location('runner', root / 'scripts/test-tauri-rust-core.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          module.verify_cargo_config([root / 'src-tauri', root.parent / 'core/rust'])
+          after = module.source_snapshot(root)
+          (out / 'frontend-inputs-after.json').write_text(json.dumps(after, indent=2) + '\n')
+          if after != json.loads((out / 'frontend-inputs-before.json').read_text()):
+              raise SystemExit('frontend build inputs changed')
+          PY
+      - name: Execute fixed guard gates and exactly one release context lifecycle contract
+        run: |
+          python -I -S frontend/scripts/test-tauri-rust-core.py \
+            --core-source "$GITHUB_WORKSPACE/core" \
+            --core-binary "$RUNNER_TEMP/core-target/release/jmcl-core-rust" \
+            --expected-core-sha256 "$(cut -d ' ' -f1 "$RUNNER_TEMP/core-build-evidence/binary.sha256")" \
+            --output "$RUNNER_TEMP/tauri-release-context-evidence"
+      - name: Print bounded lossless evidence even on failure
+        if: always()
+        timeout-minutes: 2
+        run: |
+          python fixture/scripts/emit-tauri-evidence.py "$RUNNER_TEMP/tauri-release-context-evidence" "$RUNNER_TEMP/core-build-evidence"
+
+# No Chromium, real WebView, Java, services, credentials, shipping package,
+# existing workflow edits, production sidecar pin updates, or artifact upload.
