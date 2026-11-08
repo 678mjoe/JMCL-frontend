@@ -1,0 +1,2 @@
+{"protocol":1,"id":"s5-1","event":"result","result":{"stage":"instance.get","id":"fabric-owned","name":"Owned synthetic Fabric","version_id":"synthetic","fabric_loader":"0.0.0-owned","neoforge_version":null,"forge_version":null,"source":"official","installed":true}}
+{"protocol":1,"id":"s5-2","event":"result","result":{"stage":"instance.list","instances":[{"id":"fabric-owned","name":"Owned synthetic Fabric","version_id":"synthetic","fabric_loader":"0.0.0-owned","neoforge_version":null,"forge_version":null,"source":"official","installed":true}]}}

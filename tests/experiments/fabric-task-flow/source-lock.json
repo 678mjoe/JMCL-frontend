@@ -1,0 +1,127 @@
+{
+  "frontend_repository": "678mjoe/JMCL-frontend",
+  "frontend_commit": "9c0fd81ce8109c1e35229560fee31308ca114ef5",
+  "core_repository": "678mjoe/JMCLCore",
+  "core_commit": "bdd6cb3e55d69cb9e0e02037d251635e289207a8",
+  "frontend_files": [
+    {
+      "path": "src/lib/curseforge.ts",
+      "git_blob": "b09989438cd333137d13473ad8ba167ec437321e",
+      "sha256": "62db8b94cb18eb6df6536a5031f964026121131ed80752645406655a6eb625a3"
+    },
+    {
+      "path": "src/lib/endpointMock.ts",
+      "git_blob": "3c7799695034185dc01615238f07dd31e3f89ec1",
+      "sha256": "c298ede30264685673261963057c117ed199e1ff7b1c197b6ae183720df61495"
+    },
+    {
+      "path": "src/lib/endpoints.ts",
+      "git_blob": "11ffe791977f7c696144d9576c88c075469d6daa",
+      "sha256": "de37324377c9de689ac4401ada4e0caa81a5b09508b134ad54bdfdd37974516a"
+    },
+    {
+      "path": "src/lib/installProgress.ts",
+      "git_blob": "c926b577aed7c058d69515711485c868b45031db",
+      "sha256": "ee3992e639b5d0e31ca3a64d8d3a5bb1b819802b7af4bc3d2e4a41f41ea5ab1d"
+    },
+    {
+      "path": "src/lib/instanceCoordinator.ts",
+      "git_blob": "3fa58dcfda9e76f1266d98acb878d1ed810ed7f7",
+      "sha256": "1abb3f729caeb0838ce8ba5c27c28afd4f5822c5a41f25880d62a752aa1f409e"
+    },
+    {
+      "path": "src/lib/instanceLaunch.ts",
+      "git_blob": "cadf66e30a171aade7120b12485aa6bcd30ab139",
+      "sha256": "570009443273aadd7ee67abfa8fea1c4d70714bc2082a5e7f4d6394ebbe98eac"
+    },
+    {
+      "path": "src/lib/javaPreferences.ts",
+      "git_blob": "305453c44db685905e3e1f9e6b4953dab184b468",
+      "sha256": "2b2b5833d5d055ff5d9126f159db7cffc13955ce60b6ac50cee14f031ecf1c66"
+    },
+    {
+      "path": "src/lib/launchRunner.ts",
+      "git_blob": "c08903495fb81573762d26e91f59318eac921547",
+      "sha256": "e164becc540bd812cdf98d7a8f500b0ca6041d5e0893821436c44c48c31a753d"
+    },
+    {
+      "path": "src/lib/launcher.tsx",
+      "git_blob": "50a7dec2f9cdb38764cf2565f439e1750ade6229",
+      "sha256": "ef271f267f9bdd982a478df6291697b19be5f0c0305b188e38a379c0f580e833"
+    },
+    {
+      "path": "src/lib/logBuffer.ts",
+      "git_blob": "c19c03717593130e05183d7b27482761b36423d6",
+      "sha256": "cd155426da73ae46d4d8f3f1d386d0400cbef8e1a3b6df318d5a365307dd7992"
+    },
+    {
+      "path": "src/lib/mockTransport.ts",
+      "git_blob": "d7ffcec77f6042d75c40c1fe658fbde4e76ae76d",
+      "sha256": "18f67b474e6fa6cc4b5954c835f5ebc9ae0ff8c0ddc3c4b7bac21a384aa32504"
+    },
+    {
+      "path": "src/lib/modpackImport.ts",
+      "git_blob": "39019af286130cc40fcf7e4684723d7c11ee6149",
+      "sha256": "4c7ad164536a8cf4d229d9686d537b1f44b3c756ac7bc089a4f9f5267a76b906"
+    },
+    {
+      "path": "src/lib/rpc.ts",
+      "git_blob": "dab5cf740535e23a37333c89d03e0ff84fb35e2d",
+      "sha256": "1931fcb5848e15cfcda1417946bb0df99744babb6ef3c84f440ef6c33fa8c8cf"
+    },
+    {
+      "path": "src/lib/serverMock.ts",
+      "git_blob": "8dff12d98af32d92748e7f11122bbd726c69b127",
+      "sha256": "53853508896882db750048c5af62ef49e1116340f4baca7527bace243777b3ea"
+    },
+    {
+      "path": "src/lib/serverStatusCache.ts",
+      "git_blob": "5f133205c8bf18bd61bf69fc90c0c0bc9c2567d8",
+      "sha256": "0443f7908a11c74c44899751b54119a72e811e76181db7ddef5778e77134b94a"
+    },
+    {
+      "path": "src/lib/sessionLifecycle.ts",
+      "git_blob": "238dc96f1db5029806e8175de76035bed5e1593c",
+      "sha256": "5660fd1720d183b5de825f03af3d17502c8374353e79e0786fdabbe7dd0e34c2"
+    },
+    {
+      "path": "src/lib/storeGc.ts",
+      "git_blob": "cf2a164388f22e225dc19b6dc333c48e405942ea",
+      "sha256": "9c7ab89957cd5f8f8dc73f369bc083fa03f2b059a2d1bb32256f31ac690fadfe"
+    },
+    {
+      "path": "src/lib/tasks.tsx",
+      "git_blob": "bd5d229f427bf643bd229f9b204f3c90bf45bcce",
+      "sha256": "b7109fdc14faf4ca8341ca9f05207ba28592dc804d6258a3724cef8b7b1d737c"
+    },
+    {
+      "path": "src/lib/transportMode.ts",
+      "git_blob": "92389264ac98e4e3242aeff4d745b4fcec28c437",
+      "sha256": "88d0dc93e77ed7ae4c462bb2b82207d724fc1317eeefbfedd8b668f1bb65bcc9"
+    },
+    {
+      "path": "src/lib/types.ts",
+      "git_blob": "13d1e02c28b953f8daac4d3f8abed2fd1a1c8759",
+      "sha256": "3ce23c20866b80ffdf1c9cb71d0c2559b7608c12ca4ba1473eb1c39dcc93f5d0"
+    }
+  ],
+  "guard_path": "rust/compat/frontend_bridge/launch_network_guard.py",
+  "guard_sha256": "2790712aaf757536329cc1ac87c73931f04bf1a1f6dc3f375f782db08423e719",
+  "spawn_probe_path": "rust/compat/frontend_bridge/tests/fixtures/launch_spawn_gate.rs",
+  "spawn_probe_sha256": "77b2f1569434d5e0a7779e32f8dd6a66a7badddf9040dfccb9a5436679273767",
+  "native_error_mapping": {
+    "path": "src-tauri/src/session.rs",
+    "git_blob": "075c0dd744ddaea0f8dd01711b7bffe0e3cbaeb6"
+  },
+  "observed_versions": {
+    "bun": "1.4.4",
+    "rust": "1.99.1",
+    "cargo": "1.99.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "happy-dom": "20.14.5",
+    "ws": "8.21.3",
+    "@tauri-apps/api": "2.12.4"
+  },
+  "scope": "Source identities and observed versions only. Not the full 816-entry execution lock or a turnkey portable runner."
+}

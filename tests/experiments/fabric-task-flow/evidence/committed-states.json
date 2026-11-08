@@ -1,0 +1,476 @@
+{
+  "format": "Derived path-free projection; not raw React snapshot bytes. Only task kind/status/stage/message/progress/installProgress retained. No snapshots synthesized.",
+  "snapshots": [
+    {
+      "commit_index": 0,
+      "tasks": []
+    },
+    {
+      "commit_index": 1,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "error",
+          "stage": "task.stage.validate",
+          "message": "VERSION_RESOLUTION_FAILED: Failed to resolve the Minecraft version and loader",
+          "progress": null,
+          "installProgress": null
+        }
+      ]
+    },
+    {
+      "commit_index": 2,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        }
+      ]
+    },
+    {
+      "commit_index": 3,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": null,
+          "installProgress": {
+            "stage": "download",
+            "progress": null,
+            "detail": null
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 4,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 0,
+            "filesTotal": 2,
+            "bytesProcessed": 0,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 0,
+              "filesTotal": 2,
+              "bytesProcessed": 0,
+              "bytesTotal": 84
+            },
+            "detail": null
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 5,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 0,
+            "filesTotal": 2,
+            "bytesProcessed": 0,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 0,
+              "filesTotal": 2,
+              "bytesProcessed": 0,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 6,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 1,
+            "filesTotal": 2,
+            "bytesProcessed": 38,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 1,
+              "filesTotal": 2,
+              "bytesProcessed": 38,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 7,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 1,
+            "filesTotal": 2,
+            "bytesProcessed": 38,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 1,
+              "filesTotal": 2,
+              "bytesProcessed": 38,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 8,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 2,
+            "filesTotal": 2,
+            "bytesProcessed": 84,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 2,
+              "filesTotal": 2,
+              "bytesProcessed": 84,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 9,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "success",
+          "stage": "task.stage.prepare",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        }
+      ]
+    },
+    {
+      "commit_index": 10,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 0,
+            "filesTotal": 2,
+            "bytesProcessed": 0,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 0,
+              "filesTotal": 2,
+              "bytesProcessed": 0,
+              "bytesTotal": 84
+            },
+            "detail": null
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 11,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 0,
+            "filesTotal": 2,
+            "bytesProcessed": 0,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 0,
+              "filesTotal": 2,
+              "bytesProcessed": 0,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 12,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 1,
+            "filesTotal": 2,
+            "bytesProcessed": 38,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 1,
+              "filesTotal": 2,
+              "bytesProcessed": 38,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 13,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 1,
+            "filesTotal": 2,
+            "bytesProcessed": 38,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 1,
+              "filesTotal": 2,
+              "bytesProcessed": 38,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 14,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "running",
+          "stage": "task.stage.download",
+          "message": null,
+          "progress": {
+            "filesCompleted": 2,
+            "filesTotal": 2,
+            "bytesProcessed": 84,
+            "bytesTotal": 84
+          },
+          "installProgress": {
+            "stage": "download",
+            "progress": {
+              "filesCompleted": 2,
+              "filesTotal": 2,
+              "bytesProcessed": 84,
+              "bytesTotal": 84
+            },
+            "detail": {
+              "kind": "file",
+              "status": "cached"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "commit_index": 15,
+      "tasks": [
+        {
+          "kind": "validate",
+          "status": "success",
+          "stage": "task.stage.validate",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        },
+        {
+          "kind": "install",
+          "status": "success",
+          "stage": "task.stage.prepare",
+          "message": null,
+          "progress": null,
+          "installProgress": null
+        }
+      ]
+    }
+  ]
+}

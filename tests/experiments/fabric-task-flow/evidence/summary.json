@@ -1,0 +1,89 @@
+{
+  "source_frontend": "9c0fd81ce8109c1e35229560fee31308ca114ef5",
+  "source_core": "bdd6cb3e55d69cb9e0e02037d251635e289207a8",
+  "prior_execution_passed": true,
+  "published_import_adaptation_business_rerun": false,
+  "counts": {
+    "version.resolve": 2,
+    "install.execute": 2,
+    "install.prepare": 2,
+    "instance.get": 1,
+    "instance.list": 1
+  },
+  "sessions": [
+    {
+      "session": 1,
+      "code": 0,
+      "signal": null
+    },
+    {
+      "session": 2,
+      "code": 0,
+      "signal": null
+    },
+    {
+      "session": 3,
+      "code": 0,
+      "signal": null
+    },
+    {
+      "session": 4,
+      "code": 0,
+      "signal": null
+    },
+    {
+      "session": 5,
+      "code": 0,
+      "signal": null
+    }
+  ],
+  "errors": [
+    {
+      "session": 1,
+      "code": "VERSION_RESOLUTION_FAILED",
+      "message": "Failed to resolve the Minecraft version and loader"
+    }
+  ],
+  "events": 10,
+  "cached_file_events": 4,
+  "bytes_transferred": 0,
+  "committed_snapshots": 16,
+  "separate_prepare_running_snapshot_observed": false,
+  "receipt_before_after_bytes_equal": true,
+  "receipt": {
+    "schema_version": 1,
+    "version_id": "synthetic",
+    "fabric_loader": "0.0.0-owned",
+    "neoforge_version": null,
+    "forge_version": null,
+    "source": "official",
+    "os": "linux",
+    "arch": "x86_64"
+  },
+  "manifest": {
+    "stage": "instance.get",
+    "id": "fabric-owned",
+    "name": "Owned synthetic Fabric",
+    "version_id": "synthetic",
+    "fabric_loader": "0.0.0-owned",
+    "neoforge_version": null,
+    "forge_version": null,
+    "source": "official",
+    "installed": true
+  },
+  "six_gates_passed": true,
+  "all_supervisors_no_children": true,
+  "all_supervisors_group_clear": true,
+  "pinned_inputs_unchanged": 816,
+  "original_harness_sha256": "826f8d3618d24d09c885992ab35d330486b6ab4ea0023ee158bba0c5ef128bf4",
+  "original_bundle_sha256": "09b811efda113a050c82e69ef91b55526d972d0069cedffbbe5d1871e87d6f0a",
+  "core_binary_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+  "raw_stdout_sha256": {
+    "evidence/session-1.stdout.jsonl": "bb509d800c8dc69f78320daae2288cacf81ca97da96e3cb9614a61cdf5bdc165",
+    "evidence/session-2.stdout.jsonl": "7f51a42e793e73e531d11f5198bf01f88f05921349089c4e00429c713f0e90dc",
+    "evidence/session-3.stdout.jsonl": "0c7b08c563c66689f8c2e4a5df5719b7a541e3912d3204a8e29f8281d76a9781",
+    "evidence/session-4.stdout.jsonl": "2026a749b270f18fdbac7b8764f275525912a0d3e3013a8535a18f4642f56ad2",
+    "evidence/session-5.stdout.jsonl": "fc03a776bf4be5b990c1b0dae152a4603b09ab9da0bfecdfcba02ad89aac66ef"
+  },
+  "public_evidence_omissions": "No stdin requests, original absolute-path state keys, PID/supervisor logs, absolute-path pin map, archive, binary or dependency contents included."
+}

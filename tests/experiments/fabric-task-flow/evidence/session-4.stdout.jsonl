@@ -1,0 +1,7 @@
+{"protocol":1,"id":"s4-1","event":"started","source":"official","started":{"stage":"download","version_id":"fabric-loader-0.0.0-owned-synthetic","files_total":2,"bytes_total":84}}
+{"protocol":1,"id":"s4-1","event":"file","source":"official","file":{"path":"versions/fabric-loader-0.0.0-owned-synthetic/fabric-loader-0.0.0-owned-synthetic.jar","status":"cached","placement":"hard_link","size":38,"attempts":0}}
+{"protocol":1,"id":"s4-1","event":"progress","source":"official","progress":{"files_completed":1,"files_total":2,"bytes_verified":38,"bytes_processed":38,"bytes_total":84,"bytes_transferred":0}}
+{"protocol":1,"id":"s4-1","event":"file","source":"official","file":{"path":"libraries/org/owned/inert/1/inert-1.jar","status":"cached","placement":"hard_link","size":46,"attempts":0}}
+{"protocol":1,"id":"s4-1","event":"progress","source":"official","progress":{"files_completed":2,"files_total":2,"bytes_verified":84,"bytes_processed":84,"bytes_total":84,"bytes_transferred":0}}
+{"protocol":1,"id":"s4-1","event":"result","source":"official","result":{"stage":"download","version_id":"synthetic","files_total":2,"files_downloaded":0,"files_cached":2,"files_hard_linked":2,"files_copied":0,"bytes_verified":84,"bytes_transferred":0}}
+{"protocol":1,"id":"s4-2","event":"result","source":"official","result":{"stage":"prepare","version_id":"synthetic","native_directory":".jmcl/runtime/natives/57ac58edcaf7c2a3","native_files":0,"projections_created":0,"projections_cached":0}}
