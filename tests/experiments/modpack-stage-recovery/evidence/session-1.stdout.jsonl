@@ -1,0 +1,8 @@
+{"protocol":1,"id":"s1-1","event":"result","result":{"stage":"instance.list","instances":[]}}
+{"protocol":1,"id":"s1-2","event":"result","result":{"stage":"modpack.install","id":"recovery","name":"Offline recovery fixture offline-v1","version_id":"synthetic","loader":null,"files_installed":0,"files_skipped":0,"overrides_written":1}}
+{"protocol":1,"id":"s1-3","event":"result","result":{"stage":"instance.get","id":"recovery","name":"Offline recovery fixture offline-v1","version_id":"synthetic","fabric_loader":null,"neoforge_version":null,"forge_version":null,"source":"official","installed":false}}
+{"protocol":1,"id":"s1-4","event":"started","source":"official","started":{"stage":"download","version_id":"synthetic","files_total":1,"bytes_total":40}}
+{"protocol":1,"id":"s1-4","event":"file","source":"official","file":{"path":"versions/synthetic/synthetic.jar","status":"cached","placement":"hard_link","size":40,"attempts":0}}
+{"protocol":1,"id":"s1-4","event":"progress","source":"official","progress":{"files_completed":1,"files_total":1,"bytes_verified":40,"bytes_processed":40,"bytes_total":40,"bytes_transferred":0}}
+{"protocol":1,"id":"s1-4","event":"result","source":"official","result":{"stage":"download","version_id":"synthetic","files_total":1,"files_downloaded":0,"files_cached":1,"files_hard_linked":1,"files_copied":0,"bytes_verified":40,"bytes_transferred":0}}
+{"protocol":1,"id":"s1-5","event":"error","error":{"code":"PREPARE_FAILED","message":"Failed to prepare runtime files"}}

@@ -1,0 +1,2 @@
+{"protocol":1,"id":"s2-1","event":"result","result":{"stage":"instance.get","id":"recovery","name":"Offline recovery fixture offline-v1","version_id":"synthetic","fabric_loader":null,"neoforge_version":null,"forge_version":null,"source":"official","installed":true}}
+{"protocol":1,"id":"s2-2","event":"result","source":"official","result":{"stage":"prepare","version_id":"synthetic","native_directory":".jmcl/runtime/natives/bd396d511a2aaae2","native_files":0,"projections_created":0,"projections_cached":0}}

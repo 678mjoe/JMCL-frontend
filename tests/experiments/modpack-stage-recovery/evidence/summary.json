@@ -1,0 +1,50 @@
+{
+  "description": "Prior local successful run, not a rerun of the portable runner in this directory.",
+  "frontend_commit": "9c0fd81ce8109c1e35229560fee31308ca114ef5",
+  "core_commit": "bdd6cb3e55d69cb9e0e02037d251635e289207a8",
+  "counts": {
+    "instance.list": 1,
+    "modpack.install": 1,
+    "instance.get": 3,
+    "install.execute": 1,
+    "install.prepare": 2
+  },
+  "sessions": 3,
+  "second_session_methods": [
+    "instance.get",
+    "install.prepare"
+  ],
+  "final_manifest": {
+    "stage": "instance.get",
+    "id": "recovery",
+    "name": "Offline recovery fixture offline-v1",
+    "version_id": "synthetic",
+    "fabric_loader": null,
+    "neoforge_version": null,
+    "forge_version": null,
+    "source": "official",
+    "installed": true
+  },
+  "expected_error": "PREPARE_FAILED",
+  "all_session_exits": 0,
+  "all_supervisors_reached_echild": true,
+  "all_owned_process_groups_gone": true,
+  "preflight_entries": 259,
+  "independent_bun_pin": 1,
+  "before_after_entries": 260,
+  "all_before_after_hashes_equal": true,
+  "jar_length": 40,
+  "jar_sha1": "eccc741f55155e09c57c897dc74e9bc9528519e9",
+  "jar_sha256": "64bfaab4dc54f3a8418eabbe3572e9d676d337b8a75e41b65472582944c51485",
+  "hardlink_same_device_inode": true,
+  "readonly": true,
+  "link_count": 2,
+  "receipt_sha256": "44e70e856e562426ae52aeaea39e96154d174576b420de4d0b174883e9c7e845",
+  "tested_core_binary_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+  "stdout_sha256": {
+    "session-1.stdout.jsonl": "8be005d152136a908d1cd869abe48ae59c075399ebb5fa536bb8c7d9643864ff",
+    "session-2.stdout.jsonl": "c51624097c57715a1978aa974f70849039e699e86f0bb5768b84dfe8356655f3",
+    "session-3.stdout.jsonl": "3f052fb5180fe5622df4bbaaaa69eab866173523cbe118ea19834f47f19d37c7"
+  },
+  "scope": "Original controller and CoreSession typed methods via test request/lifecycle seam and local byte relay; real Core RPC. Not NativeSession, Tauri IPC, UI rendering, Java, game, or app-restart persistence. Only Core and its descendants are kernel-network-confined; Bun and relay are not."
+}

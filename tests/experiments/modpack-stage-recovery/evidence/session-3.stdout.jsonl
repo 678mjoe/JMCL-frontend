@@ -1,0 +1,1 @@
+{"protocol":1,"id":"s3-1","event":"result","result":{"stage":"instance.get","id":"recovery","name":"Offline recovery fixture offline-v1","version_id":"synthetic","fabric_loader":null,"neoforge_version":null,"forge_version":null,"source":"official","installed":true}}
