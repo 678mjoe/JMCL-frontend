@@ -1,0 +1,113 @@
+name: JMCL Rust preview qualification (draft; no distribution)
+on:
+  push:
+    branches: [qualify/rust-headless-20261120]
+    paths: ['.github/workflows/rust-preview-qualification.yml']
+permissions:
+  contents: read
+env:
+  FRONTEND: 83e3fa749c56af79d1760b9e85c277d84286ca19
+  FRONTEND_TREE: 973068b5ab2717ee192b6c03bc73fc7b35b8c969
+  CORE: 0b937fb1e68067a76b4324f22fb7af9a2d9cbd18
+  CORE_TREE: f042df58f5551fdbd3f275a20d6e7adcd0cc7f4b
+  CORE_LOCK: f86b8a710c59a0a34ffae55482858c8b83ce9d57
+  VERIFIER_REV: 60fcf70f9760ebae30cb524988258605615c7f98
+  VERIFIER_BLOB: 5abc18202e5a47826280a4a84d08a3be06916aa2
+  BUN_LOCK: 4b6d360cec70b424fbae3760bd11afbeb5c98df0
+  RUST_VERSION: 1.99.1
+  BUN_VERSION: 1.4.4
+jobs:
+  qualify:
+    if: github.repository == '678mjoe/JMCL-frontend' && github.event.repository.visibility == 'public' && github.ref == 'refs/heads/qualify/rust-headless-20261120' && github.event.created == true && github.event.deleted == false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - { os: macos-15, target: aarch64-apple-darwin, bundle: app, suffix: '' }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, bundle: nsis, suffix: '.exe' }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          path: frontend
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: ${{ env.CORE }}
+          path: frontend/.ci-core
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.VERIFIER_REV }}
+          path: verifier
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Validate pins and target
+        run: |
+          test "$(git -C frontend rev-parse HEAD^)" = "$FRONTEND"
+          test "$(git -C frontend rev-parse 'HEAD^^{tree}')" = "$FRONTEND_TREE"
+          test "$(git -C frontend hash-object bun.lock)" = "$BUN_LOCK"
+          test "$(git -C frontend/.ci-core rev-parse HEAD)" = "$CORE"
+          test "$(git -C frontend/.ci-core rev-parse 'HEAD^{tree}')" = "$CORE_TREE"
+          test "$(git -C frontend/.ci-core hash-object rust/Cargo.lock)" = "$CORE_LOCK"
+          test "$(git -C verifier rev-parse HEAD)" = "$VERIFIER_REV"
+          test "$(git -C verifier hash-object scripts/verify-preview-package.py)" = "$VERIFIER_BLOB"
+          test "$(git -C frontend diff --name-only HEAD^ HEAD | LC_ALL=C sort)" = "$(printf '%s\n' \
+            .github/workflows/rust-preview-qualification.yml \
+            qualification-web/index.html \
+            scripts/verify-rust-qualification.py \
+            src-tauri/Cargo.toml \
+            src-tauri/src/lib.rs \
+            src-tauri/src/rust_qualification.rs \
+            src-tauri/tauri.rust-qualification.conf.json | LC_ALL=C sort)"
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt
+          rustup default "$RUST_VERSION"
+          rustc -vV
+          test "$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')" = '${{ matrix.target }}'
+          test "$(bun --version)" = "$BUN_VERSION"
+      - name: Prepare locked tool dependencies and only the Tauri CLI
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG
+          cargo fetch --locked --manifest-path .ci-core/rust/Cargo.toml
+          cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+          bun install --frozen-lockfile --ignore-scripts
+          test "$(bun run tauri --version | tail -n1 | tr -d '\r')" = "tauri-cli 2.11.4"
+      - name: Build and stage only explicit Rust Core (no test or runtime execution)
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG JMCL_CORE VITE_JMCL_TRANSPORT JMCL_REVIEWED_LARGE_MRPACK_SIDECAR_SHA256
+          cargo build --locked --offline --release --manifest-path .ci-core/rust/Cargo.toml --bin jmcl-core-rust
+          src=".ci-core/rust/target/release/jmcl-core-rust${{ matrix.suffix }}"
+          bash scripts/prepare-sidecar.sh "$src"
+          cmp "$src" 'src-tauri/binaries/jmcl-core-${{ matrix.target }}${{ matrix.suffix }}'
+      - name: Produce unsigned-in-distribution-sense package, not uploaded
+        working-directory: frontend
+        run: |
+          unset JMCL_CORE VITE_JMCL_TRANSPORT JMCL_REVIEWED_LARGE_MRPACK_SIDECAR_SHA256
+          unset CARGO_TARGET_DIR TAURI_CONFIG
+          export CARGO_NET_OFFLINE=true
+          unset JMCL_UPDATE_ENDPOINT JMCL_UPDATE_PUBLIC_KEY JMCL_UPDATE_CHANNEL JMCL_UPDATE_VERIFIED
+          bun run tauri build --ci --no-sign --bundles '${{ matrix.bundle }}' \
+            --config src-tauri/tauri.rust-qualification.conf.json --features rust-preview-qualification -- --locked --offline
+          python scripts/verify-rust-qualification.py --target '${{ matrix.target }}' --output-dir qualified-preview \
+            --trusted-verifier ../verifier/scripts/verify-preview-package.py
+      - name: Accompany package with same-commit Core source and notices
+        working-directory: frontend
+        run: |
+          git -C .ci-core archive --format=tar.gz --prefix=JMCLCore/ --output="$PWD/qualified-preview/JMCLCore-$CORE.source.tar.gz" "$CORE"
+          cp .ci-core/LICENSE qualified-preview/JMCLCore-LICENSE.txt
+          cp LICENSE qualified-preview/JMCL-LICENSE.txt
+          python -c 'import hashlib,pathlib,sys; p=pathlib.Path(sys.argv[1]); print("Exact Core source SHA256",hashlib.sha256(p.read_bytes()).hexdigest())' "qualified-preview/JMCLCore-$CORE.source.tar.gz"
+      # Branch creation only; no upload, signing, release, distribution or installation.
