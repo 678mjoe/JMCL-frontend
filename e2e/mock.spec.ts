@@ -41,9 +41,14 @@ test('instances: create, install and launch the same instance', async ({ page })
   await page.getByRole('button', { name: 'New Instance', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'New Instance' });
   await dialog.getByLabel('Name', { exact: true }).fill('Acceptance Instance');
+  await dialog.getByRole('button', { name: 'Customize instance ID', exact: true }).click();
   await expect(dialog.getByLabel('ID', { exact: true })).toHaveValue('acceptance-instance');
-  await dialog.getByLabel('Game Version', { exact: true }).click();
-  await page.getByRole('option', { name: '1.21.4', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Game Version', exact: true }).click();
+  const picker = page.getByRole('dialog', { name: 'Select a game version', exact: true });
+  await picker.getByRole('option', { name: '1.21.4', exact: true }).click();
+  const selectedVersion = dialog.getByRole('button', { name: 'Game Version', exact: true });
+  await expect(selectedVersion).toHaveText('1.21.4');
+  await expect(selectedVersion).toHaveAccessibleDescription('1.21.4');
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
@@ -58,36 +63,69 @@ test('instances: create, install and launch the same instance', async ({ page })
   await expect(log).toContainText('Exited with code 0');
 });
 
-test('compact instance form: dialog gutters and dropdown align with the fields', async ({ page }) => {
+test('compact instance form: adjacent controls and a searchable in-dialog version picker', async ({ page }) => {
   await page.setViewportSize({ width: 430, height: 600 });
   await page.goto('/');
   await page.getByRole('button', { name: 'New Instance', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'New Instance' });
   const name = dialog.getByLabel('Name', { exact: true });
-  const version = dialog.getByLabel('Game Version', { exact: true });
-  await expect(name).toBeVisible();
-  await expect(version).toBeEnabled();
+  const version = dialog.getByRole('button', { name: 'Game Version', exact: true });
+  const loader = dialog.getByRole('combobox', { name: 'Mod Loader', exact: true });
+  const create = dialog.getByRole('button', { name: 'Create', exact: true });
+  await name.fill('Narrow instance');
+  await dialog.getByRole('button', { name: 'Customize instance ID', exact: true }).click();
+  const id = dialog.getByLabel('ID', { exact: true });
+  await id.fill('narrow-draft');
+  await expect(create).toBeDisabled();
+  await expect(create).toBeInViewport({ ratio: 1 });
 
   const dialogBox = (await dialog.boundingBox())!;
   const nameBox = (await name.boundingBox())!;
   const versionBox = (await version.boundingBox())!;
+  const loaderBox = (await loader.boundingBox())!;
   expect(dialogBox.x).toBeGreaterThanOrEqual(15);
   expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(415);
+  expect(nameBox.x).toBeGreaterThan(dialogBox.x);
+  expect(nameBox.x + nameBox.width).toBeLessThan(dialogBox.x + dialogBox.width);
   expect(Math.abs(nameBox.x - versionBox.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(nameBox.height - versionBox.height)).toBeLessThanOrEqual(1);
-  expect(Math.abs(nameBox.width - versionBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(nameBox.x + nameBox.width - loaderBox.x - loaderBox.width)).toBeLessThanOrEqual(1);
+  expect(versionBox.x + versionBox.width).toBeLessThan(loaderBox.x);
+  expect(Math.abs(versionBox.y - loaderBox.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(versionBox.height - loaderBox.height)).toBeLessThanOrEqual(1);
 
   await version.press('Enter');
-  const popup = page.locator('[data-slot="select-content"]');
-  await expect(popup.getByRole('option', { name: '1.21.4', exact: true })).toBeVisible();
-  const anchor = (await version.boundingBox())!;
-  const menu = (await popup.boundingBox())!;
-  expect(Math.abs(anchor.x - menu.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(anchor.width - menu.width)).toBeLessThanOrEqual(1);
-  expect(menu.y >= anchor.y + anchor.height || menu.y + menu.height <= anchor.y).toBe(true);
+  const picker = page.getByRole('dialog', { name: 'Select a game version', exact: true });
+  const search = picker.getByRole('combobox', { name: 'Search version numbers', exact: true });
+  const list = picker.getByRole('listbox');
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(search).toBeFocused();
+  await expect(list.getByRole('option', { name: '1.21.4', exact: true })).toBeVisible();
+  const pickerBox = (await picker.boundingBox())!;
+  const searchBox = (await search.boundingBox())!;
+  const listBox = (await list.boundingBox())!;
+  expect(listBox.x).toBeGreaterThan(pickerBox.x);
+  expect(listBox.x + listBox.width).toBeLessThan(pickerBox.x + pickerBox.width);
+  expect(listBox.y).toBeGreaterThan(searchBox.y + searchBox.height);
+  expect(listBox.y + listBox.height).toBeLessThan(pickerBox.y + pickerBox.height);
+  await expect(list).toBeInViewport({ ratio: 1 });
+
+  await search.fill('1.20');
+  await expect(list.getByRole('option')).toHaveText(['1.20.4', '1.20.1']);
+  await search.fill('no-such-version');
+  await expect(picker.getByText('No matching versions', { exact: true })).toBeVisible();
+  await expect(picker.getByRole('option')).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(popup).toBeHidden();
+  await expect(picker).toHaveCount(0);
   await expect(version).toBeFocused();
+  await expect(name).toHaveValue('Narrow instance');
+  await expect(id).toHaveValue('narrow-draft');
+  await expect(create).toBeDisabled();
+
+  await version.press('Enter');
+  await expect(search).toHaveValue('');
+  await picker.getByRole('button', { name: 'Back to new instance', exact: true }).click();
+  await expect(version).toBeFocused();
+  await expect(id).toHaveValue('narrow-draft');
 });
 
 test('instances: keyboard navigation and content round trip at 800 by 600', async ({ page }) => {
