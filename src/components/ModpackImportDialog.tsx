@@ -8,7 +8,7 @@ import { useSettings } from "@/lib/settings";
 import { curseForgeKeyStatus } from "@/lib/curseforge";
 import { openDialog } from "@/lib/native";
 import { suggestedModpackInstanceId, validModpackInstanceId } from "@/lib/modpackImport";
-import { previewModpack, modpackPreviewErrorCode, type ModpackPreview } from "@/lib/modpackPreview";
+import { previewModpack, modpackPreviewErrorCode, type ModpackPreview, type ModpackPreviewErrorCode } from "@/lib/modpackPreview";
 import { useModpackTasks } from "@/lib/modpackTasks";
 import { modpackError, modpackPhase } from "@/lib/modpackMessages";
 import { InstallProgressView } from "./InstallProgressView";
@@ -41,7 +41,7 @@ function ImportForm({ onOpenSettings, onOpenInstance, pickArchive = chooseArchiv
   const [keyError, setKeyError] = useState(false);
   const [keyRevision, setKeyRevision] = useState(0);
   const [picking, setPicking] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<ModpackPreviewErrorCode | null>(null);
   const alive = useRef(true);
   const pickingRef = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -69,6 +69,20 @@ function ImportForm({ onOpenSettings, onOpenInstance, pickArchive = chooseArchiv
       }
     } finally { pickingRef.current = false; if (alive.current) setPicking(false); }
   };
+  const previewNotice = previewError === "MODPACK_PREVIEW_ARCHIVE_TOO_LARGE"
+    ? say(
+        "This archive is larger than 512 MiB. This version of JMCL cannot import local modpacks above that size. Choose a smaller archive.",
+        "这个整合包超过了 512 MiB，当前版本无法导入这么大的本地整合包。请选择体积更小的整合包。",
+      )
+    : previewError === "MODPACK_PREVIEW_LIMIT"
+      ? say(
+          "The archive exceeds a preview limit. That alone does not mean it cannot be installed, but this dialog needs a successful preview before starting an import.",
+          "这个整合包超出了预览限制。无法预览不等于无法安装，但当前需要预览成功才能从这里开始导入。",
+        )
+      : say(
+          "Couldn't read a modpack preview from this file. Check that it is a Modrinth .mrpack or CurseForge .zip export, or choose another file.",
+          "未能读取整合包预览。请确认文件是从 Modrinth 导出的 .mrpack 或从 CurseForge 导出的 .zip，或选择其他文件。",
+        );
   const ready = !!preview && validModpackInstanceId(draft.id) && !picking && (preview.provider !== "curseforge" || (hasKey && !keyChecking));
   const start = () => {
     if (!ready || controller || pickingRef.current) return;
@@ -122,7 +136,14 @@ function ImportForm({ onOpenSettings, onOpenInstance, pickArchive = chooseArchiv
                 <Button variant="outline" onClick={() => void pick()} disabled={picking}>{picking ? say("Reading archive…", "读取归档…") : say("Choose archive", "选择归档")}</Button>
                 {draft.file && <p className="min-w-0 flex-[1_1_10rem] font-mono text-xs wrap-anywhere text-muted-foreground">{draft.file}</p>}
               </div>
-              {previewError && <p role="alert" className="wrap-anywhere text-destructive">{previewError}: {say("Could not preview this archive within the safe inspection limits. Choose a supported local .mrpack or CurseForge .zip file. No installation was started.", "无法在安全检查限制内预览归档，请选择支持的本地 .mrpack 或 CurseForge .zip 文件。尚未开始安装。")}</p>}
+              <div role="status">
+                {previewError && (
+                  <div className="space-y-1 rounded-md border bg-muted/35 p-3 text-sm wrap-anywhere">
+                    <p className="font-medium">{say("Preview unavailable", "无法预览整合包")}</p>
+                    <p className="text-muted-foreground">{previewNotice}</p>
+                  </div>
+                )}
+              </div>
               {preview && (
                 <section aria-label={say("Installation summary", "安装摘要")} className="space-y-1.5 rounded-md border bg-muted/35 p-3 text-sm wrap-anywhere">
                   <h3 className="font-medium">{preview.name}</h3>

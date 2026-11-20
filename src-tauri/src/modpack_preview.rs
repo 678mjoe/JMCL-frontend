@@ -23,6 +23,9 @@ fn err(code: &'static str) -> PreviewError {
 fn invalid() -> PreviewError {
     err("MODPACK_PREVIEW_INVALID")
 }
+fn archive_too_large() -> PreviewError {
+    err("MODPACK_PREVIEW_ARCHIVE_TOO_LARGE")
+}
 fn limit() -> PreviewError {
     err("MODPACK_PREVIEW_LIMIT")
 }
@@ -79,7 +82,7 @@ pub fn preview(file: &str) -> Result<ModpackPreview> {
         }
     }
     if metadata.len() > MAX_ARCHIVE {
-        return Err(limit());
+        return Err(archive_too_large());
     }
     preview_reader(&mut input, metadata.len())
 }
@@ -92,7 +95,7 @@ fn directory_budget(input: &mut (impl Read + Seek), length: u64) -> Result<usize
         return Err(invalid());
     }
     if length > MAX_ARCHIVE {
-        return Err(limit());
+        return Err(archive_too_large());
     }
     let tail_len = length.min(65_557) as usize;
     input
@@ -484,7 +487,7 @@ mod tests {
         assert_eq!(inspect(data).unwrap_err().code, "MODPACK_PREVIEW_AMBIGUOUS");
     }
     #[test]
-    fn budget_exhaustion_is_not_an_invalid_format_claim() {
+    fn preview_budgets_distinguish_the_shared_archive_size_limit() {
         let data = archive(
             &[("manifest.json", &vec![b' '; MAX_MANIFEST as usize + 1])],
             true,
@@ -500,7 +503,7 @@ mod tests {
             directory_budget(&mut cursor, MAX_ARCHIVE + 1)
                 .unwrap_err()
                 .code,
-            "MODPACK_PREVIEW_LIMIT"
+            "MODPACK_PREVIEW_ARCHIVE_TOO_LARGE"
         );
     }
     #[test]
