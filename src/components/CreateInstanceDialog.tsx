@@ -196,12 +196,12 @@ export function CreateInstanceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden">
+      <DialogContent className="flex max-w-lg flex-col gap-3 overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle>{t("create.title")}</DialogTitle>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-2">
+        <div className="-mx-(--jmcl-panel-padding) -my-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-(--jmcl-panel-padding) py-1">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="create-name">{t("create.name")}</Label>
@@ -237,7 +237,7 @@ export function CreateInstanceDialog({
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                 <Label htmlFor="create-version">{t("create.version")}</Label>
                 <div className="flex items-center gap-2">
                   <Checkbox
@@ -284,7 +284,7 @@ export function CreateInstanceDialog({
                 </SelectContent>
               </Select>
               {versionsState === "error" && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <p className="text-xs text-destructive">
                     {t("create.versionError")}
                   </p>
@@ -397,12 +397,12 @@ export function CreateInstanceDialog({
             )}
 
             {submitError && (
-              <p className="text-xs text-destructive">{submitError}</p>
+              <p className="text-xs wrap-anywhere text-destructive">{submitError}</p>
             )}
           </div>
         </div>
 
-        <DialogFooter className="shrink-0">
+        <DialogFooter className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}
           </Button>

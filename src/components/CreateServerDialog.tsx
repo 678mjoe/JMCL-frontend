@@ -137,27 +137,28 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>{t("serverCreate.title")}</DialogTitle></DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
+        <div className="grid min-w-0 gap-4">
+          <div className="grid gap-1.5">
             <Label htmlFor="server-create-name">{t("create.name")}</Label>
             <Input id="server-create-name" value={name} onChange={(event) => onNameChange(event.target.value)} />
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-1.5">
             <Label htmlFor="server-create-id">{t("create.id")}</Label>
             <Input
               id="server-create-id"
               value={id}
               aria-invalid={id.length > 0 && !idValid}
+              aria-describedby="server-create-id-help"
               onChange={(event) => { setIdTouched(true); setId(event.target.value); }}
             />
-            <p className={`text-xs ${id.length > 0 && !idValid ? "text-destructive" : "text-muted-foreground"}`}>
+            <p id="server-create-id-help" className={`text-xs ${id.length > 0 && !idValid ? "text-destructive" : "text-muted-foreground"}`}>
               {id.length > 0 && !idValid ? t("serverCreate.validation") : t("serverCreate.idHint")}
             </p>
             {duplicate && <p className="text-xs text-destructive">{t("serverCreate.duplicate")}</p>}
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-1.5">
             <Label htmlFor="server-create-version">{t("create.version")}</Label>
             <Select value={versionId || null} onValueChange={(value) => {
               if (value && value !== versionId) {
@@ -177,7 +178,7 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
             </Select>
             {versionsState === "error" && <p className="text-xs text-destructive">{t("create.versionError")}</p>}
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-1.5">
             <Label htmlFor="server-create-loader">{t("create.loader")}</Label>
             <Select value={loader} onValueChange={(value) => { if (value) { setLoader(value as LoaderChoice); setLoaderVersion(""); } }}>
               <SelectTrigger id="server-create-loader" className="w-full"><SelectValue>{loader === "none" ? t("servers.loaderNone") : loader}</SelectValue></SelectTrigger>
@@ -190,7 +191,7 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
             </Select>
           </div>
           {loader !== "none" && (
-            <div className="space-y-2">
+            <div className="grid gap-1.5">
               <Label htmlFor="server-create-loader-version">{t("create.loaderVersion")}</Label>
               <Select value={loaderVersion || null} disabled={loaderState !== "ready" || loaderVersions.length === 0} onValueChange={(value) => { if (value) setLoaderVersion(value); }}>
                 <SelectTrigger id="server-create-loader-version" className="w-full"><SelectValue>{loaderState === "loading" ? t("create.loaderVersionLoading") : loaderVersion || t("create.loaderVersionPlaceholder")}</SelectValue></SelectTrigger>
@@ -199,7 +200,7 @@ export function CreateServerDialog({ open, onOpenChange, onCreated }: CreateServ
               {loaderState === "error" && <p className="text-xs text-destructive">{t("create.loaderVersionError")}</p>}
             </div>
           )}
-          {submitError && <p className="text-xs text-destructive">{submitError}</p>}
+          {submitError && <p className="text-xs text-destructive wrap-anywhere">{submitError}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>

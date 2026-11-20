@@ -1,7 +1,7 @@
 import { javaPreferencesFor } from "@/lib/javaPreferences";
 import { downloadOptions } from "@/lib/downloadOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Gamepad2, Plus, RefreshCw } from "lucide-react";
+import { CircleAlert, Gamepad2, Import, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useModpackTasks } from "@/lib/modpackTasks";
 import { CreateInstanceDialog } from "@/components/CreateInstanceDialog";
@@ -36,6 +36,7 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; scopeGeneration.current++; }; }, []);
   const refreshRevision = useRef(0);
   const [loaded, setLoaded] = useState<{ root: string; instances: InstanceManifest[] }>({ root: "", instances: [] });
+  const [failedList, setFailedList] = useState<{ root: string; message: string } | null>(null);
   const instances = loaded.root === settings.instancesDir ? loaded.instances : [];
   const setInstances = (update: (current: InstanceManifest[]) => InstanceManifest[]) => {
     if (!mounted.current || rootRef.current !== settings.instancesDir) return;
@@ -69,9 +70,12 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
     const current = () => mounted.current && generation === scopeGeneration.current && revision === refreshRevision.current;
     try {
       const result = await session.instanceList(settings.instancesDir);
-      if (current()) setLoaded({ root: settings.instancesDir, instances: result.instances });
+      if (current()) {
+        setLoaded({ root: settings.instancesDir, instances: result.instances });
+        setFailedList(null);
+      }
     } catch (e) {
-      if (current()) toast.error(errorText(e));
+      if (current()) setFailedList({ root: settings.instancesDir, message: errorText(e) });
     }
   }, [status, session, settings.instancesDir]);
 
@@ -166,73 +170,126 @@ export function InstancesPage({ onOpenDetail, onOpenContent }: InstancesPageProp
     }
   };
 
+  const listError = failedList?.root === settings.instancesDir ? failedList.message : null;
+  const waitingForList = !settings.instancesDir || loaded.root !== settings.instancesDir;
+  const installedInstances = instances.filter((instance) => instance.installed);
+  // Prefer the newest installed numbered release; use list order for non-release IDs.
+  const featured = installedInstances
+    .filter((instance) => /^\d+\.\d+(?:\.\d+)?$/.test(instance.version_id))
+    .sort((left, right) => right.version_id.localeCompare(left.version_id, undefined, { numeric: true }))[0]
+    ?? installedInstances[0]
+    ?? instances[0];
+  const library = featured ? instances.filter((instance) => instance.id !== featured.id) : [];
+
+  const renderCard = (instance: InstanceManifest, featured = false) => (
+    <InstanceCard
+      key={instance.id}
+      instance={instance}
+      installed={instance.installed}
+      featured={featured}
+      installTask={taskFor("install", instance.id, settings.instancesDir)}
+      launchTask={taskFor("launch", instance.id, settings.instancesDir)}
+      validateTask={taskFor("validate", instance.id)}
+      disabled={!coreReady}
+      onInstall={() => beginInstall(instance)}
+      onRetryValidate={() => validateThenInstall(instance)}
+      onLaunch={() => handleLaunch(instance)}
+      onShowLog={() => setLogInstanceId(instance.id)}
+      onDelete={() => setDeleteTarget(instance)}
+      onOpenDetail={() => onOpenDetail(instance.id)}
+      onOpenContent={() => onOpenContent(instance.id)}
+    />
+  );
+
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("instances.title")}</h1>
-        <div className="flex items-center gap-2">
+    <div className="jmcl-page min-w-0">
+      <header className="jmcl-page-header">
+        <div className="min-w-0">
+          <h1 className="jmcl-page-title">{t("instances.title")}</h1>
+          {coreReady && instances.length > 0 && (
+            <p className="jmcl-page-description">
+              {t("instances.summary", { installed: installedInstances.length, total: instances.length })}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
             title={t("instances.refresh")}
+            aria-label={t("instances.refresh")}
             onClick={() => void refresh()}
             disabled={!coreReady}
           >
-            <RefreshCw />
+            <RefreshCw aria-hidden="true" />
           </Button>
-          <Button variant="outline" onClick={() => modpacks.show()} disabled={!coreReady}>{settings.language === "zh" ? "导入整合包" : "Import modpack"}</Button>
+          <Button variant="outline" onClick={() => modpacks.show()} disabled={!coreReady}>
+            <Import aria-hidden="true" />
+            {t("instances.import")}
+          </Button>
           <Button onClick={() => setDialogOpen(true)} disabled={!coreReady}>
-            <Plus />
+            <Plus aria-hidden="true" />
             {t("instances.new")}
           </Button>
         </div>
-      </div>
+      </header>
 
       {status === "error" ? (
-        <div className="flex flex-col items-center gap-2 py-24 text-center">
-          <Gamepad2 className="size-10 text-destructive" />
-          <p className="text-sm font-medium">{t("core.error")}</p>
+        <div className="jmcl-state">
+          <span className="flex size-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive" aria-hidden="true">
+            <CircleAlert className="size-6" />
+          </span>
+          <p role="alert" className="text-sm font-semibold">{t("core.error")}</p>
           {coreError && (
-            <p className="max-w-xl text-sm text-muted-foreground">{coreError}</p>
+            <p className="max-w-xl text-sm text-muted-foreground [overflow-wrap:anywhere]">{coreError}</p>
           )}
         </div>
-      ) : status === "starting" ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="space-y-3 rounded-xl border p-6">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-4 w-1/3" />
-              <Skeleton className="h-8 w-full" />
-            </div>
-          ))}
-        </div>
-      ) : instances.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-24 text-center">
-          <Gamepad2 className="size-10 text-muted-foreground" />
-          <p className="text-sm font-medium">{t("instances.empty")}</p>
-          <p className="text-sm text-muted-foreground">{t("instances.emptyHint")}</p>
+      ) : status === "starting" || (waitingForList && !listError) ? (
+        <div role="status" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {t(status === "starting" ? "core.starting" : "common.loading")}
+          </p>
+          <div className="jmcl-panel flex min-h-60 flex-col justify-center gap-3 p-5 sm:min-h-64 sm:p-8" aria-hidden="true">
+            <Skeleton className="h-7 w-2/5 max-w-56" />
+            <Skeleton className="h-4 w-1/3 max-w-32" />
+            <Skeleton className="mt-2 h-10 w-24" />
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {instances.map((instance) => (
-            <InstanceCard
-              key={instance.id}
-              instance={instance}
-              installed={instance.installed}
-              installTask={taskFor("install", instance.id, settings.instancesDir)}
-              launchTask={taskFor("launch", instance.id, settings.instancesDir)}
-              validateTask={taskFor("validate", instance.id)}
-              disabled={!coreReady}
-              onInstall={() => beginInstall(instance)}
-              onRetryValidate={() => validateThenInstall(instance)}
-              onLaunch={() => handleLaunch(instance)}
-              onShowLog={() => setLogInstanceId(instance.id)}
-              onDelete={() => setDeleteTarget(instance)}
-              onOpenDetail={() => onOpenDetail(instance.id)}
-              onOpenContent={() => onOpenContent(instance.id)}
-            />
-          ))}
-        </div>
+        <>
+          {listError && (
+            <div className="jmcl-panel flex flex-wrap items-center justify-between gap-3 p-4">
+              <div role="alert" className="flex min-w-0 items-start gap-3">
+                <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{t("instances.loadFailed")}</p>
+                  <p className="mt-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">{listError}</p>
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => void refresh()}>{t("common.retry")}</Button>
+            </div>
+          )}
+          {featured && renderCard(featured, true)}
+          {library.length > 0 && (
+            <section aria-labelledby="instance-library-title">
+              <h2 id="instance-library-title" className="mb-3 text-lg font-semibold tracking-tight">
+                {t("instances.library")}
+              </h2>
+              <div className="jmcl-panel">
+                {library.map((instance) => renderCard(instance))}
+              </div>
+            </section>
+          )}
+          {!featured && !listError && (
+            <div role="status" className="jmcl-state">
+              <span className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground" aria-hidden="true">
+                <Gamepad2 className="size-6" />
+              </span>
+              <p className="text-sm font-semibold">{t("instances.empty")}</p>
+              <p className="text-sm text-muted-foreground">{t("instances.emptyHint")}</p>
+            </div>
+          )}
+        </>
       )}
 
       <CreateInstanceDialog

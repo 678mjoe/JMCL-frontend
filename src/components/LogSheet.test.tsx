@@ -79,7 +79,8 @@ test("mock launch keeps a blank log row with its minimum-height class through cl
   expect(rows().map(row => row.textContent)).toEqual(expectedRows);
   expect(rows()[3]!.classList.contains("min-h-5")).toBe(true);
   expect(dom.document.body.textContent).toContain("Exited with code 0");
-  const close = [...dom.document.querySelectorAll("button")].find(button => button.textContent === "Close")!;
+  const close = [...dom.document.querySelectorAll("button")]
+    .find(button => button.getAttribute("aria-label") === "Close")!;
   expect(close).toBeDefined();
   await act(async () => close.click());
   expect(dom.document.querySelector('[role="dialog"]')).toBeNull();

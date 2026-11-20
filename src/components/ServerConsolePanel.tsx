@@ -62,15 +62,18 @@ export function ServerConsolePanel({ server, running }: { server: ServerManifest
     void controller.submitCommand(command).then((accepted) => { if (accepted) setCommand(""); });
   };
 
-  return <section className="mt-6 rounded-xl border p-5" aria-label={t("serverConsole.title")}>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="font-semibold">{t("serverConsole.title")}</h2><p className="text-sm text-muted-foreground">{t("serverConsole.description")}</p></div>
+  return <section className="jmcl-panel p-4 sm:p-5" aria-label={t("serverConsole.title")}>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0 flex-[1_1_16rem]">
+        <h2 className="text-base font-semibold">{t("serverConsole.title")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("serverConsole.description")}</p>
+      </div>
       {!shown
         ? <Button variant="outline" onClick={open}>{t("serverConsole.open")}</Button>
         : <Button variant="outline" onClick={close}>{t("serverConsole.close")}</Button>}
     </div>
-    {shown && <div className="mt-4 space-y-3">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+    {shown && <div className="mt-4 space-y-3 border-t pt-4">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground empty:hidden" aria-live="polite">
         {state.loading && <span>{t("serverConsole.loading")}</span>}
         {state.running && state.open && <span>{t("serverConsole.polling")}</span>}
         {state.notFound && <span>{t("serverConsole.notFound")}</span>}
@@ -79,10 +82,10 @@ export function ServerConsolePanel({ server, running }: { server: ServerManifest
       </div>
       {state.truncated && <p className="rounded-md bg-amber-500/10 p-2 text-sm">{t("serverConsole.truncated")}</p>}
       {state.localOmission && <p className="rounded-md bg-amber-500/10 p-2 text-sm">{t("serverConsole.localOmission")}</p>}
-      <pre ref={logRef} aria-label={t("serverConsole.logLabel")} onScroll={(event) => { followRef.current = isNearLogBottom(event.currentTarget); }} className="max-h-96 min-h-24 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-sm leading-relaxed">{state.text}</pre>
-      {canCommand && <form className="flex flex-col gap-2 sm:flex-row" onSubmit={submit}>
+      <pre ref={logRef} aria-label={t("serverConsole.logLabel")} onScroll={(event) => { followRef.current = isNearLogBottom(event.currentTarget); }} className="max-h-96 min-h-24 overflow-auto rounded-md border bg-muted/55 p-3 font-mono text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere">{state.text}</pre>
+      {canCommand && <form className="flex flex-wrap gap-2" onSubmit={submit}>
         <label className="sr-only" htmlFor={`server-command-${server.id}`}>{t("serverConsole.commandLabel")}</label>
-        <input id={`server-command-${server.id}`} className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 font-mono text-sm" value={command} onChange={(event) => setCommand(event.target.value)} autoComplete="off" aria-describedby={`server-command-help-${server.id}`} />
+        <input id={`server-command-${server.id}`} className="jmcl-field h-9 flex-[1_1_12rem] font-mono" value={command} onChange={(event) => setCommand(event.target.value)} autoComplete="off" aria-describedby={`server-command-help-${server.id}`} />
         <span id={`server-command-help-${server.id}`} className="sr-only">{t("serverConsole.commandHelp")}</span>
         <Button type="submit" disabled={state.commandPending}>{state.commandPending ? t("serverConsole.sending") : t("serverConsole.send")}</Button>
       </form>}

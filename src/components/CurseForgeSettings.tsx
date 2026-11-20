@@ -34,18 +34,22 @@ export function CurseForgeSettings({ credentials = nativeCredentials }: { creden
     } catch { if (alive.current) { setKey(""); setStored(null); setError(true); } }
     finally { pending.current = false; if (alive.current) setBusy(false); }
   };
-  return <section className="space-y-4" aria-labelledby="curseforge-settings-title">
-    <h2 id="curseforge-settings-title" className="text-sm font-medium uppercase tracking-wide text-muted-foreground">CurseForge</h2>
-    <p className="text-xs text-muted-foreground">{say("Optional: explicitly save your application API key in this computer's OS credential store. It is not a Microsoft account, browser setting or exported task. Catalog requests use only the CurseForge API. Installing server content sends the key to the selected Core endpoint over its existing transport; use only endpoints you trust.", "可选：明确选择将应用 API key 保存到本机系统凭据库。它不是 Microsoft 账户、浏览器设置或导出任务。目录请求仅访问 CurseForge API；安装服务端内容时会通过现有传输将密钥发送给所选 Core 端点，请仅使用受信任端点。")}</p>
-    <p role="status">{stored === null ? say("Credential status unavailable", "凭据状态不可用") : stored ? say("API key saved", "API key 已保存") : say("No API key saved", "尚未保存 API key")}</p>
-    <Label htmlFor="curseforge-api-key">{say("New API key", "新的 API key")}</Label>
-    <Input id="curseforge-api-key" type="password" autoComplete="off" spellCheck={false} maxLength={512} value={key} disabled={busy} onChange={(event) => setKey(event.currentTarget.value)} />
-    <p className="text-xs text-muted-foreground">{say("1–512 printable ASCII characters without spaces. Existing keys are never displayed.", "1–512 个不含空格的可打印 ASCII 字符。不会显示已保存的密钥。")}</p>
-    <div className="flex flex-wrap gap-2">
-      <Button disabled={busy || !validCurseForgeKey(key)} onClick={() => void update("save")}>{say("Save key in OS credential store", "将密钥保存到系统凭据库")}</Button>
-      <Button variant="outline" disabled={busy || stored !== true} onClick={() => void update("remove")}>{say("Remove saved key", "移除已保存的密钥")}</Button>
-      <Button variant="outline" disabled={busy} onClick={() => void update("status")}>{say("Refresh key status", "刷新密钥状态")}</Button>
+  return <section className="jmcl-panel self-start space-y-3 p-(--jmcl-panel-padding)" aria-labelledby="curseforge-settings-title">
+    <div className="space-y-1">
+      <h2 id="curseforge-settings-title" className="text-base font-semibold tracking-tight">CurseForge</h2>
+      <p className="text-sm text-muted-foreground">{say("Optional: explicitly save your application API key in this computer's OS credential store. It is not a Microsoft account, browser setting or exported task. Catalog requests use only the CurseForge API. Installing server content sends the key to the selected Core endpoint over its existing transport; use only endpoints you trust.", "可选：明确选择将应用 API key 保存到本机系统凭据库。它不是 Microsoft 账户、浏览器设置或导出任务。目录请求仅访问 CurseForge API；安装服务端内容时会通过现有传输将密钥发送给所选 Core 端点，请仅使用受信任端点。")}</p>
     </div>
-    {error && <p role="alert">{say("Could not access the OS credential store. No diagnostic details are displayed. Check native credential-store availability, then retry.", "无法访问系统凭据库，不显示诊断详情。请检查原生凭据库是否可用，然后重试。")}</p>}
+    <p role="status" className="text-sm">{stored === null ? say("Credential status unavailable", "凭据状态不可用") : stored ? say("API key saved", "API key 已保存") : say("No API key saved", "尚未保存 API key")}</p>
+    <div className="space-y-2">
+      <Label htmlFor="curseforge-api-key">{say("New API key", "新的 API key")}</Label>
+      <Input id="curseforge-api-key" type="password" autoComplete="off" spellCheck={false} maxLength={512} value={key} disabled={busy} aria-describedby="curseforge-key-hint" onChange={(event) => setKey(event.currentTarget.value)} />
+      <p id="curseforge-key-hint" className="text-xs text-muted-foreground">{say("1–512 printable ASCII characters without spaces. Existing keys are never displayed.", "1–512 个不含空格的可打印 ASCII 字符。不会显示已保存的密钥。")}</p>
+    </div>
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" disabled={busy || !validCurseForgeKey(key)} onClick={() => void update("save")}>{say("Save key in OS credential store", "将密钥保存到系统凭据库")}</Button>
+      <Button size="sm" variant="outline" disabled={busy || stored !== true} onClick={() => void update("remove")}>{say("Remove saved key", "移除已保存的密钥")}</Button>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => void update("status")}>{say("Refresh key status", "刷新密钥状态")}</Button>
+    </div>
+    {error && <p role="alert" className="text-sm text-destructive">{say("Could not access the OS credential store. No diagnostic details are displayed. Check native credential-store availability, then retry.", "无法访问系统凭据库，不显示诊断详情。请检查原生凭据库是否可用，然后重试。")}</p>}
   </section>;
 }

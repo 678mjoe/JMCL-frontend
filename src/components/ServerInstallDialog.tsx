@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { canInstallServer, useServerOperations } from "@/lib/serverOperations";
 import { safeServerOperationError } from "@/lib/serverErrorPresentation";
 import { useServers } from "@/lib/servers";
@@ -22,11 +22,13 @@ export function ServerInstallDialog({ open, onOpenChange, server }: { open: bool
   };
   return <Dialog open={open} onOpenChange={(value) => { if (!pending) { if (!value) setConsent(false); onOpenChange(value); } }}>
     <DialogContent>
-      <DialogHeader><DialogTitle>{t(server.installed ? "serverInstall.repairTitle" : "serverInstall.title")}</DialogTitle></DialogHeader>
-      <p>{t(server.installed ? "serverInstall.repairDescription" : "serverInstall.description")}</p>
-      {needsConsent && <div className="space-y-3 rounded-md border p-3">
-        <button type="button" className="text-primary underline" onClick={() => void openUrl("https://www.minecraft.net/eula")}>{t("serverInstall.eulaLink")}</button>
-        <label className="flex items-start gap-2 text-sm"><Checkbox checked={consent} onCheckedChange={(checked) => setConsent(checked === true)} /><span>{t("serverInstall.eulaConsent")}</span></label>
+      <DialogHeader>
+        <DialogTitle>{t(server.installed ? "serverInstall.repairTitle" : "serverInstall.title")}</DialogTitle>
+        <DialogDescription>{t(server.installed ? "serverInstall.repairDescription" : "serverInstall.description")}</DialogDescription>
+      </DialogHeader>
+      {needsConsent && <div className="grid gap-3 rounded-lg border bg-muted/35 p-3">
+        <button type="button" className="justify-self-start rounded-xs text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" onClick={() => void openUrl("https://www.minecraft.net/eula")}>{t("serverInstall.eulaLink")}</button>
+        <label className="flex items-start gap-2 text-sm"><Checkbox className="mt-0.5" checked={consent} onCheckedChange={(checked) => setConsent(checked === true)} /><span>{t("serverInstall.eulaConsent")}</span></label>
       </div>}
       {operation?.error && <p role="alert" className="text-sm text-destructive">{safeServerOperationError(operation.error, endpointId, t)}</p>}
       {operation?.progress?.event === "progress" && <p className="text-sm text-muted-foreground">{t("serverInstall.files", { completed: operation.progress.progress.files_completed, total: operation.progress.progress.files_total })}</p>}

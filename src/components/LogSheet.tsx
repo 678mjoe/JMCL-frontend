@@ -1,13 +1,15 @@
 import { useEffect, useRef } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/lib/settings";
 import { useTasks } from "@/lib/tasks";
@@ -68,24 +70,31 @@ export function LogSheet({ instanceId, onOpenChange }: LogSheetProps) {
 
   return (
     <Sheet open={instanceId !== null} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[480px] sm:max-w-[480px] flex flex-col">
-        <SheetHeader>
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="data-[side=right]:w-full data-[side=right]:sm:max-w-lg motion-reduce:transition-none"
+      >
+        <SheetHeader className="gap-1 pb-0 pr-14">
           <SheetTitle>{t("log.title")}</SheetTitle>
           {instanceId && (
-            <div className="text-sm text-muted-foreground font-mono">
+            <div className="font-mono text-xs text-muted-foreground wrap-anywhere">
               {instanceId}
             </div>
           )}
-          {statusLine && <div className="text-xs">{statusLine}</div>}
+          <div aria-live="polite" className="mt-1 text-xs wrap-anywhere">{statusLine}</div>
         </SheetHeader>
-        <div ref={scrollRootRef} className="flex-1 min-h-0 px-4 pb-4">
+        <SheetClose render={
+          <Button size="icon-sm" variant="ghost" aria-label={t("common.close")} className="absolute top-(--jmcl-panel-padding) right-(--jmcl-panel-padding)" />
+        }><X aria-hidden="true" /></SheetClose>
+        <div ref={scrollRootRef} className="mx-(--jmcl-panel-padding) mb-(--jmcl-panel-padding) min-h-0 flex-1 rounded-md border bg-muted/45">
           {lineCount === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               {t("log.empty")}
             </div>
           ) : (
             <ScrollArea className="h-full">
-              <div className="font-mono text-xs leading-5 pr-3">
+              <div className="px-3 py-2 font-mono text-xs leading-5">
                 {task?.lines.map((line, i) => (
                   <div
                     key={i}

@@ -8,7 +8,6 @@ import type { MessageKey } from "@/lib/i18n";
 import type { ServerManifest } from "@/lib/types";
 
 type Props = { server: ServerManifest; state: "running" | "stopped" | "unknown" };
-const fieldClass = "h-9 min-w-0 rounded-md border bg-background px-3 text-sm disabled:opacity-60";
 
 /** A keyed subtree prevents a credential or edited value surviving source changes. */
 export function ServerAdvancedPanel(props: Props) {
@@ -21,9 +20,12 @@ export function ServerAdvancedPanel(props: Props) {
 function ScopedPanel(props: Props) {
   const { t } = useSettings();
   const [shown, setShown] = useState(false);
-  return <section className="mt-6 rounded-xl border p-5" aria-label={t("serverAdvanced.title")}>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="font-semibold">{t("serverAdvanced.title")}</h2><p className="text-sm text-muted-foreground">{t("serverAdvanced.security")}</p></div>
+  return <section className="jmcl-panel @container/server-advanced p-4 sm:p-5" aria-label={t("serverAdvanced.title")}>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0 flex-[1_1_16rem]">
+        <h2 className="text-base font-semibold">{t("serverAdvanced.title")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("serverAdvanced.security")}</p>
+      </div>
       <Button variant="outline" onClick={() => setShown(!shown)}>{t(shown ? "serverAdvanced.close" : "serverAdvanced.open")}</Button>
     </div>
     {shown && <AdvancedControls {...props} />}
@@ -90,8 +92,8 @@ function AdvancedControls({ server, state }: Props) {
     SERVER_STATUS_FAILED: "serverAdvanced.unknownState",
     INVALID_PARAMS: "serverAdvanced.invalidInput",
   };
-  return <div className="mt-5 space-y-6">
-    <div className="flex items-center gap-3"><Button variant="outline" onClick={discard}>{t("serverAdvanced.cancel")}</Button>{pending && <span role="status" className="text-sm text-muted-foreground">{t("serverAdvanced.pending")}</span>}</div>
+  return <div className="mt-4 space-y-4 border-t pt-4">
+    <div className="flex flex-wrap items-center gap-2"><Button variant="outline" onClick={discard}>{t("serverAdvanced.cancel")}</Button>{pending && <span role="status" className="text-sm text-muted-foreground">{t("serverAdvanced.pending")}</span>}</div>
     {snapshot.error && <p role="alert" className="text-sm text-destructive">{t(errorKey[snapshot.error] ?? safeServerErrorKey(snapshot.error, "serverAdvanced.failed"))}</p>}
     {validation && <p role="alert" className="text-sm text-destructive">{t(validation)}</p>}
     {state === "unknown" && <p className="text-sm text-muted-foreground">{t("serverAdvanced.unknownState")}</p>}
@@ -100,31 +102,36 @@ function AdvancedControls({ server, state }: Props) {
       <p className="text-sm text-muted-foreground">{t("serverAdvanced.propertiesHint")}</p>
       <Button variant="outline" disabled={pending || Object.keys(edits).length > 0} onClick={() => { setSaved(false); void loadProperties(); }}>{t("serverAdvanced.load")}</Button>
       {properties && <>
-        <div className="max-h-96 space-y-2 overflow-auto">
-          {keys.map((key) => <label key={key} className="grid gap-1 sm:grid-cols-2 sm:items-center"><span className="break-all font-mono text-sm">{key}</span><input aria-label={key} className={fieldClass} value={key.toLowerCase() === "rcon.password" ? t("serverAdvanced.redacted") : edits[key] ?? properties[key] ?? ""} disabled={pending || !stopped || key.toLowerCase() === "rcon.password"} onChange={(event) => change(key, event.target.value)} autoComplete="off" spellCheck={false} /></label>)}
+        <div className="max-h-96 divide-y divide-border overflow-y-auto rounded-lg border bg-background/35">
+          {keys.map((key) => (
+            <label key={key} className="grid gap-x-3 gap-y-1.5 px-3 py-2 @md/server-advanced:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @md/server-advanced:items-center">
+              <span className="font-mono text-xs wrap-anywhere">{key}</span>
+              <input aria-label={key} className="jmcl-field h-8 w-full" value={key.toLowerCase() === "rcon.password" ? t("serverAdvanced.redacted") : edits[key] ?? properties[key] ?? ""} disabled={pending || !stopped || key.toLowerCase() === "rcon.password"} onChange={(event) => change(key, event.target.value)} autoComplete="off" spellCheck={false} />
+            </label>
+          ))}
         </div>
-        <form onSubmit={add} className="flex flex-wrap gap-2">
-          <input aria-label={t("serverAdvanced.newKey")} placeholder={t("serverAdvanced.newKey")} value={newKey} onChange={(event) => setNewKey(event.target.value)} disabled={pending || !stopped} className={`${fieldClass} flex-1`} />
-          <input aria-label={t("serverAdvanced.newValue")} placeholder={t("serverAdvanced.newValue")} value={newValue} onChange={(event) => setNewValue(event.target.value)} disabled={pending || !stopped} className={`${fieldClass} flex-1`} />
-          <Button type="submit" variant="outline" disabled={pending || !stopped}>{t("serverAdvanced.add")}</Button>
+        <form onSubmit={add} className="grid gap-2 @lg/server-advanced:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto]">
+          <input className="jmcl-field h-9 w-full" aria-label={t("serverAdvanced.newKey")} placeholder={t("serverAdvanced.newKey")} value={newKey} onChange={(event) => setNewKey(event.target.value)} disabled={pending || !stopped} />
+          <input className="jmcl-field h-9 w-full" aria-label={t("serverAdvanced.newValue")} placeholder={t("serverAdvanced.newValue")} value={newValue} onChange={(event) => setNewValue(event.target.value)} disabled={pending || !stopped} />
+          <Button type="submit" variant="outline" className="justify-self-start" disabled={pending || !stopped}>{t("serverAdvanced.add")}</Button>
         </form>
         <Button disabled={pending || !stopped || Object.keys(edits).length === 0} onClick={() => void save()}>{t("serverAdvanced.save")}</Button>
         {saved && <p role="status" className="text-sm">{t("serverAdvanced.saved")}</p>}
       </>}
       {!stopped && <p className="text-sm text-muted-foreground">{t("serverAdvanced.stoppedOnly")}</p>}
     </section>
-    <section aria-label="RCON" className="space-y-3">
+    <section aria-label="RCON" className="space-y-3 border-t pt-4">
       <h3 className="font-medium">RCON</h3><p className="text-sm text-muted-foreground">{t("serverAdvanced.passwordHint")}</p>
-      <form onSubmit={sendRcon} className="grid gap-2">
-        <label className="grid gap-1 text-sm">{t("serverAdvanced.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className={fieldClass} disabled={pending || !running} autoComplete="off" spellCheck={false} /></label>
-        <label className="grid gap-1 text-sm">{t("serverAdvanced.command")}<input value={command} onChange={(event) => setCommand(event.target.value)} className={fieldClass} disabled={pending || !running} autoComplete="off" spellCheck={false} /></label>
-        <Button type="submit" disabled={pending || !running || !password || !command.trim()}>{t("serverAdvanced.send")}</Button>
+      <form onSubmit={sendRcon} className="grid items-end gap-2 @lg/server-advanced:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto]">
+        <label className="grid gap-1.5 text-sm">{t("serverAdvanced.password")}<input className="jmcl-field h-9 w-full" type="password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={pending || !running} autoComplete="off" spellCheck={false} /></label>
+        <label className="grid gap-1.5 text-sm">{t("serverAdvanced.command")}<input className="jmcl-field h-9 w-full" value={command} onChange={(event) => setCommand(event.target.value)} disabled={pending || !running} autoComplete="off" spellCheck={false} /></label>
+        <Button type="submit" className="justify-self-start" disabled={pending || !running || !password || !command.trim()}>{t("serverAdvanced.send")}</Button>
       </form>
       {!running && <p className="text-sm text-muted-foreground">{t("serverAdvanced.runningOnly")}</p>}
       {snapshot.rcon && <><pre aria-label={t("serverAdvanced.reply")} className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-sm">{snapshot.rcon.text}</pre>{snapshot.rcon.truncated && <p className="text-sm">{t("serverAdvanced.truncated")}</p>}</>}
     </section>
-    <section aria-label="Query" className="space-y-3">
-      <h3 className="font-medium">Query</h3><div className="flex gap-2"><Button variant="outline" disabled={pending || !running} onClick={() => void query("basic")}>{t("serverAdvanced.basic")}</Button><Button variant="outline" disabled={pending || !running} onClick={() => void query("full")}>{t("serverAdvanced.full")}</Button></div>
+    <section aria-label="Query" className="space-y-3 border-t pt-4">
+      <h3 className="font-medium">Query</h3><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={pending || !running} onClick={() => void query("basic")}>{t("serverAdvanced.basic")}</Button><Button variant="outline" disabled={pending || !running} onClick={() => void query("full")}>{t("serverAdvanced.full")}</Button></div>
       {snapshot.query && <><dl className="grid gap-2 sm:grid-cols-2">{(["mode", "hostname", "game_type", "map", "version", "players", "max_players", "host_port", "host_ip", "plugins"] as const).map((key) => <div key={key}><dt className="font-mono text-xs text-muted-foreground">{key}</dt><dd className="break-words text-sm">{snapshot.query![key] === null ? t("serverAdvanced.notProvided") : snapshot.query![key] === "" ? t("serverAdvanced.empty") : String(snapshot.query![key])}</dd></div>)}</dl><h4 className="text-sm font-medium">{t("serverAdvanced.players")}</h4>{snapshot.query.player_names.length ? <ul className="list-inside list-disc text-sm">{snapshot.query.player_names.map((name, index) => <li key={`${index}-${name}`}>{name}</li>)}</ul> : <p className="text-sm text-muted-foreground">{t("serverAdvanced.noPlayers")}</p>}</>}
     </section>
   </div>;

@@ -173,8 +173,9 @@ function NameDialog({ state, existingNames, busy, onCancel, onSubmit }: NameDial
                 )}
               </div>
               {(state.kind === "restore" || state.kind === "import") && collides && (
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-start gap-2 text-sm">
                   <Checkbox
+                    className="mt-0.5"
                     checked={replace}
                     onCheckedChange={(checked) => setReplace(checked === true)}
                   />
@@ -364,8 +365,8 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
   const renderBody = () => {
     if (loadError) {
       return (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
-          <span className="text-destructive">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+          <span className="min-w-0 wrap-anywhere text-destructive">
             {t("worlds.loadFailed")}: {loadError}
           </span>
           <Button size="sm" variant="outline" onClick={() => void load()}>
@@ -399,7 +400,7 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
               const diffKey =
                 world.difficulty != null ? DIFFICULTIES[world.difficulty] : undefined;
               return (
-                <li key={world.name} className="flex items-center gap-3 px-3 py-2.5">
+                <li key={world.name} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
                   {icons[world.name] ? (
                     <img
                       src={icons[world.name]}
@@ -409,9 +410,9 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
                   ) : (
                     <HardDrive className="size-9 shrink-0 rounded-sm border p-2 text-muted-foreground" />
                   )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-sm font-medium">{displayName}</span>
+                  <div className="min-w-0 flex-[1_1_9rem]">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-sm font-medium wrap-anywhere">{displayName}</span>
                       {world.level_name === null && (
                         <Badge variant="destructive">{t("worlds.corrupt")}</Badge>
                       )}
@@ -436,7 +437,7 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
                         </Badge>
                       )}
                     </div>
-                    <div className="truncate text-xs text-muted-foreground">
+                    <div className="text-xs wrap-anywhere text-muted-foreground">
                       {[
                         displayName !== world.name ? world.name : null,
                         modeKey ? t(modeKey) : world.game_mode,
@@ -452,61 +453,63 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
                         .join(" · ")}
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => setDatapackWorld(world.name)}>{settings.language === "zh" ? "数据包" : "Datapacks"}</Button>
-                  {busyWorld && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          disabled={busyWorld}
-                          aria-label={t("worlds.actions")}
-                        />
-                      }
-                    >
-                      <MoreHorizontal className="size-4 text-muted-foreground" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        disabled={world.locked}
-                        onClick={() => setNameDialog({ kind: "rename", world })}
+                  <div className="ms-auto flex items-center gap-1.5">
+                    <Button size="sm" variant="outline" onClick={() => setDatapackWorld(world.name)}>{settings.language === "zh" ? "数据包" : "Datapacks"}</Button>
+                    {busyWorld && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={busyWorld}
+                            aria-label={t("worlds.actions")}
+                          />
+                        }
                       >
-                        <Pencil className="size-4" />
-                        {t("worlds.rename")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={world.locked}
-                        onClick={() => setNameDialog({ kind: "duplicate", world })}
-                      >
-                        <Copy className="size-4" />
-                        {t("worlds.duplicate")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={world.locked}
-                        onClick={() => setNameDialog({ kind: "backup", world })}
-                      >
-                        <Archive className="size-4" />
-                        {t("worlds.backup")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={world.locked}
-                        onClick={() => void exportWorld(world)}
-                      >
-                        <Upload className="size-4" />
-                        {t("worlds.export")}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={world.locked}
-                        onClick={() => setConfirm({ kind: "deleteWorld", world })}
-                      >
-                        <Trash2 className="size-4" />
-                        {t("worlds.delete")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <MoreHorizontal className="size-4 text-muted-foreground" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          disabled={world.locked}
+                          onClick={() => setNameDialog({ kind: "rename", world })}
+                        >
+                          <Pencil className="size-4" />
+                          {t("worlds.rename")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={world.locked}
+                          onClick={() => setNameDialog({ kind: "duplicate", world })}
+                        >
+                          <Copy className="size-4" />
+                          {t("worlds.duplicate")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={world.locked}
+                          onClick={() => setNameDialog({ kind: "backup", world })}
+                        >
+                          <Archive className="size-4" />
+                          {t("worlds.backup")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={world.locked}
+                          onClick={() => void exportWorld(world)}
+                        >
+                          <Upload className="size-4" />
+                          {t("worlds.export")}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={world.locked}
+                          onClick={() => setConfirm({ kind: "deleteWorld", world })}
+                        >
+                          <Trash2 className="size-4" />
+                          {t("worlds.delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </li>
               );
             })}
@@ -522,11 +525,11 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
               {backups.map((backup) => {
                 const busyBackup = busy?.endsWith(`:${backup.file}`) ?? false;
                 return (
-                  <li key={backup.file} className="flex items-center gap-3 px-3 py-2">
+                  <li key={backup.file} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
                     <Archive className="size-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm">{backup.file}</div>
-                      <div className="truncate text-xs text-muted-foreground">
+                    <div className="min-w-0 flex-[1_1_9rem]">
+                      <div className="text-sm wrap-anywhere">{backup.file}</div>
+                      <div className="text-xs wrap-anywhere text-muted-foreground">
                         {[
                           backup.world,
                           formatBytes(backup.size_bytes),
@@ -537,9 +540,9 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
                       </div>
                     </div>
                     {busyBackup ? (
-                      <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+                      <Loader2 className="ms-auto size-4 shrink-0 animate-spin text-muted-foreground" />
                     ) : (
-                      <div className="flex shrink-0 items-center gap-1">
+                      <div className="ms-auto flex shrink-0 items-center gap-1.5">
                         <Button
                           size="sm"
                           variant="outline"
@@ -571,9 +574,9 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <CardTitle>{t("worlds.title")}</CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="ms-auto flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -594,11 +597,16 @@ function ScopedWorldsManager({ instance }: { instance: InstanceManifest }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">{renderBody()}
-        {datapackWorld && worlds?.some(world => world.name === datapackWorld) && <div>
-          <Button variant="outline" onClick={() => setDatapackWorld(null)}>{settings.language === "zh" ? "关闭数据包管理" : "Close datapack management"}</Button>
-          <ClientDatapacksPanel instance={instance} directory={directory} world={worlds.find(world => world.name === datapackWorld)!} />
-        </div>}
+      <CardContent className="space-y-4">
+        {renderBody()}
+        {datapackWorld && worlds?.some(world => world.name === datapackWorld) && (
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setDatapackWorld(null)}>{settings.language === "zh" ? "关闭数据包管理" : "Close datapack management"}</Button>
+            </div>
+            <ClientDatapacksPanel instance={instance} directory={directory} world={worlds.find(world => world.name === datapackWorld)!} />
+          </div>
+        )}
       </CardContent>
 
       {nameDialog && (

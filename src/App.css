@@ -49,72 +49,84 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.875rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  color-scheme: light;
+  --background: #f8f4ee;
+  --foreground: #2d2c31;
+  --card: #fffdf8;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: #4f5d6d;
+  --primary-foreground: #fcfaf6;
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --muted: #eeeae5;
+  --muted-foreground: #655e59;
+  --accent: #e4e6e9;
+  --accent-foreground: #3f4c5a;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #ded8d0;
+  --input: #cec7bf;
+  --ring: #707987;
+  --chart-1: #4f5d6d;
+  --chart-2: #677585;
+  --chart-3: #939ba6;
+  --chart-4: #547479;
+  --chart-5: #7b7087;
+  --radius: 0.75rem;
+  --sidebar: #f1ede7;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --jmcl-online: #42795d;
+  --jmcl-warning: #926018;
+  --jmcl-feature-accent: #d8e0ec;
+  --jmcl-on-feature-accent: #292d34;
+  --jmcl-page-width: 83rem;
+  --jmcl-page-gutter: clamp(1rem, 3.3vw, 3.5rem);
+  --jmcl-radius: 0.95rem;
+  --jmcl-panel-padding: 1rem;
+  --jmcl-menu-shadow: 0 6px 16px rgb(45 44 49 / 0.12), 0 2px 4px rgb(45 44 49 / 0.06);
+  --jmcl-modal-shadow: 0 12px 36px rgb(45 44 49 / 0.18);
+  --jmcl-scrim: rgb(34 28 26 / 0.24);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+  color-scheme: dark;
+  --background: #29272a;
+  --foreground: #f2eee9;
+  --card: #323036;
+  --primary: #b7bfca;
+  --primary-foreground: #292d34;
+  --muted: #403d43;
+  --muted-foreground: #cac1b8;
+  --accent: #444a54;
+  --accent-foreground: #e0e4eb;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #535057;
+  --input: #625e66;
+  --ring: #b0bac8;
+  --chart-1: #b7bfca;
+  --chart-2: #999fad;
+  --chart-3: #778597;
+  --chart-4: #90aaa9;
+  --chart-5: #b3a3be;
+  --sidebar: #2d2b2e;
+  --jmcl-online: #91c4a6;
+  --jmcl-warning: #e5bc76;
+  --jmcl-menu-shadow: 0 6px 16px rgb(0 0 0 / 0.25), 0 2px 4px rgb(0 0 0 / 0.14);
+  --jmcl-modal-shadow: 0 12px 36px rgb(0 0 0 / 0.32);
+  --jmcl-scrim: rgb(0 0 0 / 0.37);
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --jmcl-panel-padding: 1.25rem;
+  }
 }
 
 @layer base {
@@ -126,7 +138,343 @@
     }
   html {
     @apply font-sans;
+  }
+  input[type="checkbox"] {
+    accent-color: var(--primary);
+  }
+}
+
+.jmcl-shell .jmcl-rail {
+  border-color: var(--sidebar-border);
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+}
+
+.jmcl-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.35rem 1.1rem 1.6rem;
+}
+
+.jmcl-brand-mark {
+  flex: 0 0 auto;
+  width: 2.6rem;
+  height: 2.6rem;
+  object-fit: contain;
+}
+
+.jmcl-brand-name {
+  font-size: 1.18rem;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+}
+
+.jmcl-brand-edition {
+  margin-top: 0.18rem;
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  line-height: 1.15;
+}
+
+.jmcl-nav {
+  gap: 0.3rem;
+  padding-inline: 0.8rem;
+}
+
+.jmcl-nav-item {
+  min-width: 0;
+  min-height: 2.65rem;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.62rem;
+  padding: 0.55rem 0.72rem;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  font-weight: 590;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.jmcl-nav-item:hover {
+  background: var(--muted);
+  color: var(--sidebar-foreground);
+}
+
+.jmcl-nav-item[aria-current="page"] {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+  font-weight: 680;
+}
+
+.jmcl-nav-item:focus-visible,
+.jmcl-skip:focus-visible {
+  outline: 2px solid var(--sidebar-ring);
+  outline-offset: 2px;
+}
+
+.jmcl-skip {
+  position: fixed;
+  z-index: 60;
+  inset: 0.75rem auto auto 0.75rem;
+  transform: translateY(calc(-100% - 1rem));
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 0.875rem;
+}
+
+.jmcl-skip:focus {
+  transform: none;
+}
+
+.jmcl-main:focus {
+  outline: none;
+}
+
+.jmcl-rail-footer {
+  margin: 0.65rem 0.8rem 0.8rem;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.jmcl-account {
+  padding-block: 0.35rem;
+}
+
+.jmcl-core-status {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.55rem 0.45rem 0.2rem;
+  color: var(--muted-foreground);
+  font-size: 0.69rem;
+  font-weight: 560;
+}
+
+.jmcl-status-dot {
+  height: 0.42rem;
+  width: 0.42rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--jmcl-online);
+}
+
+.jmcl-core-status[data-status="starting"] .jmcl-status-dot {
+  background: var(--jmcl-warning);
+}
+
+.jmcl-core-status[data-status="error"] .jmcl-status-dot {
+  background: var(--destructive);
+}
+
+.jmcl-core-version {
+  display: block;
+  margin-top: 0.16rem;
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+@layer components {
+  .jmcl-page {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.125rem, 2vw, 1.625rem);
+    max-width: var(--jmcl-page-width);
+    margin-inline: auto;
+    padding: clamp(1.25rem, 3.3vw, 3rem) var(--jmcl-page-gutter) 2.8rem;
+  }
+
+  .jmcl-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: 0.85rem 1.1rem;
+  }
+
+  .jmcl-page-title {
+    font-size: clamp(1.8rem, 3.1vw, 2.65rem);
+    font-weight: 720;
+    line-height: 1.08;
+    letter-spacing: -0.047em;
+    overflow-wrap: anywhere;
+  }
+
+  .jmcl-page-description {
+    margin-top: 0.4rem;
+    color: var(--muted-foreground);
+    font-size: 0.87rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .jmcl-panel {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--jmcl-radius);
+    background-color: var(--card);
+  }
+
+  .jmcl-field {
+    @apply min-w-0 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors enabled:hover:border-ring/65 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:focus-visible:ring-destructive/25;
+  }
+
+  select.jmcl-field {
+    appearance: none;
+    padding-inline-end: 2rem;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+      linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 50%, calc(100% - 11px) 50%;
+    background-repeat: no-repeat;
+    background-size: 4px 4px;
+  }
+
+  @media (forced-colors: active) {
+    select.jmcl-field {
+      appearance: auto;
+      padding-inline-end: 0.75rem;
+      background-image: none;
     }
+  }
+
+  .jmcl-state {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 0.7rem;
+    min-height: 13rem;
+    padding: 1.6rem;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  .jmcl-back {
+    width: fit-content;
+    max-width: 100%;
+    margin-inline-start: calc(-0.625rem - 1px);
+    color: var(--muted-foreground);
+  }
+
+  .jmcl-feature {
+    position: relative;
+    isolation: isolate;
+    padding: clamp(1.25rem, 3vw, 2.25rem);
+    border-radius: var(--jmcl-radius);
+    border-color: #676772;
+    background: linear-gradient(118deg, #42434d, #5b626e);
+    color: #fff8ef;
+    --primary: var(--jmcl-feature-accent);
+    --primary-foreground: var(--jmcl-on-feature-accent);
+    --muted-foreground: #ede6df;
+    --ring: var(--jmcl-feature-accent);
+  }
+
+  .jmcl-feature-block {
+    display: none;
+  }
+
+  @media (min-width: 48rem) {
+    .jmcl-feature {
+      --jmcl-block-width: clamp(5rem, 9vw, 7.5rem);
+      --jmcl-block-inset: clamp(1.75rem, 7vw, 6.25rem);
+      padding-inline-end: calc(var(--jmcl-block-width) + var(--jmcl-block-inset) + 1.25rem);
+    }
+
+    .jmcl-feature-block {
+      display: block;
+      position: absolute;
+      z-index: -1;
+      inset: 50% var(--jmcl-block-inset) auto auto;
+      width: var(--jmcl-block-width);
+      aspect-ratio: 1 / 1.1124;
+      transform: translateY(-50%);
+      pointer-events: none;
+      filter: sepia(0.12) saturate(0.8) brightness(1.04);
+    }
+
+    .jmcl-feature-block--preview {
+      width: calc(1.12 * var(--jmcl-block-width));
+      height: auto;
+      aspect-ratio: auto;
+    }
+
+    .jmcl-feature-block-face {
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 100%;
+      height: var(--jmcl-block-width);
+      background: url('/jmcl-feature-andesite.png') center / 100% 100% no-repeat;
+      image-rendering: pixelated;
+      transform-origin: top left;
+    }
+
+    .jmcl-feature-block-face--top {
+      left: 50%;
+      transform: matrix(.5, .25, -.5, .25, 0, 0);
+      filter: brightness(1.14);
+    }
+
+    .jmcl-feature-block-face--left {
+      top: calc(var(--jmcl-block-width) * .25);
+      transform: matrix(.5, .25, 0, .6124, 0, 0);
+      filter: brightness(0.94);
+    }
+
+    .jmcl-feature-block-face--right {
+      top: calc(var(--jmcl-block-width) * .5);
+      left: 50%;
+      transform: matrix(.5, -.25, 0, .6124, 0, 0);
+      filter: brightness(0.84);
+    }
+  }
+}
+
+@media (width < 40rem) {
+  .jmcl-brand {
+    padding: 0.7rem 0.85rem 0.55rem;
+  }
+
+  .jmcl-brand-mark {
+    width: 2.2rem;
+    height: 2.2rem;
+  }
+
+  .jmcl-nav {
+    padding-inline: 0.55rem;
+    gap: 0.15rem;
+  }
+
+  .jmcl-nav-item {
+    min-height: 2.5rem;
+    gap: 0.3rem;
+    padding-inline: 0.3rem;
+    font-size: 0.75rem;
+  }
+
+  .jmcl-rail-footer {
+    margin: 0.35rem 0.75rem 0;
+  }
+
+  .jmcl-account {
+    padding: 0;
+  }
+
+  .jmcl-account button[aria-haspopup="menu"] {
+    padding: 0.3rem 0.25rem;
+  }
+
+  .jmcl-core-status {
+    max-width: 51%;
+    padding: 0.3rem 0.15rem 0.3rem 0.4rem;
+  }
+
+  .jmcl-core-version {
+    display: none;
+  }
 }
 
 @keyframes progress-indeterminate {

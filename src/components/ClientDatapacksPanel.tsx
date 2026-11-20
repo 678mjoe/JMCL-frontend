@@ -42,7 +42,7 @@ const copy = {
   cancelHint: ["Cancellation closes this request; an interrupted change may already have completed. Refresh before retrying.", "取消将关闭此请求；被中断的修改可能已经完成。重试前请刷新。"],
 } as const;
 type CopyKey = keyof typeof copy;
-const fieldClass = "h-9 min-w-0 rounded-md border bg-background px-3 text-sm disabled:opacity-60";
+const fieldClass = "jmcl-field h-9 min-w-0";
 function useCopy() { const { settings } = useSettings(); return (key: CopyKey) => copy[key][settings.language === "zh" ? 1 : 0]; }
 export function ClientDatapacksPanel(props: Props) {
   const { settings } = useSettings();
@@ -72,7 +72,7 @@ function ContentControls({ instance, world, directory }: Props) {
   const openVersions = (id: string, title: string, source: CatalogProvider) => { setProvider(source); setProject({ project_id: id, title, slug: id, author: "", description: "", downloads: 0, icon_url: null }); setCatalog(true); setRemoval(null); setConfirmation(""); setDone(false); };
   const entries = snapshot.content?.entries ?? [];
   const errorHint: CopyKey = snapshot.error === "CONTENT_PROJECT_AMBIGUOUS" ? "ambiguous" : snapshot.error === "CURSEFORGE_DOWNLOAD_UNAVAILABLE" ? "unavailable" : snapshot.error?.startsWith("CURSEFORGE_") ? "cfOperationError" : snapshot.error === "WORLD_LOCKED" ? "lockedError" : snapshot.error === "WORLD_NOT_FOUND" ? "missingError" : ["NO_COMPATIBLE_VERSION", "INCOMPATIBLE_VERSION", "VERSION_PROJECT_MISMATCH", "CONTENT_KIND_MISMATCH"].includes(snapshot.error ?? "") ? "versionError" : ["CONTENT_CONFLICT", "CONTENT_NOT_FOUND"].includes(snapshot.error ?? "") ? "conflictError" : snapshot.error === "BUSY" ? "busyError" : "failed";
-  return <section className="mt-5 space-y-4 rounded-lg border p-4" aria-label={t("title")}><h2 className="font-semibold">{t("title")} · {world.level_name ?? world.name}</h2><p className="text-sm text-muted-foreground">{t("scope")}</p>
+  return <section className="space-y-4 rounded-md border p-3 sm:p-4" aria-label={t("title")}><h2 className="font-semibold wrap-anywhere">{t("title")} · {world.level_name ?? world.name}</h2><p className="text-sm text-muted-foreground">{t("scope")}</p>
     <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={snapshot.pending} onClick={() => { setDone(false); void load(); }}>{t("load")}</Button><Button variant="outline" onClick={clear}>{t("cancel")}</Button><Button disabled={!mutable} onClick={() => { setProvider("modrinth"); setCatalog(true); setProject(null); setRemoval(null); setConfirmation(""); }}>{t("search")}</Button><Button disabled={!mutable} onClick={() => { setProvider("curseforge"); setCatalog(true); setProject(null); setRemoval(null); setConfirmation(""); }}>{t("searchCf")}</Button></div>
     {!stopped && <p className="text-sm text-muted-foreground">{t("stopped")}</p>}
     {snapshot.pending && <p role="status" className="text-sm">{t("pending")} {snapshot.progress}</p>}
