@@ -1,0 +1,160 @@
+name: Static antivirus audit for existing previews
+on:
+  push:
+    branches: [audit/preview-scan-20261120]
+    paths: ['.github/workflows/preview-static-scan.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  scan:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/audit/preview-scan-20261120'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Install Ubuntu ClamAV and refresh signed definitions
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam --stdout
+          clamscan --version
+          sigtool --info /var/lib/clamav/daily.c?d
+          date -u
+      - name: Verify EICAR positive control
+        run: |
+          f=$(mktemp)
+          trap 'rm -f "$f"' EXIT
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > "$f"
+          rc=0
+          clamscan --stdout "$f" || rc=$?
+          test "$rc" -eq 1
+      - name: Verify immutable inputs and scan without executing payloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -u - <<'PY'
+          import hashlib, io, json, os, pathlib, re, stat, subprocess, tarfile, tempfile, urllib.request, urllib.parse, urllib.error, zipfile
+
+          BASE = 'https://api.github.com/repos/678mjoe/JMCL-frontend/actions/artifacts/'
+          LIMIT = 32 << 20
+          REFS = {
+              44684206751: ('control', '60fcf70f9760ebae30cb524988258605615c7f98', '025364355c60cf948ca241eea2cac2f0888439cf'),
+              44688825993: ('flagged', '3dfceb13e3c6571b954e7c22a3155ca869a5195b', '83e3fa749c56af79d1760b9e85c277d84286ca19'),
+          }
+          ITEMS = [
+              (44684206751, 14606321946, 'mac', 'f31fd24266653eca12e58d650fa50e57eb2a7c65028689ca27444b571a81b1e6', '46d7f084b2835586b5f4407a3e1bea951113cc6bf52127b7627383bf4f752e15', '82f53f425fafd6447e316163356179fd0d3e358aa610fecf2c495204bc94c98a'),
+              (44684206751, 14606192812, 'win', '7091fe3e10d170e8577a29b49f51919c1e4fad081e84fae9ac69727fafddea1b', 'bb26aa1b1139eda5c4a846926c4f03e95d08a54f9aef7d30114d3c80208573cf', '97685b3ed082a9ee907b471256d84aba2d339bc035ccabca339c80017354bf1e'),
+              (44688825993, 14608556463, 'mac', '83e173da036fd5fca57939265a24b28ee1a92db74dff6329dccac3e71acf4b10', '8c09cf833e01b4cbda3b6ded59408064eda2a177f9b723ce8eba3ac8ec2f0698', 'fa93e5e6e00b5721962b955cc0e92263d287b597b6b916b69c7c82b7bf82703f'),
+              (44688825993, 14608950614, 'win', '4fb4ec302d1d24cfe421c4f7f5b85a2e9db01633ff149e5a2d225dffec45591f', 'df450cdc0961b1758ee79f4dba69ff1c8d13b098c3aba96af88c42e0f5f4c61c', '71a1fcaab37422e06d9ad888556d631677d2f4bba637a8033d520ed2a9188b65'),
+          ]
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener = urllib.request.build_opener(NoRedirect())
+          def get(url, limit, auth=False, redirect=False):
+              headers = {'User-Agent': 'JMCL-Static-Audit'}
+              if auth:
+                  assert url.startswith(BASE)
+                  headers.update(Authorization='Bearer ' + os.environ['GH_TOKEN'], Accept='application/vnd.github+json')
+              try:
+                  with opener.open(urllib.request.Request(url, headers=headers), timeout=60) as response:
+                      data = response.read(limit + 1)
+              except urllib.error.HTTPError as e:
+                  if not redirect or e.code != 302:
+                      raise RuntimeError(f'HTTP {e.code}') from None
+                  dst = urllib.parse.urlsplit(e.headers['Location'])
+                  assert dst.scheme == 'https' and dst.username is None and dst.hostname.endswith(('.blob.core.windows.net', '.githubusercontent.com'))
+                  return get(dst.geturl(), limit)
+              assert len(data) <= limit
+              return data
+          def sha(data):
+              return hashlib.sha256(data).hexdigest()
+          def read(f, n):
+              assert 0 <= n <= LIMIT
+              data = f.read(n + 1)
+              assert len(data) == n
+              return data
+          def scan(label, paths):
+              p = subprocess.run(['clamscan', '--stdout', '--infected', '--alert-exceeds-max=yes',
+                                  '--max-filesize=64M', '--max-scansize=256M', '--max-recursion=25',
+                                  '--max-files=10000', *map(str, paths)], capture_output=True, text=True, timeout=180)
+              for line in (p.stdout + p.stderr).splitlines():
+                  if ' FOUND' in line or 'ERROR' in line or ' files:' in line or line.startswith('Data scanned:'):
+                      print(json.dumps(line))
+              print(f'{label}: {len(paths)} explicit scan objects, status={p.returncode} (0=no detection, 1=detection, 2=error)')
+              return p.returncode
+          def tar_members(path, temp, manifest):
+              members, names, verified = [], set(), set()
+              total = 0
+              with tarfile.open(path, 'r|gz') as archive:
+                  for i, m in enumerate(archive):
+                      assert i < 512 and m.name not in names
+                      names.add(m.name)
+                      assert re.fullmatch(r'[ A-Za-z0-9_./+-]{1,240}', m.name)
+                      assert all(x not in ('', '.', '..') for x in m.name.split('/'))
+                      assert m.name == 'jmcl.app' or m.name.startswith('jmcl.app/')
+                      if m.isdir():
+                          continue
+                      assert m.isfile(), 'Non-regular tar entry; not following links'
+                      total += m.size
+                      assert total <= 96 << 20
+                      with archive.extractfile(m) as f:
+                          data = read(f, m.size)
+                      key = {'jmcl.app/Contents/MacOS/jmcl': 'desktop_sha256',
+                             'jmcl.app/Contents/MacOS/jmcl-core': 'core_sha256'}.get(m.name)
+                      if key:
+                          assert sha(data) == manifest[key]
+                          verified.add(key)
+                      dst = temp / f'mac-member-{i:04d}'
+                      dst.write_bytes(data)
+                      members.append(dst)
+              assert verified == {'desktop_sha256','core_sha256'}
+              print(f'Mac tar: {len(names)} entries, {len(members)} regular members, {total} bytes; host/Core digests verified')
+              return members
+          results = []
+          for run, aid, platform, zip_sha, package_sha, core_sha in ITEMS:
+              role, head, ui = REFS[run]
+              label = f'{role}/{platform} artifact={aid}'
+              print(label)
+              try:
+                  meta = json.loads(get(BASE + str(aid), 200_000, True))
+                  assert meta['id'] == aid and meta['workflow_run']['id'] == run and meta['workflow_run']['head_sha'] == head
+                  assert meta['expired'] is False and meta['digest'] == 'sha256:' + zip_sha
+                  blob = get(BASE + str(aid) + '/zip', 16 << 20, True, True)
+                  assert len(blob) == meta['size_in_bytes'] and sha(blob) == zip_sha
+                  print(f'Verified outer SHA256 {zip_sha}')
+                  name = 'jmcl_0.1.0_aarch64-apple-darwin.app.tar.gz' if platform == 'mac' else 'jmcl_0.1.0_x64-setup.exe'
+                  target = 'aarch64-apple-darwin' if platform == 'mac' else 'x86_64-pc-windows-msvc'
+                  names = {name,'manifest.json','SHA256SUMS.txt','Inter-LICENSE.txt','JMCL-LICENSE.txt','jmcl-feature-andesite.LICENSE.txt'}
+                  with tempfile.TemporaryDirectory(prefix='jmcl-static-') as dir, zipfile.ZipFile(io.BytesIO(blob)) as archive:
+                      t = pathlib.Path(dir)
+                      (t / 'artifact.zip').write_bytes(blob)
+                      infos = archive.infolist()
+                      assert len(infos) == len(names) and {m.filename for m in infos} == names
+                      assert sum(m.file_size for m in infos) <= 16 << 20
+                      for m in infos:
+                          assert not m.is_dir() and not stat.S_ISLNK(m.external_attr >> 16)
+                          with archive.open(m) as f:
+                              (t / m.filename).write_bytes(read(f, m.file_size))
+                      manifest = json.loads((t / 'manifest.json').read_bytes())
+                      assert manifest['frontend_revision'] == head and manifest['ui_source_revision'] == ui
+                      assert manifest['core_revision'] == '5a4310debbcee26b3d2391bab2339f79cd6ec52e'
+                      assert manifest['package'] == name and manifest['target'] == target
+                      assert sha((t / name).read_bytes()) == manifest['package_sha256'] == package_sha
+                      assert manifest['core_sha256'] == core_sha and (t / 'SHA256SUMS.txt').read_text().split() == [package_sha, name]
+                      print(f'Verified inner package SHA256 {package_sha}')
+                      rc = scan(label + '/outer-and-package', [t / 'artifact.zip', *(t / n for n in sorted(names))])
+                      if platform == 'mac':
+                          members = tar_members(t / name, t, manifest)
+                          rm = scan(label + '/explicit-tar-members', members)
+                      else:
+                          print('NSIS installer scanned as opaque container; no independent member enumeration or Core extraction and no claim of full NSIS archive coverage.')
+                          rm = None
+                      results.append((label, rc, rm))
+              except Exception as e:
+                  print('AUDIT ERROR ' + json.dumps({'label': label, 'type': type(e).__name__, 'detail': str(e)[:250]}))
+                  results.append((label, 'error', 'error'))
+          print('AUDIT SUMMARY ' + json.dumps(results))
+          assert all(rc == 0 and rm in (0,None) for _, rc, rm in results)
+          PY
