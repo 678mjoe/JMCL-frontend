@@ -83,7 +83,9 @@ describe("mock transport React integration", () => {
     expect(sidebar.className).toContain("w-full");
     expect(sidebar.className).toContain("sm:w-52");
     expect(sidebar.className).toContain("sm:border-r");
-    expect(nav.getAttribute("aria-label")).toBe("Primary navigation");
+    expect(nav.getAttribute("aria-label")).toBe("主导航");
+    expect(dom.document.documentElement.lang).toBe("zh-CN");
+    expect(dom.document.querySelector('a[href="#jmcl-main"]')?.textContent).toBe("跳至主要内容");
     expect(nav.className).toContain("flex-row");
     expect(nav.className).toContain("sm:flex-1");
     expect(nav.className).toContain("sm:flex-col");

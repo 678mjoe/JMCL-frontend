@@ -1,0 +1,13 @@
+Polished Andesite texture from Pixel Perfection Community Edition
+Original pack by XSSheep. Maintained by the Pixel Perfection CE contributors.
+
+Source texture (unmodified PNG):
+https://github.com/Athemis/PixelPerfectionCE/blob/28e38cab7c1f03f86364ef704f705bebcc13cb3d/assets/minecraft/textures/block/polished_andesite.png
+
+Pack credits and licensing:
+https://github.com/Athemis/PixelPerfectionCE/blob/28e38cab7c1f03f86364ef704f705bebcc13cb3d/README.md#contributors
+https://github.com/Athemis/PixelPerfectionCE/blob/28e38cab7c1f03f86364ef704f705bebcc13cb3d/README.md#intellectual-property
+
+The texture and its cube rendering in JMCL (three faces with CSS projection
+and lighting) are available under Creative Commons Attribution-ShareAlike 4.0:
+https://creativecommons.org/licenses/by-sa/4.0/

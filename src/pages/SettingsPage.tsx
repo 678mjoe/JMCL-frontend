@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { DiagnosticSettings } from "@/components/DiagnosticSettings";
 import { UpdateSettings } from "@/components/UpdateSettings";
 import { StoreGcSettings } from "@/components/StoreGcSettings";
@@ -22,12 +21,36 @@ import type { Language } from "@/lib/i18n";
 import { errorText, useLauncher } from "@/lib/launcher";
 import { useSettings, type Theme } from "@/lib/settings";
 import type { Source } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-function SectionHeading({ children }: { children: string }) {
+function SectionHeading({ id, children }: { id: string; children: string }) {
   return (
-    <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+    <h2 id={id} className="text-base font-semibold tracking-tight">
       {children}
     </h2>
+  );
+}
+
+function SettingRow({ id, label, description, wide, children }: {
+  id: string;
+  label: string;
+  description?: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn(
+      "grid min-w-0 gap-x-4 gap-y-2 py-2.5 first:pt-0 last:pb-0 @min-[21rem]/settings-panel:items-center",
+      wide
+        ? "@min-[21rem]/settings-panel:grid-cols-[minmax(0,1fr)_minmax(0,65%)]"
+        : "@min-[21rem]/settings-panel:grid-cols-[minmax(0,1fr)_minmax(0,clamp(8rem,36cqi,11rem))]",
+    )}>
+      <div className="min-w-0 space-y-0.5">
+        <Label htmlFor={id} className="leading-tight">{label}</Label>
+        {description && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{description}</p>}
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -61,300 +84,225 @@ function AccountsSection() {
   };
 
   return (
-    <section className="space-y-4">
-      <div className="space-y-1">
-        <SectionHeading>{t("settings.accounts")}</SectionHeading>
-        <p className="text-xs text-muted-foreground">
-          {t("settings.accountsHint")}
-        </p>
+    <section className="jmcl-panel col-span-full space-y-4 p-(--jmcl-panel-padding)" aria-labelledby="settings-accounts">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-[1_1_12rem] space-y-1">
+          <SectionHeading id="settings-accounts">{t("settings.accounts")}</SectionHeading>
+          <p className="text-sm text-muted-foreground">{t("settings.accountsHint")}</p>
+        </div>
+        <Button variant="outline" size="sm" disabled={status !== "ready"} onClick={startLogin}>
+          {t("account.add")}
+        </Button>
       </div>
 
       {error ? (
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm text-destructive">{error}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <p role="alert" className="text-sm wrap-anywhere text-destructive">{error}</p>
           <Button variant="outline" size="sm" onClick={() => void refresh()}>
             {t("common.retry")}
           </Button>
         </div>
       ) : loading ? (
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+        <p role="status" className="border-t pt-3 text-sm text-muted-foreground">{t("common.loading")}</p>
       ) : accounts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("account.empty")}</p>
+        <p className="border-t pt-3 text-sm text-muted-foreground">{t("account.empty")}</p>
       ) : (
-        <div className="divide-y rounded-md border">
+        <ul className="divide-y border-t">
           {accounts.map((account) => (
-            <div
-              key={account.id}
-              className="flex items-center justify-between gap-2 px-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">
-                  {account.player_name}
-                </p>
-                {account.xuid && (
-                  <p className="truncate font-mono text-xs text-muted-foreground">
-                    XUID {account.xuid}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {activeAccount?.id === account.id ? (
-                  <Badge>{t("account.active")}</Badge>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveAccount(account.id)}
-                  >
-                    {t("account.setActive")}
-                  </Button>
-                )}
-                {confirmId === account.id ? (
-                  <>
-                    <span className="text-xs text-destructive">
-                      {t("account.removeConfirm")}
-                    </span>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={removing}
-                      onClick={() => void confirmRemove(account.id)}
-                    >
-                      {t("common.confirm")}
+            <li key={account.id} className="space-y-3 py-3 last:pb-0">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                <div className="min-w-0 flex-[1_1_7rem]">
+                  <p className="text-sm font-medium wrap-anywhere">{account.player_name}</p>
+                  {account.xuid && (
+                    <p className="font-mono text-xs wrap-anywhere text-muted-foreground">XUID {account.xuid}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {activeAccount?.id === account.id ? (
+                    <Badge variant="secondary">{t("account.active")}</Badge>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => setActiveAccount(account.id)}>
+                      {t("account.setActive")}
                     </Button>
+                  )}
+                  {confirmId !== account.id && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={removing}
-                      onClick={() => setConfirmId(null)}
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setConfirmId(account.id)}
                     >
+                      {t("account.remove")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {confirmId === account.id && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-destructive/5 p-2.5">
+                  <p className="text-xs leading-relaxed text-destructive">{t("account.removeConfirm")}</p>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button variant="ghost" size="sm" disabled={removing} onClick={() => setConfirmId(null)}>
                       {t("account.removeCancel")}
                     </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setConfirmId(account.id)}
-                  >
-                    {t("account.remove")}
-                  </Button>
-                )}
-              </div>
-            </div>
+                    <Button variant="destructive" size="sm" disabled={removing} onClick={() => void confirmRemove(account.id)}>
+                      {t("common.confirm")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-
-      <div>
-        <Button
-          variant="outline"
-          disabled={status !== "ready"}
-          onClick={startLogin}
-        >
-          {t("account.add")}
-        </Button>
-      </div>
     </section>
   );
 }
 
 export function SettingsPage() {
   const { settings, update, t } = useSettings();
+  const isChinese = settings.language === "zh";
+  const downloadLimits = [
+    { key: "downloadWorkers", label: isChinese ? "并发下载数" : "Download workers", minimum: 1, maximum: 32 },
+    { key: "downloadRetries", label: isChinese ? "失败重试数" : "Retries per download", minimum: 0, maximum: 5 },
+  ] as const;
+  const directories = [
+    { key: "instancesDir", label: t("settings.instancesDir") },
+    { key: "storeDir", label: t("settings.storeDir") },
+    { key: "serversDir", label: t("settings.serversDir") },
+  ] as const;
 
   return (
-    <div className="p-6">
-      <div className="mx-auto max-w-2xl space-y-6">
-        <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
+    <div className="jmcl-page @container/settings">
+      <header className="jmcl-page-header">
+        <h1 className="jmcl-page-title">{t("settings.title")}</h1>
+      </header>
 
-        <section className="space-y-4">
-          <SectionHeading>{t("settings.appearance")}</SectionHeading>
-
-          <div className="flex items-center justify-between">
-            <Label>{t("settings.theme")}</Label>
-            <Select
-              value={settings.theme}
-              onValueChange={(value) => {
-                if (value) update({ theme: value as Theme });
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue>
-                  {t(
-                    settings.theme === "system"
-                      ? "settings.theme.system"
-                      : settings.theme === "light"
-                        ? "settings.theme.light"
-                        : "settings.theme.dark",
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="system">
-                  {t("settings.theme.system")}
-                </SelectItem>
-                <SelectItem value="light">
-                  {t("settings.theme.light")}
-                </SelectItem>
-                <SelectItem value="dark">{t("settings.theme.dark")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label>{t("settings.language")}</Label>
-            <Select
-              value={settings.language}
-              onValueChange={(value) => {
-                if (value) update({ language: value as Language });
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue>
-                  {settings.language === "zh" ? "中文" : "English"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="zh">中文</SelectItem>
-                <SelectItem value="en">English</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </section>
-
-        <Separator />
-
-        <section className="space-y-4">
-          <SectionHeading>{settings.language === "zh" ? "下载" : "Downloads"}</SectionHeading>
-          <p className="text-xs text-muted-foreground">{settings.language === "zh" ? "仅影响新开始的操作；进行中的任务保留开始时的设置。并发数 1–32，重试数 0–5。" : "Applies to newly started operations. Running tasks retain their original settings. Workers: 1–32; retries: 0–5."}</p>
-          {(["downloadWorkers", "downloadRetries"] as const).map(key => (
-            <div className="flex items-center justify-between" key={key}>
-              <Label htmlFor={key}>{key === "downloadWorkers" ? (settings.language === "zh" ? "并发下载数" : "Download workers") : (settings.language === "zh" ? "失败重试数" : "Retries per download")}</Label>
-              <Select value={String(settings[key])} onValueChange={value => { if (value !== null) update({ [key]: Number(value) }); }}>
-                <SelectTrigger id={key} className="w-48"><SelectValue /></SelectTrigger>
-                <SelectContent>{Array.from({ length: key === "downloadWorkers" ? 32 : 6 }, (_, i) => i + (key === "downloadWorkers" ? 1 : 0)).map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+      <div className="grid min-w-0 gap-4 @min-[54rem]/settings:grid-cols-2">
+        <section className="jmcl-panel @container/settings-panel space-y-4 p-(--jmcl-panel-padding)" aria-labelledby="settings-appearance">
+          <SectionHeading id="settings-appearance">{t("settings.appearance")}</SectionHeading>
+          <div className="divide-y">
+            <SettingRow id="settings-theme" label={t("settings.theme")}>
+              <Select
+                value={settings.theme}
+                onValueChange={(value) => {
+                  if (value) update({ theme: value as Theme });
+                }}
+              >
+                <SelectTrigger id="settings-theme" className="w-full min-w-0">
+                  <SelectValue>{t(`settings.theme.${settings.theme}`)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="system">{t("settings.theme.system")}</SelectItem>
+                  <SelectItem value="light">{t("settings.theme.light")}</SelectItem>
+                  <SelectItem value="dark">{t("settings.theme.dark")}</SelectItem>
+                </SelectContent>
               </Select>
-            </div>
-          ))}
-        </section>
-        <Separator />
-        <DiagnosticSettings />
-
-        <Separator />
-
-        <UpdateSettings />
-
-        <Separator />
-
-        <AccountsSection />
-
-        <Separator />
-
-        <CurseForgeSettings />
-
-        <Separator />
-
-        <StoreGcSettings />
-
-        <Separator />
-
-        <EndpointManager />
-
-        <Separator />
-
-        <section className="space-y-4">
-          <SectionHeading>{t("settings.game")}</SectionHeading>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label>{t("settings.playerName")}</Label>
-              <p className="text-xs text-muted-foreground">
-                {t("settings.playerNameHint")}
-              </p>
-            </div>
-            <Input
-              className="w-48"
-              value={settings.playerName}
-              onChange={(e) => update({ playerName: e.target.value })}
-              onBlur={() => {
-                if (!settings.playerName.trim())
-                  update({ playerName: "Player" });
-              }}
-            />
+            </SettingRow>
+            <SettingRow id="settings-language" label={t("settings.language")}>
+              <Select
+                value={settings.language}
+                onValueChange={(value) => {
+                  if (value) update({ language: value as Language });
+                }}
+              >
+                <SelectTrigger id="settings-language" className="w-full min-w-0">
+                  <SelectValue>{isChinese ? "中文" : "English"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="zh">中文</SelectItem>
+                  <SelectItem value="en">English</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingRow>
           </div>
+        </section>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>{t("settings.source")}</Label>
+        <section className="jmcl-panel @container/settings-panel space-y-4 p-(--jmcl-panel-padding)" aria-labelledby="settings-game">
+          <SectionHeading id="settings-game">{t("settings.game")}</SectionHeading>
+          <div className="divide-y">
+            <SettingRow id="settings-player-name" label={t("settings.playerName")} description={t("settings.playerNameHint")}>
+              <Input
+                id="settings-player-name"
+                aria-describedby="settings-player-name-hint"
+                value={settings.playerName}
+                onChange={(e) => update({ playerName: e.target.value })}
+                onBlur={() => {
+                  if (!settings.playerName.trim()) update({ playerName: "Player" });
+                }}
+              />
+            </SettingRow>
+            <SettingRow id="settings-download-source" label={t("settings.source")}>
               <Select
                 value={settings.source}
                 onValueChange={(value) => {
                   if (value) update({ source: value as Source });
                 }}
               >
-                <SelectTrigger className="w-48">
-                  <SelectValue>
-                    {t(
-                      settings.source === "bmclapi"
-                        ? "settings.source.bmclapi"
-                        : "settings.source.official",
-                    )}
-                  </SelectValue>
+                <SelectTrigger id="settings-download-source" className="w-full min-w-0">
+                  <SelectValue>{t(`settings.source.${settings.source}`)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="official">
-                    {t("settings.source.official")}
-                  </SelectItem>
-                  <SelectItem value="bmclapi">
-                    {t("settings.source.bmclapi")}
-                  </SelectItem>
+                  <SelectItem value="official">{t("settings.source.official")}</SelectItem>
+                  <SelectItem value="bmclapi">{t("settings.source.bmclapi")}</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            {settings.source === "bmclapi" && (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">BMCLAPI</Badge>
-                <p className="text-xs text-muted-foreground">
-                  {t("settings.bmclapiNotice")}
-                </p>
-              </div>
-            )}
+            </SettingRow>
+          </div>
+          {settings.source === "bmclapi" && (
+            <p className="text-xs leading-relaxed text-muted-foreground">{t("settings.bmclapiNotice")}</p>
+          )}
+        </section>
+
+        <section className="jmcl-panel @container/settings-panel space-y-4 p-(--jmcl-panel-padding)" aria-labelledby="settings-directories">
+          <SectionHeading id="settings-directories">{t("settings.directories")}</SectionHeading>
+          <div className="divide-y">
+            {directories.map(({ key, label }) => (
+              <SettingRow key={key} id={key} label={label} wide>
+                <Input
+                  id={key}
+                  className="font-mono text-sm"
+                  spellCheck={false}
+                  value={settings[key]}
+                  onChange={(e) => update({ [key]: e.target.value })}
+                />
+              </SettingRow>
+            ))}
           </div>
         </section>
 
-        <Separator />
-
-        <section className="space-y-4">
-          <SectionHeading>{t("settings.directories")}</SectionHeading>
-
-          <div className="space-y-2">
-            <Label>{t("settings.instancesDir")}</Label>
-            <Input
-              className="font-mono text-xs"
-              value={settings.instancesDir}
-              onChange={(e) => update({ instancesDir: e.target.value })}
-            />
+        <section className="jmcl-panel @container/settings-panel space-y-4 p-(--jmcl-panel-padding)" aria-labelledby="settings-downloads">
+          <SectionHeading id="settings-downloads">{isChinese ? "下载" : "Downloads"}</SectionHeading>
+          <div className="divide-y">
+            {downloadLimits.map(({ key, label, minimum, maximum }) => (
+              <SettingRow key={key} id={key} label={label}>
+                <Select
+                  value={String(settings[key])}
+                  onValueChange={(value) => {
+                    if (value !== null) update({ [key]: Number(value) });
+                  }}
+                >
+                  <SelectTrigger id={key} className="w-full min-w-0"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: maximum - minimum + 1 }, (_, i) => minimum + i).map((n) => (
+                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+            ))}
           </div>
-
-          <div className="space-y-2">
-            <Label>{t("settings.storeDir")}</Label>
-            <Input
-              className="font-mono text-xs"
-              value={settings.storeDir}
-              onChange={(e) => update({ storeDir: e.target.value })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>{t("settings.serversDir")}</Label>
-            <Input
-              className="font-mono text-xs"
-              value={settings.serversDir}
-              onChange={(e) => update({ serversDir: e.target.value })}
-            />
-          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {isChinese
+              ? "仅影响新开始的操作。进行中的任务保留原设置。并发数 1–32，重试数 0–5。"
+              : "Applies to new operations. Running tasks retain their original settings. Workers: 1–32. Retries: 0–5."}
+          </p>
         </section>
+        <AccountsSection />
+        <EndpointManager />
+        <UpdateSettings />
+        <DiagnosticSettings />
+        <CurseForgeSettings />
+        <StoreGcSettings />
       </div>
     </div>
   );

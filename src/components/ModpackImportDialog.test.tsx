@@ -17,8 +17,8 @@ const fill = async (selector: string, value: string) => { await act(async () => 
 const metadata: ModpackPreview = { provider: "modrinth", name: "Demo Pack", version: "1.0", minecraft_version: "1.21.4", loader: null, files_declared: 2, files_optional: null };
 let jobs: ReturnType<typeof useModpackTasks>;
 function Controls() { jobs = useModpackTasks(); return <><button onClick={() => jobs.show()}>New import</button>{jobs.registry.list().map(t => <button key={t.key} onClick={() => jobs.show(t.key)}>Reopen {t.controller.input.id}</button>)}</>; }
-async function setup(options: { picker?: () => Promise<string | null>; session?: CoreSession; preview?: (file: string) => Promise<ModpackPreview>; keyStatus?: () => Promise<boolean> } = {}) {
-  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: "en", instancesDir: "/fixture", storeDir: "/store" }));
+async function setup(options: { picker?: () => Promise<string | null>; session?: CoreSession; language?: "en" | "zh"; preview?: (file: string) => Promise<ModpackPreview>; keyStatus?: () => Promise<boolean> } = {}) {
+  localStorage.setItem("jmcl.settings.v1", JSON.stringify({ language: options.language ?? "en", instancesDir: "/fixture", storeDir: "/store" }));
   const host = dom.document.createElement("div"); dom.document.body.append(host); root = createRoot(host as unknown as HTMLElement);
   const session = options.session ?? {} as CoreSession; let opens = 0; let settings = 0; let opened = "";
   await act(async () => root!.render(<SettingsProvider><LauncherContext.Provider value={{ status: "ready", core: null, error: null, session, openSession: async () => { opens++; return session; } }}><ModpackTasksProvider><Controls /><ModpackImportDialog onOpenSettings={() => { settings++; }} onOpenInstance={id => { opened = id; }} pickArchive={options.picker ?? (async () => "/fixture/demo.mrpack")} inspectArchive={options.preview ?? (async () => metadata)} keyStatus={options.keyStatus ?? (async () => false)} /></ModpackTasksProvider></LauncherContext.Provider></SettingsProvider>));
@@ -63,7 +63,37 @@ describe("modpack import application-owned flow", () => {
     await click("Choose archive"); await click("Confirm and install"); expect(dom.document.body.textContent).toContain("DOWNLOAD_FAILED"); await click("Close"); await click("Reopen demo-pack"); await click("Resume game setup"); expect(imports).toBe(1); expect(attempts).toBe(2); expect(dom.document.body.textContent).not.toContain("SECRET URL");
   });
   test("preview failure never leaves stale metadata eligible for install", async () => {
-    let calls = 0; await setup({ preview: async () => { if (++calls === 1) return metadata; throw { code: "MODPACK_PREVIEW_LIMIT", message: "PRIVATE" }; } }); await click("Choose archive"); expect(button("Confirm and install").disabled).toBe(false); await click("Choose archive"); expect(button("Confirm and install").disabled).toBe(true); expect(dom.document.body.textContent).not.toContain("PRIVATE");
+    let calls = 0;
+    const ui = await setup({ preview: async () => { if (++calls === 1) return metadata; throw { code: "MODPACK_PREVIEW_LIMIT", message: "PRIVATE" }; } });
+    await click("Choose archive");
+    expect(button("Confirm and install").disabled).toBe(false);
+    await click("Choose archive");
+    expect(button("Confirm and install").disabled).toBe(true);
+    const notice = dom.document.querySelector('[role="status"]')!;
+    expect(notice.textContent).toContain("That alone does not mean it cannot be installed");
+    expect(notice.textContent).not.toContain("512 MiB");
+    expect(notice.querySelector(".text-destructive")).toBeNull();
+    expect(dom.document.querySelector('[role="alert"]')).toBeNull();
+    expect(dom.document.body.textContent).not.toContain("PRIVATE");
+    expect(ui.getOpens()).toBe(0);
+  });
+  test("oversized local pack explains the actual shared limit in Chinese, without starting an install", async () => {
+    let attempts = 0;
+    const ui = await setup({
+      language: "zh",
+      preview: async () => { if (++attempts === 1) throw { code: "MODPACK_PREVIEW_ARCHIVE_TOO_LARGE" }; return metadata; },
+    });
+    await click("选择归档");
+    const notice = dom.document.querySelector('[role="status"]')!;
+    expect(notice.textContent).toContain("超过了 512 MiB");
+    expect(notice.textContent).toContain("当前版本无法导入");
+    expect(dom.document.querySelector('[role="alert"]')).toBeNull();
+    expect(button("确认并安装").disabled).toBe(true);
+    await click("确认并安装");
+    expect(ui.getOpens()).toBe(0);
+    await click("选择归档");
+    expect(notice.textContent).toBe("");
+    expect(button("确认并安装").disabled).toBe(false);
   });
   test("late picker completion after close cannot populate draft", async () => {
     let finish!: (value: string) => void; await setup({ picker: () => new Promise(resolve => { finish = resolve; }) }); await click("Choose archive"); await click("Close"); await act(async () => finish("/late.mrpack")); await click("New import"); expect(dom.document.body.textContent).not.toContain("/late.mrpack"); expect(button("Confirm and install").disabled).toBe(true);

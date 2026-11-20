@@ -55,7 +55,7 @@ describe("ServersPage states", () => {
   test("shows accessible endpoint selection even when server control is unavailable", () => {
     const markup = pageMarkup({ coreStatus: "error", coreError: "unsafe raw diagnostic" });
     expect(markup).toContain('aria-label="服务器端点"');
-    expect(markup).toContain("min-w-0 max-w-6xl");
+    expect(markup).toContain("jmcl-page min-w-0");
     expect(markup).toContain("w-full max-w-full");
     expect(markup).toContain("flex flex-wrap items-center gap-2");
     expect(markup).toContain("本地");

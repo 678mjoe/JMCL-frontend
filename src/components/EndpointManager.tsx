@@ -176,27 +176,30 @@ export function EndpointManager({
   };
 
   return (
-    <section className="space-y-4" aria-labelledby="endpoint-manager-heading">
+    <section className="jmcl-panel col-span-full space-y-4 p-(--jmcl-panel-padding)" aria-labelledby="endpoint-manager-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 id="endpoint-manager-heading" className="text-sm font-medium uppercase tracking-wide text-muted-foreground">{t("settings.endpoints")}</h2>
-          <p className="text-xs text-muted-foreground">{t("endpoint.description")}</p>
+        <div className="min-w-0 flex-[1_1_12rem] space-y-1">
+          <h2 id="endpoint-manager-heading" className="text-base font-semibold tracking-tight">{t("settings.endpoints")}</h2>
+          <p className="text-sm text-muted-foreground">{t("endpoint.description")}</p>
         </div>
-        <Button variant="outline" onClick={openAdd} disabled={loading || !config}>{t("endpoint.add")}</Button>
+        <Button size="sm" variant="outline" onClick={openAdd} disabled={loading || !config}>{t("endpoint.add")}</Button>
       </div>
       {configError && <p role="status" className="text-sm text-destructive">{t("endpoint.configUnavailable")}</p>}
       {loading ? <p className="text-sm text-muted-foreground">{t("common.loading")}</p> : config && (
-        <ul className="divide-y rounded-md border">
+        <ul className="divide-y border-t">
           {config.endpoints.map((endpoint) => endpoint.kind === "local" ? (
-            <li key="local" className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
+            <li key="local" className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3 last:pb-0">
               <span className="text-sm font-medium">{t("endpoint.local")}</span>
               <span className="text-xs text-muted-foreground">{t("endpoint.localImmutable")}</span>
             </li>
           ) : (
-            <li key={endpoint.id} className="space-y-2 px-3 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0"><p className="truncate text-sm font-medium">{endpoint.label}</p><p className="text-xs text-muted-foreground">{t("endpoint.ssh")}</p></div>
-                <div className="flex flex-wrap gap-2">
+            <li key={endpoint.id} className="min-w-0 space-y-2 py-3 last:pb-0">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="min-w-0 flex-[1_1_10rem]">
+                  <p className="text-sm font-medium wrap-anywhere">{endpoint.label}</p>
+                  <p className="text-xs text-muted-foreground">{t("endpoint.ssh")}</p>
+                </div>
+                <div className="flex min-w-0 flex-wrap gap-2">
                   <Button size="sm" variant="outline" disabled={saving || deleting} onClick={() => void runTest(endpoint)}>{t("endpoint.test")}</Button>
                   <Button size="sm" variant="outline" disabled={saving || deleting} onClick={() => openEdit(endpoint)}>{t("endpoint.edit")}</Button>
                   <Button size="sm" variant="destructive" disabled={saving || deleting} onClick={() => { cancelTest(endpoint.id); setConfirmDelete(endpoint); }}>{t("endpoint.delete")}</Button>

@@ -41,7 +41,6 @@ const copy = {
   cancelHint: ["Cancellation closes this request; an interrupted remote change may already have completed. Refresh before retrying.", "取消将关闭此请求；被中断的远端修改可能已经完成。重试前请刷新。"],
 } as const;
 type CopyKey = keyof typeof copy;
-const fieldClass = "h-9 min-w-0 rounded-md border bg-background px-3 text-sm disabled:opacity-60";
 function useCopy() { const { settings } = useSettings(); return (key: CopyKey) => copy[key][settings.language === "zh" ? 1 : 0]; }
 function loaderOf(server: ServerManifest): LoaderName | null { return server.fabric_loader ? "fabric" : server.neoforge_version ? "neoforge" : server.forge_version ? "forge" : null; }
 
@@ -52,12 +51,17 @@ export function ServerContentPanel(props: Props) {
 function ScopedPanel(props: Props) {
   const t = useCopy();
   const [kind, setKind] = useState<ServerCatalogKind | null>(null);
-  return <section className="mt-6 rounded-xl border p-5" aria-label={t("title")}>
-    <h2 className="font-semibold">{t("title")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("scope")}</p>
-    <div className="mt-4 flex flex-wrap gap-2">
-      <Button variant={kind === "mods" ? "secondary" : "outline"} onClick={() => setKind("mods")}>{t("mods")}</Button>
-      <Button variant={kind === "datapacks" ? "secondary" : "outline"} onClick={() => setKind("datapacks")}>{t("datapacks")}</Button>
-      {kind && <Button variant="outline" onClick={() => setKind(null)}>{t("close")}</Button>}
+  return <section className="jmcl-panel p-4 sm:p-5" aria-label={t("title")}>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0 flex-[1_1_16rem]">
+        <h2 className="text-base font-semibold">{t("title")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("scope")}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant={kind === "mods" ? "secondary" : "outline"} onClick={() => setKind("mods")}>{t("mods")}</Button>
+        <Button variant={kind === "datapacks" ? "secondary" : "outline"} onClick={() => setKind("datapacks")}>{t("datapacks")}</Button>
+        {kind && <Button variant="outline" onClick={() => setKind(null)}>{t("close")}</Button>}
+      </div>
     </div>
     {kind && <ContentControls key={kind} {...props} kind={kind} />}
   </section>;
@@ -86,7 +90,7 @@ function ContentControls({ server, state, kind }: Props & { kind: ServerCatalogK
   const clear = () => { generation.current++; setCatalog(false); setProject(null); setRemoval(null); setConfirmation(""); setDone(false); cancel(); };
   const openVersions = (id: string, title: string, source: CatalogProvider) => { setProvider(source); setProject({ project_id: id, title, slug: id, author: "", description: "", downloads: 0, icon_url: null }); setCatalog(true); setRemoval(null); setConfirmation(""); setDone(false); };
   const entries = snapshot.content?.entries ?? [];
-  return <div className="mt-5 space-y-4">
+  return <div className="mt-4 space-y-4 border-t pt-4">
     <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={snapshot.pending} onClick={() => { setDone(false); void load(); }}>{t("load")}</Button><Button variant="outline" onClick={clear}>{t("cancel")}</Button><Button disabled={!mutable || !canBrowse} onClick={() => { setProvider("modrinth"); setCatalog(true); setProject(null); setRemoval(null); setConfirmation(""); }}>{t("search")}</Button><Button disabled={!mutable || !canBrowse} onClick={() => { setProvider("curseforge"); setCatalog(true); setProject(null); setRemoval(null); setConfirmation(""); }}>{t("searchCf")}</Button></div>
     {!stopped && <p className="text-sm text-muted-foreground">{t("stopped")}</p>}
     {kind === "mods" && !loader && <p className="text-sm text-muted-foreground">{t("vanilla")}</p>}
@@ -97,16 +101,26 @@ function ContentControls({ server, state, kind }: Props & { kind: ServerCatalogK
     {done && <p role="status" className="text-sm">{t("done")}</p>}
     <p className="text-xs text-muted-foreground">{t("cancelHint")}</p>
     {snapshot.content && entries.length === 0 && <p className="text-sm text-muted-foreground">{t("empty")}</p>}
-    <div className="space-y-2">{entries.map(entry => <article key={entry.file} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-      <div className="min-w-0"><h3 className="break-all text-sm font-medium">{entry.source.slug ?? entry.file}</h3><p className="break-all font-mono text-xs text-muted-foreground">{entry.file}</p><p className="text-xs text-muted-foreground">{entry.enabled ? t("enabled") : t("disabled")} · {entry.source.provider === "manual" ? t("manual") : entry.source.provider} {entry.source.version_id}</p></div>
-      <div className="flex flex-wrap gap-2">
-        {(entry.source.provider === "modrinth" || entry.source.provider === "curseforge") && entry.source.project_id && <Button size="sm" variant="outline" disabled={!mutable || !canBrowse} onClick={() => openVersions(entry.source.project_id!, entry.source.slug ?? entry.file, entry.source.provider as CatalogProvider)}>{t("versions")}</Button>}
-        <Button size="sm" variant="outline" disabled={!mutable} onClick={() => void action(() => toggle({ file: entry.file }, !entry.enabled))}>{t(entry.enabled ? "disable" : "enable")}</Button>
-        <Button size="sm" variant="destructive" disabled={!mutable} onClick={() => { setRemoval(entry.file); setConfirmation(""); setCatalog(false); setDone(false); }}>{t("remove")}</Button>
+    {entries.length > 0 && (
+      <div className="divide-y divide-border rounded-lg border">
+        {entries.map(entry => (
+          <article key={entry.file} className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3">
+            <div className="min-w-0 flex-[1_1_12rem]">
+              <h3 className="text-sm font-medium wrap-anywhere">{entry.source.slug ?? entry.file}</h3>
+              <p className="mt-0.5 font-mono text-xs text-muted-foreground wrap-anywhere">{entry.file}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground wrap-anywhere">{entry.enabled ? t("enabled") : t("disabled")} · {entry.source.provider === "manual" ? t("manual") : entry.source.provider} {entry.source.version_id}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(entry.source.provider === "modrinth" || entry.source.provider === "curseforge") && entry.source.project_id && <Button size="sm" variant="outline" disabled={!mutable || !canBrowse} onClick={() => openVersions(entry.source.project_id!, entry.source.slug ?? entry.file, entry.source.provider as CatalogProvider)}>{t("versions")}</Button>}
+              <Button size="sm" variant="outline" disabled={!mutable} onClick={() => void action(() => toggle({ file: entry.file }, !entry.enabled))}>{t(entry.enabled ? "disable" : "enable")}</Button>
+              <Button size="sm" variant="destructive" disabled={!mutable} onClick={() => { setRemoval(entry.file); setConfirmation(""); setCatalog(false); setDone(false); }}>{t("remove")}</Button>
+            </div>
+          </article>
+        ))}
       </div>
-    </article>)}</div>
-    {!!snapshot.content?.unmanaged.length && <section className="space-y-2"><h3 className="text-sm font-medium">{t("unmanaged")}</h3><ul className="space-y-1 text-sm">{snapshot.content.unmanaged.map(file => <li className="break-all font-mono" key={file}>{file}</li>)}</ul><Button variant="outline" disabled={!mutable} onClick={() => void action(adopt)}>{t("adopt")}</Button></section>}
-    {removal && <section className="space-y-3 rounded-lg border border-amber-500/50 p-4" aria-label={t("confirm")}><h3 className="break-all font-medium">{removal}</h3><p className="text-sm">{t("removeHint")}</p><label className="grid gap-1 text-sm">{t("confirmInput")}<input aria-label={t("confirmInput")} className={fieldClass} autoComplete="off" disabled={snapshot.pending} value={confirmation} onChange={event => setConfirmation(event.target.value)} /></label><Button variant="destructive" disabled={!mutable || confirmation !== removal} onClick={() => void action(() => remove({ file: removal }))}>{t("confirm")}</Button></section>}
+    )}
+    {!!snapshot.content?.unmanaged.length && <section className="space-y-2 border-t pt-4"><h3 className="text-sm font-medium">{t("unmanaged")}</h3><ul className="space-y-1 text-sm">{snapshot.content.unmanaged.map(file => <li className="font-mono wrap-anywhere" key={file}>{file}</li>)}</ul><Button variant="outline" disabled={!mutable} onClick={() => void action(adopt)}>{t("adopt")}</Button></section>}
+    {removal && <section className="space-y-3 rounded-lg border border-amber-500/50 bg-amber-500/5 p-4" aria-label={t("confirm")}><h3 className="font-medium wrap-anywhere">{removal}</h3><p className="text-sm">{t("removeHint")}</p><label className="grid gap-1.5 text-sm">{t("confirmInput")}<input className="jmcl-field h-9 w-full" aria-label={t("confirmInput")} autoComplete="off" disabled={snapshot.pending} value={confirmation} onChange={event => setConfirmation(event.target.value)} /></label><Button variant="destructive" disabled={!mutable || confirmation !== removal} onClick={() => void action(() => remove({ file: removal }))}>{t("confirm")}</Button></section>}
     {catalog && <Catalog key={`${provider}:${kind}:${project?.project_id ?? "search"}`} provider={provider} kind={kind} server={server} initialProject={project} enabled={mutable} entries={entries} onSelectVersion={(id, version, installed) => action(() => installed ? setVersion(id, version, provider) : install(id, version, provider))} />}
   </div>;
 }
@@ -137,16 +151,20 @@ function Catalog({ provider, kind, server, initialProject, enabled, entries, onS
   }, [provider, detail, kind, server.version_id, loader]);
   const installed = detail ? entries.find(entry => entry.source.provider === provider && entry.source.project_id === detail.project_id) : undefined;
   const ambiguous = !!installed && !!detail && hasAmbiguousContentProject(entries, detail.project_id);
-  return <section className="space-y-3 rounded-lg border p-4" aria-label={provider === "curseforge" ? t("searchCf") : t("search")}>
-    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">{detail?.title ?? (provider === "curseforge" ? "CurseForge" : t("search"))}</h3>{detail && <Button variant="ghost" disabled={!enabled} onClick={() => setDetail(null)}>{t("back")}</Button>}</div>
+  return <section className="space-y-3 rounded-lg border bg-background/35 p-3 sm:p-4" aria-label={provider === "curseforge" ? t("searchCf") : t("search")}>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="min-w-0 font-medium wrap-anywhere">{detail?.title ?? (provider === "curseforge" ? "CurseForge" : t("search"))}</h3>{detail && <Button size="sm" variant="ghost" disabled={!enabled} onClick={() => setDetail(null)}>{t("back")}</Button>}</div>
     <p className="text-xs text-muted-foreground">{t("catalogHint")}</p>{provider === "curseforge" && <p className="text-xs text-muted-foreground">{t("cfKey")}</p>}{provider === "curseforge" && <p className="text-sm text-amber-600">{t("cfWarning")}</p>}
-    {!detail && <input aria-label={provider === "curseforge" ? t("cfQuery") : t("query")} placeholder={provider === "curseforge" ? t("cfQuery") : t("query")} className={`${fieldClass} w-full`} value={query} onChange={event => setQuery(event.target.value)} />}
+    {!detail && <input className="jmcl-field h-9 w-full" aria-label={provider === "curseforge" ? t("cfQuery") : t("query")} placeholder={provider === "curseforge" ? t("cfQuery") : t("query")} value={query} onChange={event => setQuery(event.target.value)} />}
     {ambiguous && <p role="alert" className="text-sm text-destructive">{t("ambiguous")}</p>}
     {loading && <p role="status" className="text-sm">{t("loading")}</p>}
     {failed && <p role="alert" className="text-sm text-destructive">{t("catalogError")}</p>}
     {!detail && results?.length === 0 && <p className="text-sm">{t("noProjects")}</p>}
-    {!detail && results?.map(hit => <button type="button" disabled={!enabled || hit.available === false} title={hit.available === false ? t("unavailable") : undefined} key={hit.project_id} className="block w-full rounded-md border p-3 text-left hover:bg-accent disabled:opacity-60" onClick={() => setDetail(hit)}><span className="text-sm font-medium">{hit.title}</span><p className="text-xs text-muted-foreground">{hit.description}</p>{hit.available === false && <p className="text-xs">{t("unavailable")}</p>}</button>)}
+    {!detail && !!results?.length && <div className="divide-y divide-border rounded-lg border bg-card">
+      {results.map(hit => <button type="button" disabled={!enabled || hit.available === false} title={hit.available === false ? t("unavailable") : undefined} key={hit.project_id} className="block w-full p-3 text-left wrap-anywhere first:rounded-t-[inherit] last:rounded-b-[inherit] hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-60" onClick={() => setDetail(hit)}><span className="text-sm font-medium">{hit.title}</span><p className="mt-0.5 text-xs text-muted-foreground">{hit.description}</p>{hit.available === false && <p className="text-xs">{t("unavailable")}</p>}</button>)}
+    </div>}
     {detail && versions?.length === 0 && <p className="text-sm">{t("noVersions")}</p>}
-    {detail && versions?.map(version => <div key={version.id} className="flex items-center justify-between gap-2 rounded-md border p-3"><div className="min-w-0"><p className="break-all text-sm font-medium">{version.version_number}</p><p className="break-all text-xs text-muted-foreground">{version.name}</p></div><Button size="sm" title={version.available === false ? t("unavailable") : undefined} disabled={ambiguous || !enabled || detail.available === false || version.available === false || installed?.source.version_id === version.id} onClick={() => { if (!ambiguous) void onSelectVersion(detail.project_id, version.id, !!installed); }}>{t(version.available === false ? "unavailable" : installed?.source.version_id === version.id ? "current" : installed ? "switchVersion" : "install")}</Button></div>)}
+    {detail && !!versions?.length && <div className="divide-y divide-border rounded-lg border bg-card">
+      {versions.map(version => <div key={version.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3"><div className="min-w-0 flex-[1_1_10rem]"><p className="text-sm font-medium wrap-anywhere">{version.version_number}</p><p className="mt-0.5 text-xs text-muted-foreground wrap-anywhere">{version.name}</p></div><Button size="sm" title={version.available === false ? t("unavailable") : undefined} disabled={ambiguous || !enabled || detail.available === false || version.available === false || installed?.source.version_id === version.id} onClick={() => { if (!ambiguous) void onSelectVersion(detail.project_id, version.id, !!installed); }}>{t(version.available === false ? "unavailable" : installed?.source.version_id === version.id ? "current" : installed ? "switchVersion" : "install")}</Button></div>)}
+    </div>}
   </section>;
 }

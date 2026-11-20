@@ -119,7 +119,7 @@ function ContentPanel({
 
   if (state.status === "loading") {
     return (
-      <div className="space-y-2 pt-2">
+      <div className="space-y-2">
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-12 w-full" />
         ))}
@@ -129,8 +129,8 @@ function ContentPanel({
 
   if (state.status === "error") {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
-        <span className="text-destructive">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+        <span className="min-w-0 wrap-anywhere text-destructive">
           {t("content.loadFailed")}: {state.message}
         </span>
         <Button size="sm" variant="outline" onClick={() => void load()}>
@@ -144,15 +144,14 @@ function ContentPanel({
   const { entries, unmanaged } = state;
 
   return (
-    <div className="space-y-3 pt-2">
-      {kind !== "mods" && <p className="text-sm text-muted-foreground">{t("content.fileStateOnly")}</p>}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          {needsLoader ? t("content.needsLoader") : ""}
-        </span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {kind !== "mods" && <p className="text-sm text-muted-foreground">{t("content.fileStateOnly")}</p>}
+        {needsLoader && <p className="text-xs text-muted-foreground">{t("content.needsLoader")}</p>}
         <Button
           size="sm"
           variant="outline"
+          className="ms-auto"
           disabled={needsLoader}
           title={needsLoader ? t("content.needsLoader") : undefined}
           onClick={() => setSearchOpen(true)}
@@ -173,7 +172,7 @@ function ContentPanel({
             return (
               <li
                 key={entry.file}
-                className="flex items-center gap-3 px-3 py-2.5"
+                className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5"
               >
                 <Checkbox
                   checked={entry.enabled}
@@ -183,13 +182,13 @@ function ContentPanel({
                     entry.enabled ? t("content.disable") : t("content.enable")
                   }
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-[1_1_9rem]">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span
                       className={
                         entry.enabled
-                          ? "truncate text-sm font-medium"
-                          : "truncate text-sm font-medium text-muted-foreground line-through"
+                          ? "text-sm font-medium wrap-anywhere"
+                          : "text-sm font-medium wrap-anywhere text-muted-foreground line-through"
                       }
                     >
                       {displayName(entry)}
@@ -204,12 +203,12 @@ function ContentPanel({
                       <Badge variant="outline">{t("content.disabled")}</Badge>
                     )}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="text-xs wrap-anywhere text-muted-foreground">
                     {baseName(entry.file)} · {formatBytes(entry.size)}
                   </div>
                 </div>
                 {confirming ? (
-                  <div className="flex items-center gap-1.5">
+                  <div className="ms-auto flex flex-wrap items-center gap-2">
                     <span className="text-xs text-destructive">
                       {t("content.removeConfirm")}
                     </span>
@@ -234,6 +233,7 @@ function ContentPanel({
                   <Button
                     size="icon-sm"
                     variant="ghost"
+                    className="ms-auto"
                     disabled={pending}
                     onClick={() => setConfirmFile(entry.file)}
                     aria-label={t("content.remove")}
@@ -249,7 +249,7 @@ function ContentPanel({
 
       {unmanaged.length > 0 && (
         <div className="space-y-2 rounded-md border border-dashed px-3 py-2.5">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <span className="text-sm text-muted-foreground">
               {t("content.unmanaged", { count: unmanaged.length })}
             </span>
@@ -265,7 +265,7 @@ function ContentPanel({
           </div>
           <ul className="space-y-0.5 text-xs text-muted-foreground">
             {unmanaged.map((file) => (
-              <li key={file} className="truncate">
+              <li key={file} className="wrap-anywhere">
                 {baseName(file)}
               </li>
             ))}
@@ -305,7 +305,7 @@ export function ContentManager({ instance }: { instance: InstanceManifest }) {
             ))}
           </TabsList>
           {KINDS.map((kind) => (
-            <TabsContent key={kind} value={kind}>
+            <TabsContent key={kind} value={kind} className="min-w-0 space-y-4">
               {kind === "resourcepacks" && <PackActivation instance={instance} />}
               {kind === "shaderpacks" && <><ShaderRuntimeGuidance instance={instance} /><ShaderActivation instance={instance} /></>}
               <ContentPanel

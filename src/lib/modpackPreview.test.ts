@@ -16,6 +16,7 @@ describe("bounded native modpack metadata contract", () => {
   });
   test("safe error presentation distinguishes budgets and unsupported format, redacts unknown errors", () => {
     expect(modpackPreviewErrorCode({code:"MODPACK_PREVIEW_LIMIT",message:"private path"})).toBe("MODPACK_PREVIEW_LIMIT");
+    expect(modpackPreviewErrorCode({code:"MODPACK_PREVIEW_ARCHIVE_TOO_LARGE"})).toBe("MODPACK_PREVIEW_ARCHIVE_TOO_LARGE");
     expect(modpackPreviewErrorCode({code:"MODPACK_PREVIEW_UNSUPPORTED"})).toBe("MODPACK_PREVIEW_UNSUPPORTED");
     expect(modpackPreviewErrorCode(new Error("token=secret"))).toBe("MODPACK_PREVIEW_READ_FAILED");
   });

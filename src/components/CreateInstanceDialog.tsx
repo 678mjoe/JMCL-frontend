@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Combobox } from "@base-ui/react/combobox";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -59,7 +61,13 @@ export function CreateInstanceDialog({
   const [name, setName] = useState("");
   const [id, setId] = useState("");
   const [idTouched, setIdTouched] = useState(false);
+  const [editingId, setEditingId] = useState(false);
   const [versionId, setVersionId] = useState("");
+  const [choosingVersion, setChoosingVersion] = useState(false);
+  const [versionSearch, setVersionSearch] = useState("");
+  const versionButton = useRef<HTMLButtonElement>(null);
+  const versionInput = useRef<HTMLInputElement>(null);
+  const restoreVersionFocus = useRef(false);
   const [loader, setLoader] = useState<LoaderKind>("none");
   const [loaderVersion, setLoaderVersion] = useState("");
   const [pending, setPending] = useState(false);
@@ -78,7 +86,11 @@ export function CreateInstanceDialog({
     setName("");
     setId("");
     setIdTouched(false);
+    setEditingId(false);
     setVersionId("");
+    setChoosingVersion(false);
+    setVersionSearch("");
+    restoreVersionFocus.current = false;
     setLoader("none");
     setLoaderVersion("");
     setLoaderVersions([]);
@@ -86,6 +98,16 @@ export function CreateInstanceDialog({
     setPending(false);
     setSubmitError(null);
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    if (choosingVersion) {
+      versionInput.current?.focus();
+    } else if (restoreVersionFocus.current) {
+      versionButton.current?.focus();
+      restoreVersionFocus.current = false;
+    }
+  }, [open, choosingVersion]);
 
   // Fetch the version list while open, once the core session is ready.
   useEffect(() => {
@@ -138,6 +160,9 @@ export function CreateInstanceDialog({
   }, [open, loader, versionId]);
 
   const idValid = ID_RE.test(id) && !id.endsWith(".");
+  const needsId = !!name.trim() && !idValid;
+  const idInvalid = needsId || (id.length > 0 && !idValid);
+  const showId = editingId || needsId;
   const loaderVersionOk = loader === "none" || loaderVersion.trim().length > 0;
   const canSubmit = !pending && idValid && versionId !== "" && loaderVersionOk;
 
@@ -182,10 +207,18 @@ export function CreateInstanceDialog({
     }
   }, [session, canSubmit, loader, loaderVersion, settings, id, versionId, name, onCreated]);
 
-  const selectVersion = (value: string | null) => {
-    if (!value) return;
-    setVersionId(value);
-    setLoaderVersion("");
+  const returnToForm = () => {
+    restoreVersionFocus.current = true;
+    setChoosingVersion(false);
+  };
+
+  const selectVersion = (version: VersionSummary | null) => {
+    if (!version) return;
+    if (version.id !== versionId) {
+      setVersionId(version.id);
+      setLoaderVersion("");
+    }
+    returnToForm();
   };
 
   const selectLoader = (value: string | null) => {
@@ -195,221 +228,258 @@ export function CreateInstanceDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>{t("create.title")}</DialogTitle>
+    <Dialog open={open} onOpenChange={(nextOpen, event) => {
+      if (choosingVersion && event.reason === "escape-key") {
+        event.cancel();
+        returnToForm();
+      } else {
+        onOpenChange(nextOpen);
+      }
+    }}>
+      <DialogContent className="flex max-w-[30rem] flex-col gap-4 overflow-hidden shadow-[var(--jmcl-menu-shadow)] sm:p-6">
+        <DialogHeader className="shrink-0 flex-row items-center gap-2">
+          {choosingVersion && (
+            <Button variant="ghost" size="icon-sm" className="-ml-1.5" aria-label={t("create.backToForm")} onClick={returnToForm}>
+              <ArrowLeft aria-hidden="true" />
+            </Button>
+          )}
+          <DialogTitle className="text-xl">{t(choosingVersion ? "create.versionPlaceholder" : "create.title")}</DialogTitle>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-2">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="create-name">{t("create.name")}</Label>
-              <Input
-                id="create-name"
-                value={name}
-                placeholder={t("create.namePlaceholder")}
-                onChange={(e) => onNameChange(e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="create-id">{t("create.id")}</Label>
-              <Input
-                id="create-id"
-                value={id}
-                aria-invalid={id.length > 0 && !idValid}
-                onChange={(e) => {
-                  setIdTouched(true);
-                  setId(e.target.value);
+        {choosingVersion ? (
+          <div className="flex min-h-0 flex-col gap-3">
+            <Combobox.Root
+              inline
+              open
+              items={versionsState === "ready" ? versions : []}
+              itemToStringLabel={(version: VersionSummary) => version.id}
+              value={versions.find((version) => version.id === versionId) ?? null}
+              inputValue={versionSearch}
+              onInputValueChange={setVersionSearch}
+              onValueChange={selectVersion}
+              autoHighlight
+            >
+              <div className="relative shrink-0">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Combobox.Input
+                  ref={versionInput}
+                  aria-label={t("create.versionSearch")}
+                  placeholder={t("create.versionSearch")}
+                  className="jmcl-field h-9 w-full pl-9 placeholder:text-muted-foreground"
+                />
+              </div>
+              <div className="relative h-48 min-h-0 rounded-md border bg-background">
+                <Combobox.List className="h-full overflow-y-auto overscroll-contain p-1">
+                  {(version: VersionSummary) => (
+                    <Combobox.Item key={version.id} value={version} className="flex min-h-8 cursor-pointer items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 leading-tight outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground">
+                      <span className="min-w-0 wrap-anywhere">{version.id}</span>
+                      <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                        {version.type && version.type !== "release" && t("create.testVersion")}
+                        <Combobox.ItemIndicator><Check className="size-3.5" aria-hidden="true" /></Combobox.ItemIndicator>
+                      </span>
+                    </Combobox.Item>
+                  )}
+                </Combobox.List>
+                <Combobox.Empty className="pointer-events-none absolute inset-x-0 top-3 px-3 text-sm text-muted-foreground">
+                  {versionsState === "ready" && t("create.versionNoMatches")}
+                </Combobox.Empty>
+                {versionsState === "loading" && (
+                  <p role="status" className="absolute inset-x-0 top-3 px-3 text-muted-foreground">{t("create.versionLoading")}</p>
+                )}
+                {versionsState === "error" && (
+                  <div className="absolute inset-x-0 top-2 flex flex-wrap items-center gap-2 px-3">
+                    <p role="alert" className="text-sm text-destructive">{t("create.versionError")}</p>
+                    <Button variant="outline" size="sm" onClick={() => setFetchNonce((nonce) => nonce + 1)}>{t("common.retry")}</Button>
+                  </div>
+                )}
+              </div>
+            </Combobox.Root>
+            <div className="flex shrink-0 items-center gap-2">
+              <Checkbox
+                id="create-hide-test-versions"
+                checked={settings.hideTestVersions}
+                onCheckedChange={(hidden) => {
+                  if (hidden && versions.find((version) => version.id === versionId)?.type !== "release") {
+                    setVersionId("");
+                    setLoaderVersion("");
+                  }
+                  update({ hideTestVersions: hidden });
                 }}
               />
-              <p
-                className={cn(
-                  "text-xs",
-                  id.length > 0 && !idValid
-                    ? "text-destructive"
-                    : "text-muted-foreground",
-                )}
-              >
-                {t("create.idHint")}
-              </p>
+              <Label htmlFor="create-hide-test-versions" className="text-xs font-normal text-muted-foreground">
+                {t("create.hideTestVersions")}
+              </Label>
             </div>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="create-version">{t("create.version")}</Label>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="create-hide-test-versions"
-                    checked={settings.hideTestVersions}
-                    onCheckedChange={(hidden) => {
-                      if (
-                        hidden &&
-                        versions.find((version) => version.id === versionId)
-                          ?.type !== "release"
-                      ) {
-                        setVersionId("");
-                        setLoaderVersion("");
-                      }
-                      update({ hideTestVersions: hidden });
-                    }}
+          </div>
+        ) : (
+          <>
+            <div className="-mx-(--jmcl-panel-padding) -my-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-(--jmcl-panel-padding) py-1 sm:-mx-6 sm:px-6">
+              <div className="grid grid-cols-1 gap-x-3 gap-y-4 min-[390px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div className="col-span-full flex flex-col gap-2">
+                  <Label htmlFor="create-name">{t("create.name")}</Label>
+                  <Input
+                    id="create-name"
+                    value={name}
+                    placeholder={t("create.namePlaceholder")}
+                    onChange={(e) => onNameChange(e.target.value)}
                   />
-                  <Label
-                    htmlFor="create-hide-test-versions"
-                    className="text-xs font-normal text-muted-foreground"
-                  >
-                    {t("create.hideTestVersions")}
-                  </Label>
                 </div>
-              </div>
-              <Select
-                value={versionId || null}
-                disabled={versionsState !== "ready"}
-                onValueChange={selectVersion}
-              >
-                <SelectTrigger id="create-version" className="w-full">
-                  <SelectValue>
-                    {versionsState === "loading"
-                      ? t("create.versionLoading")
-                      : versionId || t("create.versionPlaceholder")}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="max-h-[min(18rem,var(--available-height))]">
-                  {versions.map((version) => (
-                    <SelectItem key={version.id} value={version.id}>
-                      {version.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {versionsState === "error" && (
-                <div className="flex items-center gap-2">
-                  <p className="text-xs text-destructive">
-                    {t("create.versionError")}
-                  </p>
+
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label htmlFor="create-version">{t("create.version")}</Label>
                   <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setFetchNonce((nonce) => nonce + 1)}
+                    ref={versionButton}
+                    id="create-version"
+                    variant="outline"
+                    aria-describedby="create-version-value"
+                    className="jmcl-field w-full justify-between gap-2 text-left font-normal"
+                    onClick={() => {
+                      setVersionSearch("");
+                      setChoosingVersion(true);
+                    }}
                   >
-                    {t("common.retry")}
+                    <span id="create-version-value" className={cn("min-w-0 truncate", !versionId && "text-muted-foreground")}>
+                      {versionId || t("create.versionPlaceholder")}
+                    </span>
+                    <ChevronRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
                   </Button>
                 </div>
-              )}
-            </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="create-loader">{t("create.loader")}</Label>
-              <Select value={loader} onValueChange={selectLoader}>
-                <SelectTrigger id="create-loader" className="w-full">
-                  <SelectValue>
-                    {loader === "none"
-                      ? t("create.loader.none")
-                      : loader === "fabric"
-                        ? "Fabric"
-                        : loader === "neoforge"
-                          ? "NeoForge"
-                          : "Forge"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("create.loader.none")}</SelectItem>
-                  <SelectItem value="fabric">Fabric</SelectItem>
-                  <SelectItem value="neoforge">NeoForge</SelectItem>
-                  <SelectItem value="forge">Forge</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {loader !== "none" && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="create-loader-version">
-                  {t("create.loaderVersion")}
-                </Label>
-                {!versionId ? (
-                  <Select disabled>
-                    <SelectTrigger
-                      id="create-loader-version"
-                      className="w-full"
-                    >
-                      <SelectValue>{t("create.selectVersionFirst")}</SelectValue>
-                    </SelectTrigger>
-                  </Select>
-                ) : loaderVersionsState === "loading" ? (
-                  <Select disabled>
-                    <SelectTrigger
-                      id="create-loader-version"
-                      className="w-full"
-                    >
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label htmlFor="create-loader">{t("create.loader")}</Label>
+                  <Select value={loader} onValueChange={selectLoader}>
+                    <SelectTrigger id="create-loader" className="w-full">
                       <SelectValue>
-                        {t("create.loaderVersionLoading")}
+                        {loader === "none"
+                          ? t("create.loader.none")
+                          : loader === "fabric"
+                            ? "Fabric"
+                            : loader === "neoforge"
+                              ? "NeoForge"
+                              : "Forge"}
                       </SelectValue>
                     </SelectTrigger>
-                  </Select>
-                ) : loaderVersionsState === "error" ? (
-                  <>
-                    <p className="text-xs text-destructive">
-                      {t("create.loaderVersionError")}
-                    </p>
-                    <Input
-                      id="create-loader-version"
-                      value={loaderVersion}
-                      placeholder={t("create.loaderVersionPlaceholder")}
-                      onChange={(event) => setLoaderVersion(event.target.value)}
-                    />
-                  </>
-                ) : loaderVersions.length === 0 ? (
-                  <Select disabled>
-                    <SelectTrigger
-                      id="create-loader-version"
-                      className="w-full"
-                    >
-                      <SelectValue>{t("create.loaderVersionEmpty")}</SelectValue>
-                    </SelectTrigger>
-                  </Select>
-                ) : (
-                  <Select
-                    value={loaderVersion || null}
-                    onValueChange={(value) => {
-                      if (value) setLoaderVersion(value);
-                    }}
-                  >
-                    <SelectTrigger
-                      id="create-loader-version"
-                      className="w-full"
-                    >
-                      <SelectValue>
-                        {loaderVersion || t("create.loaderVersionPlaceholder")}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[min(18rem,var(--available-height))]">
-                      {loaderVersions.map((catalogVersion) => (
-                        <SelectItem key={catalogVersion} value={catalogVersion}>
-                          {catalogVersion}
-                        </SelectItem>
-                      ))}
+                    <SelectContent>
+                      <SelectItem value="none">{t("create.loader.none")}</SelectItem>
+                      <SelectItem value="fabric">Fabric</SelectItem>
+                      <SelectItem value="neoforge">NeoForge</SelectItem>
+                      <SelectItem value="forge">Forge</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                {loader !== "none" && (
+                  <div className="col-span-full flex min-w-0 flex-col gap-2">
+                    <Label htmlFor="create-loader-version">
+                      {t("create.loaderVersion")}
+                    </Label>
+                    {!versionId ? (
+                      <Select disabled>
+                        <SelectTrigger
+                          id="create-loader-version"
+                          className="w-full"
+                        >
+                          <SelectValue>{t("create.selectVersionFirst")}</SelectValue>
+                        </SelectTrigger>
+                      </Select>
+                    ) : loaderVersionsState === "loading" ? (
+                      <Select disabled>
+                        <SelectTrigger
+                          id="create-loader-version"
+                          className="w-full"
+                        >
+                          <SelectValue>
+                            {t("create.loaderVersionLoading")}
+                          </SelectValue>
+                        </SelectTrigger>
+                      </Select>
+                    ) : loaderVersionsState === "error" ? (
+                      <>
+                        <p className="text-xs text-destructive">
+                          {t("create.loaderVersionError")}
+                        </p>
+                        <Input
+                          id="create-loader-version"
+                          value={loaderVersion}
+                          placeholder={t("create.loaderVersionPlaceholder")}
+                          onChange={(event) => setLoaderVersion(event.target.value)}
+                        />
+                      </>
+                    ) : loaderVersions.length === 0 ? (
+                      <Select disabled>
+                        <SelectTrigger
+                          id="create-loader-version"
+                          className="w-full"
+                        >
+                          <SelectValue>{t("create.loaderVersionEmpty")}</SelectValue>
+                        </SelectTrigger>
+                      </Select>
+                    ) : (
+                      <Select
+                        value={loaderVersion || null}
+                        onValueChange={(value) => {
+                          if (value) setLoaderVersion(value);
+                        }}
+                      >
+                        <SelectTrigger
+                          id="create-loader-version"
+                          className="w-full"
+                        >
+                          <SelectValue>
+                            {loaderVersion || t("create.loaderVersionPlaceholder")}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[min(18rem,var(--available-height))]">
+                          {loaderVersions.map((catalogVersion) => (
+                            <SelectItem key={catalogVersion} value={catalogVersion}>
+                              {catalogVersion}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 )}
+
+                <div className="col-span-full flex flex-col gap-2">
+                  {!needsId && (
+                    <Button variant="ghost" size="sm" className="-ml-2 w-fit gap-1.5 px-2 text-xs font-normal text-muted-foreground" aria-expanded={showId} onClick={() => setEditingId(!editingId)}>
+                      <ChevronDown className={cn("size-3.5 transition-transform", !showId && "-rotate-90")} aria-hidden="true" />
+                      {t("create.customId")}
+                    </Button>
+                  )}
+                  {showId && (
+                    <>
+                      <Label htmlFor="create-id">{t("create.id")}</Label>
+                      <Input
+                        id="create-id"
+                        value={id}
+                        aria-invalid={idInvalid}
+                        aria-describedby="create-id-hint"
+                        onChange={(e) => {
+                          setEditingId(true);
+                          setIdTouched(true);
+                          setId(e.target.value);
+                        }}
+                      />
+                      <p id="create-id-hint" className={cn("text-xs", idInvalid ? "text-destructive" : "text-muted-foreground")}>{t("create.idHint")}</p>
+                    </>
+                  )}
+                </div>
+                {submitError && <p role="alert" className="col-span-full text-xs wrap-anywhere text-destructive">{submitError}</p>}
               </div>
-            )}
+            </div>
 
-            {submitError && (
-              <p className="text-xs text-destructive">{submitError}</p>
-            )}
-          </div>
-        </div>
-
-        <DialogFooter className="shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button disabled={!canSubmit} onClick={submit}>
-            {pending ? t("create.creating") : t("create.submit")}
-          </Button>
-        </DialogFooter>
+            <DialogFooter className="shrink-0 border-t pt-3">
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                {t("common.cancel")}
+              </Button>
+              <Button disabled={!canSubmit} onClick={submit}>
+                {pending ? t("create.creating") : t("create.submit")}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

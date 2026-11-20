@@ -37,6 +37,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         } as React.CSSProperties
       }
       toastOptions={{
+        style: { boxShadow: "var(--jmcl-menu-shadow)" },
         classNames: {
           toast: "cn-toast",
         },

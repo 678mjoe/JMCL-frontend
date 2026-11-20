@@ -257,14 +257,14 @@ export function ContentSearchDialog({
       <li key={project.project_id}>
         <button
           type="button"
-          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/60"
+          className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-60"
           disabled={project.available === false}
           title={project.available === false ? (settings.language === "zh" ? "作者已禁用第三方下载" : "Author has disabled third-party downloads") : undefined}
           onClick={() => setDetail(project)}
         >
           {projectIcon(project, "size-10")}
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="truncate text-sm font-medium">{project.title}</span>
               {installed && (
                 <Badge variant="secondary">{t("content.search.installed")}</Badge>
@@ -291,12 +291,12 @@ export function ContentSearchDialog({
     const isCurrent = installed?.source.version_id === version.id;
     const busy = installingId === version.id;
     return (
-      <li key={version.id} className="flex items-center gap-3 px-4 py-2.5">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" title={version.version_number}>
+      <li key={version.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+        <div className="min-w-0 flex-[1_1_9rem]">
+          <p className="text-sm font-medium wrap-anywhere">
             {version.version_number}
           </p>
-          <p className="truncate text-xs text-muted-foreground" title={version.name}>
+          <p className="text-xs wrap-anywhere text-muted-foreground">
             {version.name !== version.version_number ? `${version.name} · ` : ""}
             {new Date(version.date_published).toLocaleDateString()}
           </p>
@@ -308,6 +308,7 @@ export function ContentSearchDialog({
         )}
         <Button
           size="sm"
+          className="ms-auto"
           variant={isCurrent ? "secondary" : "default"}
           title={version.available === false ? (settings.language === "zh" ? "作者已禁用第三方下载" : "Author has disabled third-party downloads") : undefined}
           disabled={(!!installed && hasAmbiguousContentProject(entries, project.project_id)) || project.available === false || version.available === false || isCurrent || installingId !== null}
@@ -340,13 +341,13 @@ export function ContentSearchDialog({
       </div>
       <div className="min-h-0 flex-1">
         {searching && !results ? (
-          <div className="space-y-2 p-4">
+          <div className="space-y-2">
             {[0, 1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-16 w-full" />
             ))}
           </div>
         ) : searchError ? (
-          <p className="px-4 py-8 text-center text-sm text-destructive">
+          <p className="px-3 py-8 text-center text-sm wrap-anywhere text-destructive">
             {t("content.search.failed")}: {searchError}
           </p>
         ) : results && results.length === 0 ? (
@@ -355,7 +356,7 @@ export function ContentSearchDialog({
           </p>
         ) : (
           <ScrollArea className="h-full">
-            <ul className="divide-y">{results?.map(renderResultRow)}</ul>
+            {results && <ul className="divide-y overflow-hidden rounded-md border">{results.map(renderResultRow)}</ul>}
           </ScrollArea>
         )}
       </div>
@@ -364,34 +365,27 @@ export function ContentSearchDialog({
 
   const renderDetailLevel = (project: CatalogProject) => (
     <>
-      <div className="flex shrink-0 items-start gap-3 px-1">
+      <div className="flex shrink-0 items-start gap-3">
         {projectIcon(project, "size-12")}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-base font-semibold">{project.title}</span>
-            {installedByProject.has(project.project_id) && (
-              <Badge variant="secondary">{t("content.search.installed")}</Badge>
-            )}
-          </div>
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="truncate">{project.author}</span>
-            <span>·</span>
-            <Download className="size-3 shrink-0" />
-            <span>{compactNumber(project.downloads)}</span>
-          </p>
+            <span className="flex items-center gap-1"><Download className="size-3 shrink-0" />{compactNumber(project.downloads)}</span>
+            {installedByProject.has(project.project_id) && <Badge variant="secondary">{t("content.search.installed")}</Badge>}
+          </div>
           <p className="mt-1.5 line-clamp-3 text-xs text-muted-foreground">
             {project.description}
           </p>
         </div>
       </div>
       {installedByProject.has(project.project_id) && hasAmbiguousContentProject(entries, project.project_id) && <p role="alert" className="text-sm text-destructive">{settings.language === "zh" ? "多个已安装项目的 ID 或别名冲突，无法安全切换版本。请先通过文件选择器解决冲突，再刷新。" : "Installed project IDs or slugs collide; version switching is unsafe. Resolve the conflicting entries by file, then refresh."}</p>}
-      <div className="min-h-0 flex-1 border-t">
+      <div className="min-h-0 flex-1">
         {versionsError ? (
-          <p className="px-4 py-8 text-center text-sm text-destructive">
+          <p className="px-3 py-8 text-center text-sm wrap-anywhere text-destructive">
             {t("content.search.versionsFailed")}: {versionsError}
           </p>
         ) : !versions ? (
-          <div className="space-y-2 p-4">
+          <div className="space-y-2">
             {[0, 1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
@@ -402,7 +396,7 @@ export function ContentSearchDialog({
           </p>
         ) : (
           <ScrollArea className="h-full">
-            <ul className="divide-y">
+            <ul className="divide-y overflow-hidden rounded-md border">
               {versions.map((v) => renderVersionRow(project, v))}
             </ul>
           </ScrollArea>
@@ -413,7 +407,7 @@ export function ContentSearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!installLock.current) onOpenChange(next); }}>
-      <DialogContent className="flex h-[85vh] flex-col gap-3 sm:max-w-2xl">
+      <DialogContent className="flex h-[85dvh] flex-col gap-3 sm:max-w-2xl">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             {detail && !initialProject && (
@@ -427,13 +421,16 @@ export function ContentSearchDialog({
                 <ArrowLeft className="size-4" />
               </Button>
             )}
-            {detail
+            <span className="min-w-0 wrap-anywhere">{detail
               ? detail.title
-              : t("content.search.title", { kind: t(`content.kind.${kind}`) })}
+              : t("content.search.title", { kind: t(`content.kind.${kind}`) })}</span>
           </DialogTitle>
         </DialogHeader>
-        <label className="flex items-center gap-2 text-sm">{settings.language === "zh" ? "内容来源" : "Catalog provider"}
-          <select aria-label="Catalog provider" className="rounded border bg-background p-2" value={provider} disabled={installingId !== null || !!initialProject} onChange={event => { setProvider(event.target.value as "modrinth" | "curseforge"); setDetail(null); setResults(null); setVersions(null); setSearchError(null); setVersionsError(null); }}><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select>
+        <label className="grid shrink-0 gap-1.5 text-sm font-medium">{settings.language === "zh" ? "内容来源" : "Catalog provider"}
+          <select aria-label="Catalog provider" className="jmcl-field h-9 w-full min-w-0 font-normal" value={provider} disabled={installingId !== null || !!initialProject} onChange={event => { setProvider(event.target.value as "modrinth" | "curseforge"); setDetail(null); setResults(null); setVersions(null); setSearchError(null); setVersionsError(null); }}>
+            <option value="modrinth">Modrinth</option>
+            <option value="curseforge">CurseForge</option>
+          </select>
         </label>
         {provider === "curseforge" && <p className="text-xs text-muted-foreground">{settings.language === "zh" ? "请先在设置 → CurseForge 保存 API key，保存后重新打开目录。第三方下载被禁用的文件不可安装。最多显示前 500 个匹配文件。" : "Save an API key in Settings → CurseForge, then reopen this catalog. Files with disabled third-party downloads cannot be installed. At most the first 500 matching files are shown."}</p>}
         {detail ? renderDetailLevel(detail) : renderSearchLevel()}

@@ -2,8 +2,9 @@ import { javaPreferencesFor } from "@/lib/javaPreferences";
 import { downloadOptions } from "@/lib/downloadOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AlertCircle,
   ArrowLeft,
-  Gamepad2,
+  Download,
   Loader2,
   Package,
   Play,
@@ -18,15 +19,7 @@ import { InstanceJavaCard } from "@/components/InstanceJavaCard";
 import { InstallTaskProgress } from "@/components/InstallTaskProgress";
 import { LogSheet } from "@/components/LogSheet";
 import { WorldsManager } from "@/components/WorldsManager";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorText, useLauncher } from "@/lib/launcher";
 import { AuthTransientError, ReloginRequiredError, useLaunchAuth } from "@/lib/auth";
@@ -185,79 +178,42 @@ export function InstanceDetailPage({
     }
   };
 
-  if (
-    status === "starting" ||
-    ((loading || manifestScope !== currentScope) && !loadError && !notFound)
-  ) {
-    return (
-      <div className="mx-auto max-w-6xl space-y-6 p-6">
-        <div className="flex items-center gap-3">
-          <Skeleton className="size-9" />
-          <Skeleton className="h-7 w-48" />
-        </div>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <Skeleton className="h-72" />
-          <Skeleton className="h-72" />
-        </div>
-      </div>
-    );
-  }
+  const backButton = (
+    <Button variant="ghost" size="sm" className="jmcl-back" onClick={onBack}>
+      <ArrowLeft />
+      {t("detail.back")}
+    </Button>
+  );
+  const waiting = status === "starting" ||
+    (coreReady && (loading || manifestScope !== currentScope) && !loadError && !notFound);
 
-  if (status === "error") {
+  if (waiting || status === "error" || notFound || loadError || !manifest) {
+    const failureTitle = status === "error" ? "core.error" : notFound ? "detail.notFound" : "detail.loadError";
+    const failureMessage = status === "error" ? coreError : notFound ? t("detail.notFoundDescription") : loadError;
     return (
-      <div className="mx-auto max-w-2xl p-6">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft />
-          {t("detail.back")}
-        </Button>
-        <div className="mt-16 flex flex-col items-center gap-3 text-center">
-          <Gamepad2 className="size-10 text-muted-foreground" />
-          <p className="text-sm font-medium">{t("core.error")}</p>
-          <p className="text-sm text-muted-foreground">
-            {loadError ?? coreError}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (notFound) {
-    return (
-      <div className="mx-auto max-w-2xl p-6">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft />
-          {t("detail.back")}
-        </Button>
-        <div className="mt-16 flex flex-col items-center gap-3 text-center">
-          <Gamepad2 className="size-10 text-muted-foreground" />
-          <p className="text-sm font-medium">{t("detail.notFound")}</p>
-          <p className="text-sm text-muted-foreground">
-            {t("detail.notFoundDescription")}
-          </p>
-          <Button variant="outline" onClick={onBack}>
-            {t("detail.back")}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loadError || !manifest) {
-    return (
-      <div className="mx-auto max-w-2xl p-6">
-        <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft />
-          {t("detail.back")}
-        </Button>
-        <div className="mt-16 flex flex-col items-center gap-3 text-center">
-          <Gamepad2 className="size-10 text-muted-foreground" />
-          <p className="text-sm font-medium">{t("detail.loadError")}</p>
-          <p className="text-sm text-muted-foreground">{loadError}</p>
-          <Button variant="outline" onClick={() => void refresh()}>
-            <RefreshCw />
-            {t("common.retry")}
-          </Button>
-        </div>
+      <div className="jmcl-page">
+        {backButton}
+        {waiting ? (
+          <div className="space-y-4" role="status">
+            <span className="sr-only">{t(status === "starting" ? "core.starting" : "common.loading")}</span>
+            <Skeleton className="h-20 w-full rounded-xl" />
+            <Skeleton className="h-48 w-full rounded-xl" />
+          </div>
+        ) : (
+          <section className="jmcl-panel jmcl-state">
+            <div role="alert" className="flex min-w-0 flex-col items-center gap-2">
+              <AlertCircle aria-hidden="true" className="size-7 text-destructive" />
+              <h1 className="text-base font-semibold">{t(failureTitle)}</h1>
+              {failureMessage && <p className="max-w-lg break-words text-sm text-muted-foreground">{failureMessage}</p>}
+            </div>
+            {coreReady && !notFound && (
+              <Button variant="outline" onClick={() => void refresh()}>
+                <RefreshCw />
+                {t("common.retry")}
+              </Button>
+            )}
+          </section>
+        )}
       </div>
     );
   }
@@ -272,142 +228,106 @@ export function InstanceDetailPage({
     : manifest.id;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="jmcl-page">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {backButton}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("instances.refresh")}
+          title={t("instances.refresh")}
+          onClick={() => void refresh()}
+          disabled={!coreReady || loading || deleting}
+        >
+          <RefreshCw />
+        </Button>
+      </div>
+
+      <header className="jmcl-page-header">
         <div className="min-w-0">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft />
-            {t("detail.back")}
-          </Button>
-          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="truncate text-2xl font-semibold">{manifest.name}</h1>
-            <Badge variant="secondary">{manifest.version_id}</Badge>
-            {loader && <Badge variant="outline">{loader}</Badge>}
-            {!manifest.installed && (
-              <Badge variant="secondary" className="text-muted-foreground">
-                {t("instances.notInstalled")}
-              </Badge>
-            )}
-          </div>
+          <h1 className="jmcl-page-title">{manifest.name}</h1>
+          <p className="jmcl-page-description wrap-anywhere">
+            Minecraft {manifest.version_id}{loader && <> <span aria-hidden="true">·</span> {loader}</>}
+          </p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Button variant="outline" onClick={onOpenContent} disabled={deleting}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            className="min-w-26 gap-2 px-4 font-semibold"
+            onClick={manifest.installed ? beginLaunch : beginInstall}
+            disabled={!coreReady || installing || (manifest.installed && launching) || validating || deleting}
+          >
+            {installing || (manifest.installed && launching)
+              ? <Loader2 className="animate-spin" />
+              : manifest.installed ? <Play className="fill-current" /> : <Download />}
+            {t(manifest.installed ? "instances.launch" : "instances.install")}
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 px-4"
+            onClick={onOpenContent}
+            disabled={deleting}
+          >
             <Package />
             {t("instances.content")}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title={t("instances.refresh")}
-            onClick={() => void refresh()}
-            disabled={!coreReady || loading || deleting}
-          >
-            <RefreshCw className={loading ? "animate-spin" : undefined} />
-          </Button>
-          {!manifest.installed ? (
+          {launchTask && (
+            <Button variant="outline" className="gap-2 px-4" onClick={() => setLogOpen(true)}>
+              <ScrollText />
+              {t("instances.log")}
+            </Button>
+          )}
+        </div>
+      </header>
+
+      <div className="jmcl-panel grid divide-y divide-border lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:divide-x lg:divide-y-0">
+        <section className="flex min-w-0 flex-col gap-4 p-4 sm:p-5" aria-labelledby="instance-info-title">
+          <h2 id="instance-info-title" className="text-base font-semibold">{t("detail.info")}</h2>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{t("detail.id")}</dt>
+              <dd className="mt-1 break-all font-mono text-sm">{manifest.id}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{t("detail.downloadSource")}</dt>
+              <dd className="mt-1 break-words text-sm">{sourceLabel}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{t("detail.installState")}</dt>
+              <dd className="mt-1 text-sm">{t(manifest.installed ? "detail.installed" : "instances.notInstalled")}</dd>
+            </div>
+            <div className="min-w-0 sm:col-span-2">
+              <dt className="text-xs text-muted-foreground">{t("detail.directory")}</dt>
+              <dd className="mt-1 break-all font-mono text-xs leading-relaxed">{instanceDirectory}</dd>
+            </div>
+          </dl>
+          <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
             <Button
+              variant="ghost"
+              size="sm"
               onClick={beginInstall}
               disabled={!coreReady || installing || validating || deleting}
             >
-              {installing && <Loader2 className="animate-spin" />}
-              {t("instances.install")}
+              <RefreshCw />
+              {t("instances.reinstall")}
             </Button>
-          ) : (
             <Button
-              onClick={beginLaunch}
-              disabled={!coreReady || installing || launching || validating || deleting}
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/10"
+              onClick={() => setDeleteOpen(true)}
+              disabled={deleting}
             >
-              {launching ? <Loader2 className="animate-spin" /> : <Play />}
-              {t("instances.launch")}
+              <Trash2 />
+              {t("instances.delete")}
             </Button>
-          )}
-          {launchTask && (
-            <Button
-              variant="outline"
-              size="icon"
-              title={t("instances.log")}
-              onClick={() => setLogOpen(true)}
-            >
-              <ScrollText />
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={beginInstall}
-            disabled={!coreReady || installing || validating || deleting}
-          >
-            <RefreshCw />
-            {t("instances.reinstall")}
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => setDeleteOpen(true)}
-            disabled={deleting}
-          >
-            <Trash2 />
-            {t("instances.delete")}
-          </Button>
-        </div>
-      </div>
+          </div>
+        </section>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("detail.info")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs text-muted-foreground">{t("detail.id")}</dt>
-                <dd className="mt-1 font-mono text-sm">{manifest.id}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">
-                  {t("detail.minecraftVersion")}
-                </dt>
-                <dd className="mt-1 text-sm">{manifest.version_id}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">{t("detail.loader")}</dt>
-                <dd className="mt-1 text-sm">
-                  {loader || t("detail.loaderNone")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">
-                  {t("detail.downloadSource")}
-                </dt>
-                <dd className="mt-1 text-sm">{sourceLabel}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">
-                  {t("detail.installState")}
-                </dt>
-                <dd className="mt-1 text-sm">
-                  {manifest.installed
-                    ? t("detail.installed")
-                    : t("instances.notInstalled")}
-                </dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-xs text-muted-foreground">
-                  {t("detail.directory")}
-                </dt>
-                <dd className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                  {instanceDirectory}
-                </dd>
-              </div>
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("detail.status")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <section className="flex min-w-0 flex-col gap-3 p-4 sm:p-5" aria-labelledby="instance-status-title">
+          <h2 id="instance-status-title" className="text-base font-semibold">{t("detail.status")}</h2>
+          <div className="min-w-0 space-y-3 break-words">
             {validating && (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
                 <Loader2 className="size-4 animate-spin" />
                 <span>{t("task.stage.validate")}</span>
               </p>
@@ -423,7 +343,7 @@ export function InstanceDetailPage({
                 </Button>
               </div>
             )}
-            {installTask?.status === "running" && installTask && (
+            {installTask?.status === "running" && (
               <InstallTaskProgress task={installTask} />
             )}
             {installTask?.status === "error" && (
@@ -435,12 +355,12 @@ export function InstanceDetailPage({
               </div>
             )}
             {installTask?.status === "success" && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground" role="status">
                 {t("task.install")} · {t("task.success")}
               </p>
             )}
             {launchTask?.status === "running" && (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
                 <Loader2 className="size-4 animate-spin" />
                 <span>
                   {t(launchTask.stage)}
@@ -449,7 +369,7 @@ export function InstanceDetailPage({
               </p>
             )}
             {launchTask?.status === "success" && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground" role="status">
                 {t("task.launch")} · {launchTask.message ?? t("task.success")}
               </p>
             )}
@@ -461,47 +381,37 @@ export function InstanceDetailPage({
                 <p className="text-xs text-destructive">{launchTask.message}</p>
               </div>
             )}
-            {!installTask && !launchTask && !validateTask && (
+            {!installTask && !launchTask && (!validateTask || validateTask.status === "success") && (
               <p className="text-sm text-muted-foreground">
-                {manifest.installed
-                  ? t("detail.readyDescription")
-                  : t("detail.installRequired")}
+                {t(manifest.installed ? "detail.readyDescription" : "detail.installRequired")}
               </p>
             )}
-          </CardContent>
-          {(installTask || launchTask || validateTask?.status === "error") && (
-            <CardFooter>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setLogOpen(true)}
-                disabled={!launchTask}
-              >
-                <ScrollText />
-                {t("instances.log")}
-              </Button>
-            </CardFooter>
-          )}
-        </Card>
+          </div>
+        </section>
       </div>
 
-      <InstanceJavaCard instance={manifest} />
-      <InstanceLaunchOptions instance={manifest} onPreview={async (options) => {
-        if (manifestScope !== currentScope) throw new Error("Stale instance");
-        const generation = scopeGeneration.current;
-        const auth = await resolveLaunchAuth();
-        if (!mounted.current || generation !== scopeGeneration.current || scopeRef.current !== currentScope) throw new Error("Stale instance");
-        const directory = `${settings.instancesDir}/${manifest.id}/.minecraft`;
-        return withOpenedSession(openSession, (previewSession) => {
-          if (!mounted.current || generation !== scopeGeneration.current) throw new Error("Stale instance");
-          return previewSession.launchPlan(
-            manifest.version_id, directory, `${directory}/.jmcl-preview-natives`, auth,
-            instanceLaunchOptions(manifest, settings.storeDir, javaPreferencesFor(settings.javaPreferences, settings.instancesDir, manifest.id), options),
-          );
-        });
-      }} />
-
       <WorldsManager instance={manifest} />
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        <div className="min-w-0">
+          <InstanceJavaCard instance={manifest} />
+        </div>
+        <div className="min-w-0">
+          <InstanceLaunchOptions instance={manifest} onPreview={async (options) => {
+            if (manifestScope !== currentScope) throw new Error("Stale instance");
+            const generation = scopeGeneration.current;
+            const auth = await resolveLaunchAuth();
+            if (!mounted.current || generation !== scopeGeneration.current || scopeRef.current !== currentScope) throw new Error("Stale instance");
+            const directory = `${settings.instancesDir}/${manifest.id}/.minecraft`;
+            return withOpenedSession(openSession, (previewSession) => {
+              if (!mounted.current || generation !== scopeGeneration.current) throw new Error("Stale instance");
+              return previewSession.launchPlan(
+                manifest.version_id, directory, `${directory}/.jmcl-preview-natives`, auth,
+                instanceLaunchOptions(manifest, settings.storeDir, javaPreferencesFor(settings.javaPreferences, settings.instancesDir, manifest.id), options),
+              );
+            });
+          }} />
+        </div>
+      </div>
 
       <LogSheet
         instanceId={logOpen ? instanceId : null}

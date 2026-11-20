@@ -50,8 +50,8 @@ export function MicrosoftLoginDialog() {
         </DialogHeader>
 
         {login?.status === "starting" && (
-          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
+          <div className="flex items-center gap-2 rounded-md border bg-muted/45 p-3 text-sm text-muted-foreground">
+            <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" />
             {t("account.login.starting")}
           </div>
         )}
@@ -60,9 +60,9 @@ export function MicrosoftLoginDialog() {
           login?.status === "finishing" ||
           login?.status === "error") &&
           login.userCode && (
-            <div className="space-y-4 py-2">
-              <div className="flex items-center justify-center gap-3">
-                <span className="font-mono text-3xl font-semibold tracking-widest">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/45 p-3">
+                <span className="min-w-0 font-mono text-2xl font-semibold tracking-widest wrap-anywhere">
                   {login.userCode}
                 </span>
                 <Button
@@ -79,7 +79,7 @@ export function MicrosoftLoginDialog() {
                 </Button>
               </div>
               {login.verificationUri && (
-                <div className="flex justify-center">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     onClick={() => void openUrl(login.verificationUri!)}
@@ -89,9 +89,9 @@ export function MicrosoftLoginDialog() {
                   </Button>
                 </div>
               )}
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
                 {login.status === "error" ? null : (
-                  <Loader2 className="size-4 animate-spin" />
+                  <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" />
                 )}
                 {login.status === "pending"
                   ? t("account.login.waiting")

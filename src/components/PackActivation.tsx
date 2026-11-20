@@ -65,7 +65,7 @@ function PackActivationEditor({ scope, api }: { scope: PackActivationScope; api:
     } finally { lock.current = false; if (current(id)) { setBusy(false); setConfirmed(false); } }
   }
   const dirty = !!snapshot && JSON.stringify(snapshot.resourcePacks) !== JSON.stringify(selected);
-  return <Card><CardContent className="space-y-3 pt-4">
+  return <Card size="sm"><CardContent className="space-y-3">
     <h2 className="font-semibold">{zh ? "资源包游戏内选择与顺序" : "In-game resource pack selection and order"}</h2>
     <p className="text-sm text-muted-foreground">{zh ? "文件已安装或启用不代表游戏内已选用。这里只修改已有 options.txt 的 resourcePacks；不修改兼容性警告列表，也不确认资源包适配当前游戏版本。" : "Installed or file-enabled does not mean selected in game. This edits resourcePacks in an existing options.txt only; it does not bypass compatibility warnings or establish pack compatibility."}</p>
     <p className="text-sm text-muted-foreground">{zh ? "从低到高排列：下方覆盖上方。内置及未知条目保留。旧版或未知配置将拒绝修改，请在游戏中设置。" : "Lowest to highest priority: later entries override earlier ones. Built-in and unknown entries are preserved. Unsupported or unknown configurations are refused; configure those in game."}</p>
@@ -86,10 +86,12 @@ function PackActivationEditor({ scope, api }: { scope: PackActivationScope; api:
           </li>;
         })}
       </ol>
-      <div className="flex flex-wrap gap-2">{snapshot.availableResourcePacks.filter(id => !selected.includes(id)).map(id => <Button key={id} variant="outline" size="sm" disabled={busy} onClick={() => edit([...selected, id])}>{zh ? "选择" : "Select"} {id}</Button>)}</div>
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={busy || !dirty} onChange={e => setConfirmed(e.target.checked)} />{zh ? "我确认此实例的所有 Minecraft 进程已退出，保存期间不会从其他程序启动。" : "I confirm all Minecraft processes for this instance are stopped and will not start it externally while saving."}</label>
-      <Button disabled={busy || !dirty || !confirmed} onClick={() => void save()}>{zh ? "保存游戏内选择" : "Save in-game selection"}</Button>
+      <div className="flex flex-wrap gap-2">{snapshot.availableResourcePacks.filter(id => !selected.includes(id)).map(id => <Button className="h-auto min-h-8 max-w-full justify-start py-1 text-start wrap-anywhere whitespace-normal" key={id} variant="outline" size="sm" disabled={busy} onClick={() => edit([...selected, id])}>{zh ? "选择" : "Select"} {id}</Button>)}</div>
+      <label className="flex items-start gap-2 text-sm"><input className="mt-0.5 size-4 shrink-0" type="checkbox" checked={confirmed} disabled={busy || !dirty} onChange={e => setConfirmed(e.target.checked)} />{zh ? "我确认此实例的所有 Minecraft 进程已退出，保存期间不会从其他程序启动。" : "I confirm all Minecraft processes for this instance are stopped and will not start it externally while saving."}</label>
     </>}
-    <Button className="ml-2" variant="outline" disabled={busy} onClick={() => void load()}>{zh ? "放弃编辑并重新读取" : "Discard edits and reload"}</Button>
+    <div className="flex flex-wrap gap-2">
+      {snapshot && <Button disabled={busy || !dirty || !confirmed} onClick={() => void save()}>{zh ? "保存游戏内选择" : "Save in-game selection"}</Button>}
+      <Button variant="outline" disabled={busy} onClick={() => void load()}>{zh ? "放弃编辑并重新读取" : "Discard edits and reload"}</Button>
+    </div>
   </CardContent></Card>;
 }

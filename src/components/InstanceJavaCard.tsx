@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { absoluteJavaPath, javaPreferencesFor, withJavaPreferences, type JavaPreferences } from "@/lib/javaPreferences";
 import { instanceMutationKey } from "@/lib/instanceCoordinator";
-import { Coffee, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -50,6 +50,7 @@ export function InstanceJavaCard({ instance }: { instance: InstanceManifest }) {
   return <JavaEditor key={scope} instance={instance} />;
 }
 function JavaEditor({ instance }: { instance: InstanceManifest }) {
+  const overrideFieldId = useId();
   const { settings, update, t } = useSettings();
   const { session, status } = useLauncher();
   const { local, managed, satisfiedMajors, target } = useJavaCatalog();
@@ -139,100 +140,101 @@ function JavaEditor({ instance }: { instance: InstanceManifest }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Coffee className="size-4" />
-          {t("java.override")}
-        </CardTitle>
+        <CardTitle>{t("java.override")}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {majorState.status === "loading" ? (
-          <Skeleton className="h-5 w-40" />
-        ) : majorState.status === "error" ? (
-          <button
-            type="button"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => void resolveMajor()}
-          >
-            <RefreshCw className="size-3" />
-            {t("java.recommendedFailed")}
-          </button>
-        ) : recommended != null ? (
-          <p className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">{t("java.recommended")}</span>
-            <span className="font-medium">Java {recommended}</span>
-            {!target || local.status !== "ready" || managed.status !== "ready" ? (
-              <Badge variant="outline">{zh ? "目录兼容性待确认" : "Catalog compatibility unknown"}</Badge>
-            ) : satisfiedMajors.has(recommended) ? (
-              <Badge variant="secondary">{zh ? "目录有匹配候选" : "Catalog match"}</Badge>
-            ) : (
-              <Badge variant="outline">{zh ? "目录暂无匹配候选" : "No catalog match"}</Badge>
-            )}
-          </p>
-        ) : null}
-        <p className="text-xs text-muted-foreground">{zh ? "目录匹配仅为本机进程目标架构下的候选提示，托管记录可能过期；最终由 Core 按策略重新探测。" : "Catalog matches are hints for the packaged process target architecture. Managed receipts can be stale; Core re-probes according to policy."}</p>
-        <label className="block text-sm">{zh ? "Java 选择策略" : "Java selection policy"}
-          <select aria-label="Java policy" className="ml-2 rounded border p-1" value={saved.policy} onChange={e => save({ ...saved, policy: e.target.value as JavaPreferences["policy"] })}>
-            <option value="auto">{zh ? "自动（本地优先）" : "Auto (local first)"}</option>
-            <option value="local">{zh ? "仅本地（不下载）" : "Local only (no download)"}</option>
-            <option value="managed">{zh ? "托管优先（仍可回退本地）" : "Managed first (local fallback)"}</option>
-          </select>
-        </label>
-        <p className="text-xs text-muted-foreground">{zh ? "自动：本地 → 已安装托管 → 下载；托管优先：已安装托管 → 本地 → 下载。普通候选仍需匹配版本和架构；预览不会下载 Java。" : "Auto: local → installed managed → download. Managed first: installed managed → local → download. Candidates must match major and architecture; preview never downloads Java."}</p>
-        <p className="text-sm">{zh ? "强制覆盖（高级；绕过版本及架构匹配）" : "Forced override (advanced; bypasses major and architecture matching)"}</p>
-        {loading ? (
-          <Skeleton className="h-9 w-full" />
-        ) : (
-          <Select value={override ?? AUTO} onValueChange={choose}>
-            <SelectTrigger className="w-full">
-              <SelectValue>{(value: string) => labels[value] ?? value}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={AUTO}>{policyLabel}</SelectItem>
-              {local.items.map((runtime) => (
-                <SelectItem key={runtime.executable} value={runtime.executable}>
-                  {optionLabel(runtime)}
-                </SelectItem>
-              ))}
-              {managed.items.map((runtime) => (
-                <SelectItem key={runtime.executable} value={runtime.executable}>
-                  {optionLabel(runtime)} · {t("java.managedBadge")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <label className="block text-sm">{zh ? "自定义 Java 可执行文件绝对路径" : "Custom Java executable absolute path"}
-          <input aria-label="Custom Java path" className="mt-1 w-full rounded border p-2 font-mono text-xs" value={path} onChange={e => changePath(e.target.value)} />
-        </label>
-        <label className="block text-xs"><input type="checkbox" checked={trusted} onChange={e => setTrusted(e.target.checked)} /> {zh ? "我信任此可执行文件；探测和启动会执行它。" : "I trust this executable; probing and launching execute it."}</label>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" disabled={!trusted || !absoluteJavaPath(path) || probing || status !== "ready"} onClick={() => void detect()}>{zh ? "探测路径" : "Probe path"}</Button>
-          <Button variant="outline" disabled={!trusted || !absoluteJavaPath(path)} onClick={() => save({ policy: saved.policy, paths: [path] })}>{zh ? "保存为普通候选" : "Save as candidate"}</Button>
-          <Button variant="outline" disabled={!trusted || !absoluteJavaPath(path)} onClick={() => save({ policy: saved.policy, override: path })}>{zh ? "保存为强制覆盖" : "Save forced override"}</Button>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          {majorState.status === "loading" ? (
+            <Skeleton className="h-5 w-40" />
+          ) : majorState.status === "error" ? (
+            <Button size="sm" variant="outline" onClick={() => void resolveMajor()}>
+              <RefreshCw aria-hidden="true" />
+              {t("java.recommendedFailed")}
+            </Button>
+          ) : recommended != null ? (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span className="text-muted-foreground">{t("java.recommended")}</span>
+              <span className="font-medium">Java {recommended}</span>
+              {!target || local.status !== "ready" || managed.status !== "ready" ? (
+                <Badge variant="outline">{zh ? "目录兼容性待确认" : "Catalog compatibility unknown"}</Badge>
+              ) : satisfiedMajors.has(recommended) ? (
+                <Badge variant="secondary">{zh ? "目录有匹配候选" : "Catalog match"}</Badge>
+              ) : (
+                <Badge variant="outline">{zh ? "目录暂无匹配候选" : "No catalog match"}</Badge>
+              )}
+            </p>
+          ) : null}
+          <p className="text-xs leading-relaxed text-muted-foreground">{zh ? "目录匹配仅为本机进程目标架构下的候选提示，托管记录可能过期；最终由 Core 按策略重新探测。" : "Catalog matches are hints for the packaged process target architecture. Managed receipts can be stale; Core re-probes according to policy."}</p>
         </div>
-        {probe && <p role="status" className="text-xs">{probe}</p>}
-        {saved.paths?.length ? <p className="break-all text-xs">{zh ? "普通候选（安装与启动均验证版本和架构）：" : "Candidate (install and launch validate major and architecture): "}{saved.paths.join(", ")}</p> : null}
-        {settings.javaOverrides[instance.id] && <div className="rounded border p-2 text-xs">
-          <p>{zh ? "旧版仅按实例 ID 保存的覆盖路径未自动启用，无法确认所属目录。确认此路径属于当前实例后再手动导入。" : "A legacy ID-only override is inactive because its original root is unknown. Import only after confirming it belongs to this instance."}</p>
-          <p className="break-all font-mono">{settings.javaOverrides[instance.id]}</p>
-          <Button variant="outline" disabled={!absoluteJavaPath(settings.javaOverrides[instance.id])} onClick={() => changePath(settings.javaOverrides[instance.id])}>{zh ? "填入旧路径供确认" : "Fill legacy path for review"}</Button>
-        </div>}
-        <p className="text-xs text-muted-foreground">{zh ? "策略及普通候选也用于此实例的重新安装；强制覆盖仅用于启动，不影响安装器处理器的兼容性要求。" : "Policy and candidates also apply when reinstalling this instance. Forced overrides apply only to launch, never bypass installer processor compatibility."}</p>
-        {override && (
-          <p className="text-xs text-muted-foreground">
-            {t("java.overrideWarning")}
-          </p>
-        )}
-        {overrideMismatch && (
-          <p className="text-xs text-destructive">
-            {t("java.overrideMismatch", { major: recommended })}
-          </p>
-        )}
-        {override && (
-          <p className="truncate font-mono text-xs text-muted-foreground" title={override}>
-            {override}
-          </p>
-        )}
+        <div className="space-y-3 border-t pt-4">
+          <label className="grid gap-1.5 text-sm font-medium">{zh ? "Java 选择策略" : "Java selection policy"}
+            <select aria-label="Java policy" className="jmcl-field h-9 w-full min-w-0 font-normal" value={saved.policy} onChange={e => save({ ...saved, policy: e.target.value as JavaPreferences["policy"] })}>
+              <option value="auto">{zh ? "自动（本地优先）" : "Auto (local first)"}</option>
+              <option value="local">{zh ? "仅本地（不下载）" : "Local only (no download)"}</option>
+              <option value="managed">{zh ? "托管优先（仍可回退本地）" : "Managed first (local fallback)"}</option>
+            </select>
+          </label>
+          <p className="text-xs leading-relaxed text-muted-foreground">{zh ? "自动：本地 → 已安装托管 → 下载；托管优先：已安装托管 → 本地 → 下载。普通候选仍需匹配版本和架构；预览不会下载 Java。" : "Auto: local → installed managed → download. Managed first: installed managed → local → download. Candidates must match major and architecture; preview never downloads Java."}</p>
+          <div className="grid gap-1.5">
+            <label htmlFor={overrideFieldId} className="text-sm font-medium">{zh ? "强制覆盖（高级；绕过版本及架构匹配）" : "Forced override (advanced; bypasses major and architecture matching)"}</label>
+            {loading ? (
+              <Skeleton className="h-9 w-full" />
+            ) : (
+              <Select value={override ?? AUTO} onValueChange={choose}>
+                <SelectTrigger id={overrideFieldId} className="w-full min-w-0">
+                  <SelectValue>{(value: string) => labels[value] ?? value}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AUTO}>{policyLabel}</SelectItem>
+                  {local.items.map((runtime) => (
+                    <SelectItem key={runtime.executable} value={runtime.executable}>
+                      {optionLabel(runtime)}
+                    </SelectItem>
+                  ))}
+                  {managed.items.map((runtime) => (
+                    <SelectItem key={runtime.executable} value={runtime.executable}>
+                      {optionLabel(runtime)} · {t("java.managedBadge")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        </div>
+        <div className="space-y-3 border-t pt-4">
+          <label className="grid gap-1.5 text-sm font-medium">{zh ? "自定义 Java 可执行文件绝对路径" : "Custom Java executable absolute path"}
+            <input aria-label="Custom Java path" className="jmcl-field h-9 w-full min-w-0 font-mono text-xs font-normal" value={path} onChange={e => changePath(e.target.value)} />
+          </label>
+          <label className="flex items-start gap-2 text-xs leading-relaxed"><input className="mt-0.5 size-4 shrink-0" type="checkbox" checked={trusted} onChange={e => setTrusted(e.target.checked)} /> {zh ? "我信任此可执行文件；探测和启动会执行它。" : "I trust this executable; probing and launching execute it."}</label>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={!trusted || !absoluteJavaPath(path) || probing || status !== "ready"} onClick={() => void detect()}>{zh ? "探测路径" : "Probe path"}</Button>
+            <Button size="sm" variant="outline" disabled={!trusted || !absoluteJavaPath(path)} onClick={() => save({ policy: saved.policy, paths: [path] })}>{zh ? "保存为普通候选" : "Save as candidate"}</Button>
+            <Button size="sm" variant="outline" disabled={!trusted || !absoluteJavaPath(path)} onClick={() => save({ policy: saved.policy, override: path })}>{zh ? "保存为强制覆盖" : "Save forced override"}</Button>
+          </div>
+          {probe && <p role="status" className="text-xs wrap-anywhere">{probe}</p>}
+          {saved.paths?.length ? <p className="text-xs wrap-anywhere">{zh ? "普通候选（安装与启动均验证版本和架构）：" : "Candidate (install and launch validate major and architecture): "}{saved.paths.join(", ")}</p> : null}
+          {settings.javaOverrides[instance.id] && <div className="space-y-2 rounded-md border bg-muted/35 p-3 text-xs">
+            <p>{zh ? "旧版仅按实例 ID 保存的覆盖路径未自动启用，无法确认所属目录。确认此路径属于当前实例后再手动导入。" : "A legacy ID-only override is inactive because its original root is unknown. Import only after confirming it belongs to this instance."}</p>
+            <p className="font-mono wrap-anywhere">{settings.javaOverrides[instance.id]}</p>
+            <Button size="sm" variant="outline" disabled={!absoluteJavaPath(settings.javaOverrides[instance.id])} onClick={() => changePath(settings.javaOverrides[instance.id])}>{zh ? "填入旧路径供确认" : "Fill legacy path for review"}</Button>
+          </div>}
+          <p className="text-xs leading-relaxed text-muted-foreground">{zh ? "策略及普通候选也用于此实例的重新安装；强制覆盖仅用于启动，不影响安装器处理器的兼容性要求。" : "Policy and candidates also apply when reinstalling this instance. Forced overrides apply only to launch, never bypass installer processor compatibility."}</p>
+          {override && (
+            <p className="text-xs text-muted-foreground">
+              {t("java.overrideWarning")}
+            </p>
+          )}
+          {overrideMismatch && (
+            <p className="text-xs text-destructive">
+              {t("java.overrideMismatch", { major: recommended })}
+            </p>
+          )}
+          {override && (
+            <p className="font-mono text-xs wrap-anywhere text-muted-foreground" title={override}>
+              {override}
+            </p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

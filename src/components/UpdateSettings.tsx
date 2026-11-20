@@ -46,26 +46,28 @@ export function UpdateSettings({ controller = updateController }: { controller?:
     installing: say("Installing — do not close the launcher", "正在安装 — 请勿关闭启动器"),
     installed: say("Installed — restart required", "已安装 — 需要重启"), error: say("Update failed. Retry with a new check; no automatic retry.", "更新失败。请重新检查后重试；不会自动重试。"),
   }[status.phase];
-  return <section className="space-y-4" aria-labelledby="updates-heading">
-    <h2 id="updates-heading" className="text-sm font-medium uppercase tracking-wide text-muted-foreground">{t("updates.title")}</h2>
+  return <section className="jmcl-panel self-start space-y-3 p-(--jmcl-panel-padding) text-sm" aria-labelledby="updates-heading">
+    <h2 id="updates-heading" className="text-base font-semibold tracking-tight">{t("updates.title")}</h2>
     <p role="status">{phaseText}</p>
     {status.phase === "unconfigured" && <p id="updates-unavailable" className="text-xs text-muted-foreground">{t("updates.hint")}</p>}
-    {status.phase === "error" && <p role="alert">{errorText}</p>}
+    {status.phase === "error" && <p role="alert" className="text-destructive">{errorText}</p>}
     {status.channel && <p>{say("Build channel", "构建渠道")}: {status.channel}</p>}
     {status.version && <p>{say("Version", "版本")}: {status.version}</p>}
     {status.phase === "downloading" && <p>{status.downloaded.toLocaleString()} {say("bytes received", "字节已接收")}{status.total ? ` / ${status.total.toLocaleString()}` : ""}</p>}
     {busy && <p className="text-xs">{say("This operation cannot be canceled here. Leaving Settings does not cancel it.", "此处无法取消正在进行的操作。离开设置不会取消操作。")}</p>}
-    {bridgeError && <p role="alert">{say("Updater status unavailable. Refresh status before retrying; no success is assumed.", "无法获取更新状态。请刷新状态后重试；不会假定操作成功。")}</p>}
+    {bridgeError && <p role="alert" className="text-destructive">{say("Updater status unavailable. Refresh status before retrying; no success is assumed.", "无法获取更新状态。请刷新状态后重试；不会假定操作成功。")}</p>}
     <div className="flex flex-wrap gap-2">
       {(["check", "download", "install", "restart"] as const).map(action => (action === "check" || canUpdate(status.phase, action)) &&
-        <Button key={action} variant="outline" disabled={busy || bridgeError || !canUpdate(status.phase, action)} onClick={() => setConfirmation({ action, key })}>{labels[action]}</Button>)}
-      {canUpdate(status.phase, "discard") && <Button variant="outline" disabled={busy || bridgeError} onClick={() => { setConfirmation(null); void controller.act("discard"); }}>{labels.discard}</Button>}
-      {bridgeError && <Button variant="outline" disabled={pending} onClick={() => { setConfirmation(null); void controller.refresh(); }}>{say("Refresh update status", "刷新更新状态")}</Button>}
+        <Button key={action} size="sm" variant="outline" disabled={busy || bridgeError || !canUpdate(status.phase, action)} onClick={() => setConfirmation({ action, key })}>{labels[action]}</Button>)}
+      {canUpdate(status.phase, "discard") && <Button size="sm" variant="outline" disabled={busy || bridgeError} onClick={() => { setConfirmation(null); void controller.act("discard"); }}>{labels.discard}</Button>}
+      {bridgeError && <Button size="sm" variant="outline" disabled={pending} onClick={() => { setConfirmation(null); void controller.refresh(); }}>{say("Refresh update status", "刷新更新状态")}</Button>}
     </div>
-    {confirm && <div role="group" aria-label={say("Confirm update action", "确认更新操作")} className="space-y-3 rounded border p-3">
+    {confirm && <div role="group" aria-label={say("Confirm update action", "确认更新操作")} className="space-y-3 rounded-lg border bg-background p-3">
       <p>{descriptions[confirm]}</p>
-      <Button onClick={() => { setConfirmation(null); void controller.act(confirm); }}>{say("Confirm", "确认")}: {labels[confirm]}</Button>{" "}
-      <Button variant="outline" onClick={() => setConfirmation(null)}>{say("Cancel", "取消")}</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => { setConfirmation(null); void controller.act(confirm); }}>{say("Confirm", "确认")}: {labels[confirm]}</Button>
+        <Button size="sm" variant="outline" onClick={() => setConfirmation(null)}>{say("Cancel", "取消")}</Button>
+      </div>
     </div>}
   </section>;
 }
