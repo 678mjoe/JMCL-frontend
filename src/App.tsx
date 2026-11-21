@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Coffee, Layers3, Server as ServerIcon, Settings as SettingsIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { AccountWidget } from "@/components/AccountWidget";
+import { currentQaIntent, usesMicrosoftAccounts } from "@/lib/integratedQa";
 import { LauncherProvider, useLauncher } from "@/lib/launcher";
 import { MicrosoftAccountsProvider } from "@/lib/auth";
 import { SettingsProvider, useSettings } from "@/lib/settings";
@@ -49,6 +50,7 @@ function CoreStatus() {
 function Shell() {
   const [route, setRoute] = useState<Route>({ page: "instances" });
   const { settings, t } = useSettings();
+  const canUseMicrosoft = usesMicrosoftAccounts(currentQaIntent());
   const mainRef = useRef<HTMLElement>(null);
   const previousRoute = useRef(route);
   const activePage = route.page === "instance" || route.page === "instance-content"
@@ -102,7 +104,8 @@ function Shell() {
         </nav>
         <div className="jmcl-rail-footer flex min-w-0 items-center sm:block">
           <div className="jmcl-account min-w-0 flex-1">
-            <AccountWidget onManage={() => setRoute({ page: "settings" })} />
+            {canUseMicrosoft ? <AccountWidget onManage={() => setRoute({ page: "settings" })} />
+              : <span className="text-sm text-muted-foreground">{settings.language === "zh" ? "离线测试" : "Offline QA"}</span>}
           </div>
           <CoreStatus />
         </div>
@@ -147,7 +150,7 @@ function Shell() {
         )}
       </main>
       <Toaster theme={settings.theme} richColors position="bottom-right" />
-      <MicrosoftLoginDialog />
+      {canUseMicrosoft && <MicrosoftLoginDialog />}
       <ModpackImportDialog onOpenSettings={() => setRoute({ page: "settings" })} onOpenInstance={instanceId => setRoute({ page: "instance", instanceId })} />
     </div>
   );

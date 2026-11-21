@@ -1,3 +1,4 @@
+import { GENERAL_GUI_TEST } from "@/lib/generalGuiTest";
 import { useState } from "react";
 import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,8 @@ import {
 import { useMicrosoftAccounts } from "@/lib/auth";
 import { useSettings } from "@/lib/settings";
 import { openUrl } from "@/lib/native";
+import { INTEGRATED_QA, openIntegratedQaMicrosoftLink } from "@/lib/integratedQa";
+import { toast } from "sonner";
 
 /**
  * Device-code login dialog (contract §6). Only the user code and the
@@ -20,7 +23,7 @@ import { openUrl } from "@/lib/native";
  */
 export function MicrosoftLoginDialog() {
   const { login, cancelLogin } = useMicrosoftAccounts();
-  const { t } = useSettings();
+  const { settings, t } = useSettings();
   const [copied, setCopied] = useState(false);
 
   const copyCode = async () => {
@@ -82,7 +85,15 @@ export function MicrosoftLoginDialog() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => void openUrl(login.verificationUri!)}
+                    onClick={() => {
+                      if (GENERAL_GUI_TEST || INTEGRATED_QA) {
+                        void openIntegratedQaMicrosoftLink().catch(() => {
+                          toast.error(settings.language === "zh" ? "无法打开 Microsoft 验证页面。" : "Could not open Microsoft verification.");
+                        });
+                      } else {
+                        void openUrl(login.verificationUri!);
+                      }
+                    }}
                   >
                     <ExternalLink className="size-4" />
                     {t("account.login.openPage")}

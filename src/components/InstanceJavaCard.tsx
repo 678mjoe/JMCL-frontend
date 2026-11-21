@@ -1,3 +1,4 @@
+import { GENERAL_GUI_TEST } from "@/lib/generalGuiTest";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { absoluteJavaPath, javaPreferencesFor, withJavaPreferences, type JavaPreferences } from "@/lib/javaPreferences";
@@ -171,12 +172,12 @@ function JavaEditor({ instance }: { instance: InstanceManifest }) {
             <select aria-label="Java policy" className="jmcl-field h-9 w-full min-w-0 font-normal" value={saved.policy} onChange={e => save({ ...saved, policy: e.target.value as JavaPreferences["policy"] })}>
               <option value="auto">{zh ? "自动（本地优先）" : "Auto (local first)"}</option>
               <option value="local">{zh ? "仅本地（不下载）" : "Local only (no download)"}</option>
-              <option value="managed">{zh ? "托管优先（仍可回退本地）" : "Managed first (local fallback)"}</option>
+              {!GENERAL_GUI_TEST && <option value="managed">{zh ? "托管优先（仍可回退本地）" : "Managed first (local fallback)"}</option>}
             </select>
           </label>
           <p className="text-xs leading-relaxed text-muted-foreground">{zh ? "自动：本地 → 已安装托管 → 下载；托管优先：已安装托管 → 本地 → 下载。普通候选仍需匹配版本和架构；预览不会下载 Java。" : "Auto: local → installed managed → download. Managed first: installed managed → local → download. Candidates must match major and architecture; preview never downloads Java."}</p>
           <div className="grid gap-1.5">
-            <label htmlFor={overrideFieldId} className="text-sm font-medium">{zh ? "强制覆盖（高级；绕过版本及架构匹配）" : "Forced override (advanced; bypasses major and architecture matching)"}</label>
+            <label htmlFor={overrideFieldId} className="text-sm font-medium">{GENERAL_GUI_TEST ? (zh ? "选择现有 Java（Core 核对版本与架构）" : "Select existing Java (Core checks version and architecture)") : zh ? "强制覆盖（高级；绕过版本及架构匹配）" : "Forced override (advanced; bypasses major and architecture matching)"}</label>
             {loading ? (
               <Skeleton className="h-9 w-full" />
             ) : (

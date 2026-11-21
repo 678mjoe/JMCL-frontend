@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { INTEGRATED_QA } from "./integratedQa";
 import { open as tauriOpen, save as tauriSave, type OpenDialogOptions, type SaveDialogOptions } from "@tauri-apps/plugin-dialog";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -53,7 +54,7 @@ export const credentialDelete = async (accountId: string): Promise<void> => {
 
 export async function readServerStatusCache(): Promise<ServerStatusCacheV1> {
   if (isMockTransport()) return mockServerStatusCacheRead();
-  return invoke<ServerStatusCacheV1>("server_status_cache_read");
+  return invoke<ServerStatusCacheV1>(INTEGRATED_QA ? "qa_server_status_cache_read" : "server_status_cache_read");
 }
 
 export async function writeServerStatusCache(cache: ServerStatusCacheV1): Promise<void> {
@@ -66,7 +67,7 @@ export async function writeServerStatusCache(cache: ServerStatusCacheV1): Promis
 
 export async function readEndpointConfig(): Promise<EndpointConfigV1> {
   if (isMockTransport()) return parseEndpointConfig(mockEndpointConfigRead());
-  return parseEndpointConfig(await invoke<unknown>("endpoint_config_read"));
+  return parseEndpointConfig(await invoke<unknown>(INTEGRATED_QA ? "qa_endpoint_config_read" : "endpoint_config_read"));
 }
 
 export async function writeEndpointConfig(config: EndpointConfigV1): Promise<void> {

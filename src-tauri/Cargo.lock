@@ -1906,6 +1906,8 @@ dependencies = [
  "minisign-verify",
  "serde",
  "serde_json",
+ "sha2",
+ "subtle",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

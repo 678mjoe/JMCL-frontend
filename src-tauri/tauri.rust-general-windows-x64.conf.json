@@ -1,0 +1,60 @@
+{
+  "productName": "JMCL Rust General Test",
+  "mainBinaryName": "jmcl-rust-general-test",
+  "identifier": "page.mjoe.jmcl.experimental-rust-preview.general",
+  "app": {
+    "windows": [
+      {
+        "title": "JMCL Rust General Test",
+        "width": 800,
+        "height": 600,
+        "create": false,
+        "devtools": false,
+        "dragDropEnabled": false,
+        "dataDirectory": "jmcl-rust-general-win-x64-profile-v1",
+        "useHttpsScheme": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "img-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "frame-ancestors": "'none'"
+      },
+      "capabilities": [
+        {
+          "identifier": "general-rust-test-ui",
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "core:path:allow-resolve-directory",
+            "core:path:allow-join",
+            "dialog:allow-open"
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "macOS": {
+      "minimumSystemVersion": "14.0"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "skip"
+      }
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true,
+      "allowDowngrades": false
+    }
+  }
+}

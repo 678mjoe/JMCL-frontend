@@ -1,3 +1,4 @@
+import { GENERAL_GUI_TEST } from "@/lib/generalGuiTest";
 import { javaPreferencesFor } from "@/lib/javaPreferences";
 import { downloadOptions } from "@/lib/downloadOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { DeleteInstanceDialog } from "@/components/DeleteInstanceDialog";
 import { InstanceLaunchOptions } from "@/components/InstanceLaunchOptions";
+import { INTEGRATED_QA } from "@/lib/integratedQa";
 import { InstanceJavaCard } from "@/components/InstanceJavaCard";
 import { InstallTaskProgress } from "@/components/InstallTaskProgress";
 import { LogSheet } from "@/components/LogSheet";
@@ -391,11 +393,11 @@ export function InstanceDetailPage({
       </div>
 
       <WorldsManager instance={manifest} />
-      <div className="grid items-start gap-4 xl:grid-cols-2">
+      {!INTEGRATED_QA && <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="min-w-0">
           <InstanceJavaCard instance={manifest} />
         </div>
-        <div className="min-w-0">
+        {!GENERAL_GUI_TEST && <div className="min-w-0">
           <InstanceLaunchOptions instance={manifest} onPreview={async (options) => {
             if (manifestScope !== currentScope) throw new Error("Stale instance");
             const generation = scopeGeneration.current;
@@ -410,8 +412,8 @@ export function InstanceDetailPage({
               );
             });
           }} />
-        </div>
-      </div>
+        </div>}
+      </div>}
 
       <LogSheet
         instanceId={logOpen ? instanceId : null}

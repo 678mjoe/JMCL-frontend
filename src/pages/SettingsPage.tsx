@@ -17,6 +17,7 @@ import { StoreGcSettings } from "@/components/StoreGcSettings";
 import { CurseForgeSettings } from "@/components/CurseForgeSettings";
 import { EndpointManager } from "@/components/EndpointManager";
 import { useMicrosoftAccounts } from "@/lib/auth";
+import { currentQaIntent, usesMicrosoftAccounts } from "@/lib/integratedQa";
 import type { Language } from "@/lib/i18n";
 import { errorText, useLauncher } from "@/lib/launcher";
 import { useSettings, type Theme } from "@/lib/settings";
@@ -161,6 +162,7 @@ function AccountsSection() {
 export function SettingsPage() {
   const { settings, update, t } = useSettings();
   const isChinese = settings.language === "zh";
+  const qaIntent = currentQaIntent();
   const downloadLimits = [
     { key: "downloadWorkers", label: isChinese ? "并发下载数" : "Download workers", minimum: 1, maximum: 32 },
     { key: "downloadRetries", label: isChinese ? "失败重试数" : "Retries per download", minimum: 0, maximum: 5 },
@@ -225,6 +227,7 @@ export function SettingsPage() {
                 id="settings-player-name"
                 aria-describedby="settings-player-name-hint"
                 value={settings.playerName}
+                readOnly={qaIntent !== null}
                 onChange={(e) => update({ playerName: e.target.value })}
                 onBlur={() => {
                   if (!settings.playerName.trim()) update({ playerName: "Player" });
@@ -234,6 +237,7 @@ export function SettingsPage() {
             <SettingRow id="settings-download-source" label={t("settings.source")}>
               <Select
                 value={settings.source}
+                disabled={qaIntent !== null}
                 onValueChange={(value) => {
                   if (value) update({ source: value as Source });
                 }}
@@ -297,7 +301,7 @@ export function SettingsPage() {
               : "Applies to new operations. Running tasks retain their original settings. Workers: 1–32. Retries: 0–5."}
           </p>
         </section>
-        <AccountsSection />
+        {usesMicrosoftAccounts(qaIntent) && <AccountsSection />}
         <EndpointManager />
         <UpdateSettings />
         <DiagnosticSettings />

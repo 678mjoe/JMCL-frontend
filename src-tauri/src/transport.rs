@@ -99,6 +99,41 @@ fn find_core_near(executable: &Path) -> Option<PathBuf> {
 /// for a bundled sidecar; every build then falls back to the development
 /// `backend-binaries` directory.
 pub fn resolve_core_binary(explicit: Option<&str>) -> Result<PathBuf, String> {
+    if cfg!(feature = "experimental-gui-preview") {
+        if explicit.is_some() || std::env::var_os("JMCL_CORE").is_some() {
+            return Err("Rust GUI test only supports its bundled Core".into());
+        }
+        let exe = std::env::current_exe().map_err(|_| "cannot locate preview executable")?;
+        let adjacent = exe.parent().ok_or("preview application has no directory")?.join(CORE_EXE);
+        let metadata = adjacent.symlink_metadata().map_err(|_| "bundled Core is unavailable")?;
+        #[cfg(all(windows, feature = "experimental-general-gui-test"))]
+        if !crate::windows_general::ordinary(&adjacent, true) {
+            return Err("Unsafe bundled Windows Rust Core path".into());
+        }
+        if !metadata.file_type().is_file() {
+            return Err("bundled Core must be a regular adjacent file".into());
+        }
+        if cfg!(feature = "experimental-general-gui-test") {
+            use sha2::{Digest, Sha256};
+            let file = std::fs::File::open(&adjacent).map_err(|_| "cannot inspect bundled Rust Core")?;
+            #[cfg(all(windows, feature = "experimental-general-gui-test"))]
+            if !crate::windows_general::single_link(&file) {
+                return Err("Bundled Windows Rust Core must be a single ordinary file".into());
+            }
+            let expected_hash = if cfg!(windows) {
+                option_env!("JMCL_GENERAL_WINDOWS_CORE_SHA256").ok_or("Missing Windows Core build hash")?
+            } else {
+                "28e607ebf0ed2424aa775df2e8739e0ef5be3442ccc8cd1e89b8b2e0da41515e"
+            };
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            file.take(16 * 1024 * 1024).read_to_end(&mut bytes).map_err(|_| "cannot hash bundled Rust Core")?;
+            if bytes.len() == 16 * 1024 * 1024 || format!("{:x}", Sha256::digest(&bytes)) != expected_hash {
+                return Err("Bundled Rust Core does not match this test build".into());
+            }
+        }
+        return Ok(adjacent);
+    }
     let chosen = explicit
         .map(str::to_owned)
         .or_else(|| std::env::var("JMCL_CORE").ok())
@@ -146,6 +181,17 @@ impl LocalProcessTransport {
             .stderr(Stdio::piped());
         #[cfg(windows)]
         hide_child_console(&mut command);
+        if cfg!(feature = "experimental-general-gui-test") {
+            #[cfg(not(windows))]
+            command.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin");
+            #[cfg(all(windows, feature = "experimental-general-gui-test"))]
+            command.env("PATH", crate::windows_general::system_directory()
+                .map_err(|_| "cannot verify a trusted Windows system folder")?);
+            for key in ["JAVA_HOME", "JDK_HOME", "JAVA_OPTS", "JDK_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS",
+                        "_JAVA_OPTIONS", "CLASSPATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH"] {
+                command.env_remove(key);
+            }
+        }
         if let Some(dir) = working_dir {
             command.current_dir(dir);
         }

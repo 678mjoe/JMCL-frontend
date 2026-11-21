@@ -1,4 +1,6 @@
+import { GENERAL_GUI_TEST } from "./generalGuiTest";
 import { downloadOptions } from "./downloadOptions";
+import { currentQaIntent, qaSettingsKey } from "./integratedQa";
 /**
  * App settings: theme, language, directories, offline player name.
  * Persisted to localStorage; theme is applied to <html> as `.dark`.
@@ -44,7 +46,22 @@ export interface Settings {
   launchOptions: LaunchOptionsStore;
 }
 
-const STORAGE_KEY = "jmcl.settings.v1";
+const RUST_GUI_TEST = import.meta.env.VITE_JMCL_RUST_GUI_TEST === "1";
+const MICROSOFT_LOGIN_TEST = RUST_GUI_TEST && import.meta.env.VITE_JMCL_MICROSOFT_LOGIN_TEST === "1";
+const storageKey = (): string => GENERAL_GUI_TEST ? "jmcl.rust-general-test.settings.v1" : qaSettingsKey(currentQaIntent())
+  ?? (MICROSOFT_LOGIN_TEST ? "jmcl.rust-microsoft-signin-test.settings.v1"
+    : RUST_GUI_TEST ? "jmcl.rust-gui-test.settings.v1" : "jmcl.settings.v1");
+const previewAccountId = (value: string | null): string | null =>
+  MICROSOFT_LOGIN_TEST && currentQaIntent() !== "offline"
+    && value && /^[0-9a-f]{32}$/.test(value) ? value : null;
+
+function applyIntegratedFixture(settings: Settings): Settings {
+  if (GENERAL_GUI_TEST) return { ...settings, source: "official" };
+  return currentQaIntent() !== null
+    ? { ...settings, playerName: "Player", source: "official", javaOverrides: {},
+        javaPreferences: {}, launchOptions: emptyLaunchOptions() }
+    : settings;
+}
 
 const defaults: Settings = {
   theme: "system",
@@ -89,8 +106,15 @@ export function mergeStoredSettings(stored: unknown): Settings {
 
 function loadStored(): Settings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return mergeStoredSettings(JSON.parse(raw));
+    const raw = localStorage.getItem(storageKey());
+    if (raw) {
+      const stored = mergeStoredSettings(JSON.parse(raw));
+      if (RUST_GUI_TEST) {
+        return applyIntegratedFixture({ ...stored, instancesDir: "", storeDir: "", serversDir: "",
+          selectedServerEndpointId: "local", activeAccountId: previewAccountId(stored.activeAccountId) });
+      }
+      return stored;
+    }
   } catch {
     // Corrupted storage — fall back to defaults.
   }
@@ -139,7 +163,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   // Persist + apply theme.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(storageKey(), JSON.stringify(settings));
   }, [settings]);
 
   useEffect(() => {
@@ -152,7 +176,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [settings.theme]);
 
   const update = useCallback(
-    (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch })),
+    (patch: Partial<Settings>) => setSettings((s) => {
+      const next = { ...s, ...patch };
+      if (RUST_GUI_TEST) {
+        return applyIntegratedFixture({ ...next, instancesDir: s.instancesDir, storeDir: s.storeDir, serversDir: s.serversDir,
+          selectedServerEndpointId: "local", activeAccountId: previewAccountId(next.activeAccountId) });
+      }
+      return next;
+    }),
     [],
   );
 

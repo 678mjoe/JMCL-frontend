@@ -23,11 +23,14 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { currentQaIntent, qaLaunchAccess, usesMicrosoftAccounts } from "./integratedQa";
 import { errorText, useLauncher } from "./launcher";
+import { GENERAL_GUI_TEST } from "./generalGuiTest";
 import { makeOfflineSession } from "./offline";
 import { RpcError, type CoreSession } from "./rpc";
 import { useSettings } from "./settings";
 import { credentialDelete, credentialGet, credentialSet } from "./native";
+import { finishDeviceLogin, persistRefreshResult, PENDING_DEVICE_LOGIN } from "./accountPersistence";
 import { withCancellableOpenedSession } from "./sessionLifecycle";
 import type {
   AccountProfile,
@@ -42,14 +45,9 @@ import type {
  */
 export const MICROSOFT_CLIENT_ID = "3dca676e-ab27-4afb-a40d-c177a33ffd70";
 
-/** Keychain slot used between OAuth approval and profile resolution. */
-const PENDING_KEY = "pending-device-login";
-
-const sleep = (ms: number) => {
-  const { promise, resolve } = Promise.withResolvers<void>();
+const sleep = (ms: number) => new Promise<void>((resolve) => {
   setTimeout(resolve, ms);
-  return promise;
-};
+});
 
 export type LoginStatus = "starting" | "pending" | "finishing" | "error";
 
@@ -118,14 +116,20 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
   const [login, setLogin] = useState<LoginState | null>(null);
   const loginSessionRef = useRef<CoreSession | null>(null);
   const cancelledRef = useRef(false);
+  const qaRefreshInFlight = useRef(false);
 
-  const activeAccountId = settings.activeAccountId;
+  const canUseMicrosoft = usesMicrosoftAccounts(currentQaIntent());
+  const activeAccountId = canUseMicrosoft ? settings.activeAccountId : null;
   const activeAccount = useMemo(
     () => accounts.find((account) => account.id === activeAccountId) ?? null,
     [accounts, activeAccountId],
   );
 
   const refresh = useCallback(async () => {
+    if (!canUseMicrosoft) {
+      setLoading(false);
+      return;
+    }
     if (!session) return;
     setLoading(true);
     setError(null);
@@ -137,26 +141,28 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [session, canUseMicrosoft]);
 
   useEffect(() => {
     if (status === "ready") void refresh();
   }, [status, refresh]);
 
   const setActiveAccount = useCallback(
-    (id: string | null) => update({ activeAccountId: id }),
-    [update],
+    (id: string | null) => {
+      if (canUseMicrosoft) update({ activeAccountId: id });
+    },
+    [canUseMicrosoft, update],
   );
 
   const removeAccount = useCallback(
     async (id: string) => {
-      if (!session) return;
+      if (!canUseMicrosoft || !session) return;
       await session.accountDelete(id);
       await credentialDelete(id);
       if (activeAccountId === id) update({ activeAccountId: null });
       await refresh();
     },
-    [session, activeAccountId, update, refresh],
+    [canUseMicrosoft, session, activeAccountId, update, refresh],
   );
 
   const cancelLogin = useCallback(() => {
@@ -167,7 +173,7 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
   }, []);
 
   const startLogin = useCallback(() => {
-    if (loginSessionRef.current) return;
+    if (!canUseMicrosoft || loginSessionRef.current) return;
     cancelledRef.current = false;
     setLogin({ status: "starting" });
 
@@ -225,7 +231,7 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
         if (!oauth) throw new Error("device-code-expired");
 
         // Persist the refresh token before the exchange can fail (§6.3).
-        await credentialSet(PENDING_KEY, oauth.refresh_token);
+        await credentialSet(PENDING_DEVICE_LOGIN, oauth.refresh_token);
         if (cancelledRef.current) return;
         setLogin((current) => ({ ...current, status: "finishing" }));
 
@@ -255,10 +261,14 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
           // accounts have none — omit it instead of sending "".
           ...(typeof xuid === "string" && xuid.length > 0 ? { xuid } : {}),
         };
-        await credentialSet(profile.id, oauth.refresh_token);
-        await credentialDelete(PENDING_KEY);
-        await session?.accountSave(profile);
+        await finishDeviceLogin(profile, oauth.refresh_token, {
+          credentialSet,
+          credentialDelete,
+          accountSave: (value) => loginSession.accountSave(value),
+        });
+        if (cancelledRef.current) return;
         await refresh();
+        if (cancelledRef.current) return;
         update({ activeAccountId: profile.id });
         if (!cancelledRef.current) {
           setLogin(null);
@@ -282,38 +292,48 @@ export function MicrosoftAccountsProvider({ children }: { children: ReactNode })
         loginSessionRef.current = null;
       }
     })();
-  }, [openSession, settings.language, session, refresh, update, t]);
+  }, [canUseMicrosoft, openSession, settings.language, refresh, update, t]);
 
   const getLaunchSession = useCallback(async (): Promise<AuthSession | null> => {
-    if (!activeAccount) return null;
-    const refreshToken = await credentialGet(activeAccount.id);
-    if (!refreshToken) throw new ReloginRequiredError();
-
-    const authSession = await openSession();
-    try {
-      let result: RefreshExchangeResult;
-      try {
-        result = await authSession.authMinecraftRefreshExchange(
-          activeAccount.client_id,
-          refreshToken,
-        );
-      } catch (e) {
-        // RPC-level failure: no rotated token arrived, nothing to persist.
-        throw isTransientAuthError(e) ? new AuthTransientError() : e;
-      }
-      // §6.4: persist the rotated token BEFORE using the session,
-      // even when the exchange itself failed.
-      await credentialSet(activeAccount.id, result.refresh_token);
-      if (result.state === "exchange_failed") {
-        throw TRANSIENT_AUTH_CODES[result.exchange_error?.code ?? ""] === true
-          ? new AuthTransientError()
-          : new ReloginRequiredError();
-      }
-      return result.session;
-    } finally {
-      void authSession.close();
+    if (!canUseMicrosoft || !activeAccount) return null;
+    const integratedMicrosoft = GENERAL_GUI_TEST || currentQaIntent() === "microsoft_enabled";
+    if (integratedMicrosoft && qaRefreshInFlight.current) {
+      throw new Error(settings.language === "zh" ? "正在验证所选账号，稍后再试。"
+        : "The selected account is already being checked. Try again shortly.");
     }
-  }, [activeAccount, openSession]);
+    if (integratedMicrosoft) qaRefreshInFlight.current = true;
+    try {
+      const refreshToken = await credentialGet(activeAccount.id);
+      if (!refreshToken) throw new ReloginRequiredError();
+
+      const authSession = await openSession();
+      try {
+        let result: RefreshExchangeResult;
+        try {
+          result = await authSession.authMinecraftRefreshExchange(activeAccount.client_id, refreshToken);
+        } catch (e) {
+          // RPC-level failure: no rotated token arrived, nothing to persist.
+          throw isTransientAuthError(e) ? new AuthTransientError() : e;
+        }
+        // §6.4: persist rotation even on exchange_failed. The integrated
+        // native bridge can arm Play only after this exact setter is ACKed.
+        result = await persistRefreshResult(activeAccount.id, result, credentialSet);
+        if (result.state === "exchange_failed") {
+          throw TRANSIENT_AUTH_CODES[result.exchange_error?.code ?? ""] === true
+            ? new AuthTransientError()
+            : new ReloginRequiredError();
+        }
+        if (integratedMicrosoft && result.session.uuid !== activeAccount.id) {
+          throw new ReloginRequiredError();
+        }
+        return result.session;
+      } finally {
+        void authSession.close();
+      }
+    } finally {
+      if (integratedMicrosoft) qaRefreshInFlight.current = false;
+    }
+  }, [canUseMicrosoft, activeAccount, openSession, settings.language]);
 
   const value = useMemo<MicrosoftAccountsContextValue>(
     () => ({
@@ -366,7 +386,13 @@ export function useLaunchAuth(): () => Promise<AuthSession> {
   const { getLaunchSession } = useMicrosoftAccounts();
   const { settings } = useSettings();
   return useCallback(async () => {
+    const access = qaLaunchAccess(currentQaIntent(), settings.activeAccountId);
+    if (access === "fixture-offline") return makeOfflineSession("Player");
     const microsoft = await getLaunchSession();
+    if ((access === "authenticated-play" || (GENERAL_GUI_TEST && settings.activeAccountId)) && !microsoft) {
+      throw new Error(settings.language === "zh" ? "所选账号不可用。若要离线启动，请手动选择离线账号。"
+        : "The selected account is unavailable. Select Offline manually to play without it.");
+    }
     return microsoft ?? makeOfflineSession(settings.playerName);
-  }, [getLaunchSession, settings.playerName]);
+  }, [getLaunchSession, settings.activeAccountId, settings.language, settings.playerName]);
 }

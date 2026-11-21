@@ -4,9 +4,11 @@
 //! `account.microsoft.*`. Nothing is logged — error messages never include
 //! token material.
 
-use keyring::Entry;
+use std::time::Instant;
 
-const SERVICE: &str = "page.mjoe.jmcl";
+use crate::{login_test_policy::Profile, play_freshness};
+use keyring::Entry;
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, thiserror::Error, serde::Serialize)]
 #[serde(tag = "kind", content = "message")]
@@ -25,56 +27,123 @@ fn key(account_id: &str) -> String {
     format!("refresh-token/{account_id}")
 }
 
-fn entry(account_id: &str) -> Result<Entry, CredentialError> {
-    Ok(Entry::new(SERVICE, &key(account_id))?)
+fn entry(profile: Profile, account_id: &str) -> Result<Entry, CredentialError> {
+    let service = profile.credential_service(account_id).ok_or_else(|| {
+        CredentialError::Keychain("Microsoft credential slot is disabled for this GUI profile".into())
+    })?;
+    Entry::new(service, &key(account_id)).map_err(|err| keychain_error(profile, err))
 }
 
-fn set_blocking(account_id: String, refresh_token: String) -> Result<(), CredentialError> {
-    entry(&account_id)?.set_password(&refresh_token)?;
+fn keychain_error(profile: Profile, err: keyring::Error) -> CredentialError {
+    if profile.restricted_microsoft() {
+        CredentialError::Keychain("Microsoft sign-in test keychain operation failed".into())
+    } else {
+        err.into()
+    }
+}
+
+fn set_blocking(profile: Profile, account_id: String, refresh_token: String) -> Result<(), CredentialError> {
+    entry(profile, &account_id)?.set_password(&refresh_token).map_err(|err| keychain_error(profile, err))?;
     Ok(())
 }
 
-fn get_blocking(account_id: String) -> Result<Option<String>, CredentialError> {
-    match entry(&account_id)?.get_password() {
+fn get_blocking(profile: Profile, account_id: String) -> Result<Option<String>, CredentialError> {
+    match entry(profile, &account_id)?.get_password() {
         Ok(token) => Ok(Some(token)),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(keychain_error(profile, error)),
     }
 }
 
-fn delete_blocking(account_id: String) -> Result<(), CredentialError> {
-    match entry(&account_id)?.delete_credential() {
+fn delete_blocking(profile: Profile, account_id: String) -> Result<(), CredentialError> {
+    match entry(profile, &account_id)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(keychain_error(profile, error)),
     }
+}
+
+fn qa_write_guard(
+    app: &AppHandle,
+    profile: Profile,
+) -> Result<Option<tokio::sync::OwnedMutexGuard<play_freshness::State>>, CredentialError> {
+    if !profile.uses_fresh_play() {
+        return Ok(None);
+    }
+    let failure = || CredentialError::Keychain("Integrated Microsoft storage is not ready".into());
+    let shared = app.try_state::<play_freshness::PlayFreshness>().ok_or_else(failure)?;
+    shared.try_lock().map(Some).map_err(|_| failure())
 }
 
 /// Store (or overwrite) the refresh token for an account. Callers MUST
 /// persist rotated tokens before using a refreshed session (contract §6.4).
 #[tauri::command]
-pub async fn credential_set(
+pub(crate) async fn credential_set(
+    app: AppHandle,
+    profile: State<'_, Profile>,
     account_id: String,
     refresh_token: String,
 ) -> Result<(), CredentialError> {
-    tauri::async_runtime::spawn_blocking(move || set_blocking(account_id, refresh_token))
-        .await
-        .map_err(|error| CredentialError::Keychain(error.to_string()))?
+    let profile = *profile.inner();
+    let mut guard = qa_write_guard(&app, profile)?;
+    let pending = guard.as_mut().and_then(|state| state.start_write(&account_id, &refresh_token, Instant::now()));
+    // Keep the integrated mutation lock inside the actual worker even if
+    // the command future is dropped. A cancelled reply never arms proof.
+    let (mut guard, pending, result) = tauri::async_runtime::spawn_blocking(move || {
+        let result = set_blocking(profile, account_id, refresh_token);
+        (guard, pending, result)
+    })
+    .await
+    .map_err(|error| CredentialError::Keychain(if profile.restricted_microsoft() {
+        "Microsoft sign-in test keychain task failed".into()
+    } else {
+        error.to_string()
+    }))?;
+    result?;
+    if let Some(state) = guard.as_mut() {
+        state.finish_ack(pending, Instant::now());
+    }
+    Ok(())
 }
 
 /// Read the refresh token for an account; `None` when none is stored.
 #[tauri::command]
-pub async fn credential_get(account_id: String) -> Result<Option<String>, CredentialError> {
-    tauri::async_runtime::spawn_blocking(move || get_blocking(account_id))
+pub(crate) async fn credential_get(
+    profile: State<'_, Profile>,
+    account_id: String,
+) -> Result<Option<String>, CredentialError> {
+    let profile = *profile.inner();
+    tauri::async_runtime::spawn_blocking(move || get_blocking(profile, account_id))
         .await
-        .map_err(|error| CredentialError::Keychain(error.to_string()))?
+        .map_err(|error| CredentialError::Keychain(if profile.restricted_microsoft() {
+            "Microsoft sign-in test keychain task failed".into()
+        } else {
+            error.to_string()
+        }))?
 }
 
 /// Delete the refresh token for an account. Unknown ids are a no-op.
 #[tauri::command]
-pub async fn credential_delete(account_id: String) -> Result<(), CredentialError> {
-    tauri::async_runtime::spawn_blocking(move || delete_blocking(account_id))
+pub(crate) async fn credential_delete(
+    app: AppHandle,
+    profile: State<'_, Profile>,
+    account_id: String,
+) -> Result<(), CredentialError> {
+    let profile = *profile.inner();
+    let mut guard = qa_write_guard(&app, profile)?;
+    if let Some(state) = guard.as_mut() {
+        state.clear();
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = delete_blocking(profile, account_id);
+        drop(guard);
+        result
+    })
         .await
-        .map_err(|error| CredentialError::Keychain(error.to_string()))?
+        .map_err(|error| CredentialError::Keychain(if profile.restricted_microsoft() {
+            "Microsoft sign-in test keychain task failed".into()
+        } else {
+            error.to_string()
+        }))?
 }
 
 #[cfg(test)]

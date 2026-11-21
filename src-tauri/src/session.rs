@@ -6,7 +6,7 @@
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -184,7 +184,16 @@ impl Session {
         params: Value,
         on_event: impl FnMut(SessionEvent),
     ) -> Result<Value, SessionError> {
-        self.request_inner(method, params, on_event, false).await
+        self.request_inner(method, params, on_event, false, None::<(Instant, fn())>).await
+    }
+
+    /// One admission deadline for a native one-use Play proof. Unlike normal
+    /// RPC, this must not queue behind another request and outlive the proof.
+    pub(crate) async fn request_before(
+        &self, method: &str, params: Value, on_event: impl FnMut(SessionEvent), deadline: Instant,
+        release_admission: impl FnOnce(),
+    ) -> Result<Value, SessionError> {
+        self.request_inner(method, params, on_event, false, Some((deadline, release_admission))).await
     }
 
     /// A credential-bearing session is single-use, including callers already
@@ -201,7 +210,7 @@ impl Session {
                 "This session is closed.",
             ));
         }
-        let result = self.request_inner(method, params, on_event, true).await;
+        let result = self.request_inner(method, params, on_event, true, None::<(Instant, fn())>).await;
         self.signal_close();
         result
     }
@@ -212,6 +221,7 @@ impl Session {
         params: Value,
         mut on_event: impl FnMut(SessionEvent),
         credentialed: bool,
+        write_before: Option<(Instant, impl FnOnce())>,
     ) -> Result<Value, SessionError> {
         let mut cancel = self.cancel.subscribe();
         if *cancel.borrow()
@@ -225,10 +235,14 @@ impl Session {
         }
         // Held for the whole request: protocol v1 allows one request at a
         // time per session, so concurrent callers queue here.
-        let mut transport = tokio::select! {
-            biased;
-            _ = cancel.changed() => return Err(SessionError::coded("SESSION_CANCELLED", "The session request was cancelled.")),
-            transport = self.transport.lock() => transport,
+        let mut transport = if write_before.is_some() {
+            self.transport.try_lock().map_err(|_| Self::admission_expired())?
+        } else {
+            tokio::select! {
+                biased;
+                _ = cancel.changed() => return Err(SessionError::coded("SESSION_CANCELLED", "The session request was cancelled.")),
+                transport = self.transport.lock() => transport,
+            }
         };
         if *cancel.borrow()
             || self.closed.load(Ordering::SeqCst)
@@ -253,10 +267,28 @@ impl Session {
                 "request exceeds {MAX_REQUEST_LINE} bytes"
             )));
         }
-        tokio::select! {
-            biased;
-            _ = cancel.changed() => { Self::best_effort_abort(&mut transport).await; return Err(SessionError::coded("SESSION_CANCELLED", "The session request was cancelled.")); }
-            result = transport.write_line(&line) => result.map_err(SessionError::from_transport)?,
+        if let Some((deadline, release_admission)) = write_before {
+            if Instant::now() >= deadline {
+                return Err(Self::admission_expired());
+            }
+            tokio::select! {
+                biased;
+                _ = cancel.changed() => { Self::best_effort_abort(&mut transport).await; return Err(SessionError::coded("SESSION_CANCELLED", "The session request was cancelled.")); }
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
+                    // The pipe may have accepted a partial line; do not reuse it.
+                    self.signal_close();
+                    Self::best_effort_abort(&mut transport).await;
+                    return Err(Self::admission_expired());
+                }
+                result = transport.write_line(&line) => result.map_err(SessionError::from_transport)?,
+            }
+            release_admission();
+        } else {
+            tokio::select! {
+                biased;
+                _ = cancel.changed() => { Self::best_effort_abort(&mut transport).await; return Err(SessionError::coded("SESSION_CANCELLED", "The session request was cancelled.")); }
+                result = transport.write_line(&line) => result.map_err(SessionError::from_transport)?,
+            }
         }
 
         loop {
@@ -337,6 +369,10 @@ impl Session {
                 }
             }
         }
+    }
+
+    fn admission_expired() -> SessionError {
+        SessionError::coded("SESSION_ADMISSION_EXPIRED", "Request could not be admitted before its deadline.")
     }
 
     /// Cancel the in-flight request, then close the transport gracefully when idle.
@@ -468,6 +504,46 @@ mod tests {
         async fn abort(&mut self) -> Result<(), TransportFailure> {
             Ok(())
         }
+    }
+
+    fn admission_fixture() -> Session {
+        Session {
+            transport: Mutex::new(Box::new(NeverTransport {
+                entered: Arc::new(Notify::new()),
+                block_write: true,
+            })),
+            protocol_error_code: "TRANSPORT_ERROR",
+            sequence: AtomicU64::new(0),
+            closed: AtomicBool::new(false),
+            credentialed: AtomicBool::new(false),
+            cancel: watch::channel(false).0,
+            identity: CoreIdentity { name: "fixture".into(), version: "fixture".into(), protocol: 1 },
+        }
+    }
+
+    #[tokio::test]
+    async fn admission_deadline_never_queues_or_writes_after_expiry() {
+        let session = admission_fixture();
+        let occupied = session.transport.try_lock().unwrap();
+        let queued = session.request_before("fixture.launch", json!({}), |_| {},
+            Instant::now() + Duration::from_secs(30), || panic!("must not write")).await;
+        assert!(matches!(queued, Err(SessionError::Transport { code, .. }) if code == "SESSION_ADMISSION_EXPIRED"));
+        drop(occupied);
+        let expired = session.request_before("fixture.launch", json!({}), |_| {},
+            Instant::now(), || panic!("must not write")).await;
+        assert!(matches!(expired, Err(SessionError::Transport { code, .. }) if code == "SESSION_ADMISSION_EXPIRED"));
+        assert!(!session.closed.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn admission_deadline_retires_transport_if_write_never_completes() {
+        let session = admission_fixture();
+        let rejected = session.request_before("fixture.launch", json!({}), |_| {},
+            Instant::now() + Duration::from_millis(20), || panic!("must not complete write")).await;
+        assert!(matches!(rejected, Err(SessionError::Transport { code, .. }) if code == "SESSION_ADMISSION_EXPIRED"));
+        // On a very busy test host the whole deadline can elapse before first
+        // poll; in that case no transport write was attempted at all.
+        drop(session.transport.try_lock().unwrap());
     }
 
     #[tokio::test]

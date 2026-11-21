@@ -1,0 +1,144 @@
+name: One-shot JMCL Rust General GUI Windows x64 test package
+on:
+  push:
+    branches: [qualify/rust-general-windows-x64-20261121]
+    paths: ['.github/workflows/rust-general-windows-x64.yml']
+permissions:
+  contents: read
+env:
+  FRONTEND: 83e3fa749c56af79d1760b9e85c277d84286ca19
+  FRONTEND_TREE: 973068b5ab2717ee192b6c03bc73fc7b35b8c969
+  CORE: 0b937fb1e68067a76b4324f22fb7af9a2d9cbd18
+  CORE_TREE: f042df58f5551fdbd3f275a20d6e7adcd0cc7f4b
+  VERSIONED_CORE_TREE: 78e666ffc7b42c3311a1ff8ddf3af5afed7e3880
+  CORE_LOCK: f86b8a710c59a0a34ffae55482858c8b83ce9d57
+  VERSIONED_CORE_LOCK: a97b701dddbe637abe56315f81b6f6f62403eff6
+  VERSION_PATCH_SHA256: 870ffa27e41ef131f13ce6bdd07dcfc8ab16d0ccbb9b16128332fb65cfb10896
+  BUN_LOCK: 4b6d360cec70b424fbae3760bd11afbeb5c98df0
+  FRONTEND_CARGO_LOCK: 82fe06506c34a7d511cc98c537b0ff5265caa04c
+  RUST_VERSION: 1.99.1
+  BUN_VERSION: 1.4.4
+jobs:
+  windows:
+    if: github.repository == '678mjoe/JMCL-frontend' && github.event.repository.visibility == 'public' && github.ref == 'refs/heads/qualify/rust-general-windows-x64-20261121' && github.event.created == true && github.event.deleted == false
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          path: frontend
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: ${{ env.CORE }}
+          path: frontend/.ci-core
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Independently check exact inputs, toolchain, and permitted diff
+        working-directory: frontend
+        run: |
+          test "$(git rev-parse HEAD^)" = "$FRONTEND"
+          test "$(git rev-parse 'HEAD^^{tree}')" = "$FRONTEND_TREE"
+          test "$(git hash-object bun.lock)" = "$BUN_LOCK"
+          test "$(git hash-object src-tauri/Cargo.lock)" = "$FRONTEND_CARGO_LOCK"
+          test "$(git diff --name-only HEAD^ HEAD | LC_ALL=C sort)" = "$(printf '%s\n' \
+            .github/workflows/rust-general-windows-x64.yml \
+            ci/rust-dev-version.patch \
+            ci/verify-windows-general-rust-gui.py \
+            src-tauri/Cargo.lock \
+            src-tauri/Cargo.toml \
+            src-tauri/build.rs \
+            src-tauri/src/credentials.rs \
+            src-tauri/src/curseforge.rs \
+            src-tauri/src/endpoints.rs \
+            src-tauri/src/general_preview.rs \
+            src-tauri/src/integrated_qa.rs \
+            src-tauri/src/lib.rs \
+            src-tauri/src/login_test_policy.rs \
+            src-tauri/src/play_freshness.rs \
+            src-tauri/src/session.rs \
+            src-tauri/src/transport.rs \
+            src-tauri/src/update_config.rs \
+            src-tauri/src/windows_general.rs \
+            src-tauri/tauri.rust-general-windows-x64.conf.json \
+            src/App.tsx \
+            src/components/InstanceJavaCard.tsx \
+            src/components/MicrosoftLoginDialog.tsx \
+            src/lib/accountPersistence.test.ts \
+            src/lib/accountPersistence.ts \
+            src/lib/auth.tsx \
+            src/lib/generalGuiTest.ts \
+            src/lib/integratedQa.test.ts \
+            src/lib/integratedQa.ts \
+            src/lib/native.ts \
+            src/lib/settings.tsx \
+            src/main.tsx \
+            src/pages/InstanceDetailPage.tsx \
+            src/pages/SettingsPage.tsx | LC_ALL=C sort)"
+          test "$(git -C .ci-core rev-parse HEAD)" = "$CORE"
+          test "$(git -C .ci-core rev-parse 'HEAD^{tree}')" = "$CORE_TREE"
+          test "$(git -C .ci-core hash-object rust/Cargo.lock)" = "$CORE_LOCK"
+          test "$(sha256sum ci/rust-dev-version.patch | cut -d ' ' -f 1)" = "$VERSION_PATCH_SHA256"
+          git -C .ci-core apply --check ../ci/rust-dev-version.patch
+          git -C .ci-core apply --index ../ci/rust-dev-version.patch
+          test "$(git -C .ci-core write-tree)" = "$VERSIONED_CORE_TREE"
+          test "$(git -C .ci-core hash-object rust/Cargo.lock)" = "$VERSIONED_CORE_LOCK"
+          git -C .ci-core diff --quiet
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          rustc -vV
+          test "$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')" = 'x86_64-pc-windows-msvc'
+          test "$(bun --version)" = "$BUN_VERSION"
+      - name: Prepare locked build dependencies only
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG
+          cargo fetch --locked --manifest-path .ci-core/rust/Cargo.toml
+          cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+          bun install --frozen-lockfile --ignore-scripts
+          test "$(bun run tauri --version | tail -n1 | tr -d '\r')" = 'tauri-cli 2.11.4'
+      - name: Compile exact Windows Rust Core and stage its native sidecar
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG JMCL_CORE VITE_JMCL_TRANSPORT
+          unset JMCL_REVIEWED_LARGE_MRPACK_SIDECAR_SHA256
+          cargo build --locked --offline --release --manifest-path .ci-core/rust/Cargo.toml --bin jmcl-core-rust
+          core='.ci-core/rust/target/release/jmcl-core-rust.exe'
+          bash scripts/prepare-sidecar.sh "$core"
+          cmp "$core" src-tauri/binaries/jmcl-core-x86_64-pc-windows-msvc.exe
+      - name: Build real GUI Windows NSIS (do not run any app or installer)
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG JMCL_CORE VITE_JMCL_TRANSPORT
+          unset JMCL_REVIEWED_LARGE_MRPACK_SIDECAR_SHA256
+          unset JMCL_UPDATE_ENDPOINT JMCL_UPDATE_PUBLIC_KEY JMCL_UPDATE_CHANNEL JMCL_UPDATE_VERIFIED
+          unset VITE_JMCL_INTEGRATED_GUI_TEST JMCL_INTEGRATED_QA_JAVA
+          export VITE_JMCL_RUST_GUI_TEST=1 VITE_JMCL_MICROSOFT_LOGIN_TEST=1 VITE_JMCL_GENERAL_GUI_TEST=1 CARGO_NET_OFFLINE=true
+          export JMCL_GENERAL_WINDOWS_CORE_SHA256="$(sha256sum src-tauri/binaries/jmcl-core-x86_64-pc-windows-msvc.exe | cut -d ' ' -f 1)"
+          bun run build
+          export TAURI_CONFIG="$(cat src-tauri/tauri.rust-general-windows-x64.conf.json)"
+          cargo test --locked --offline --release --manifest-path src-tauri/Cargo.toml --features experimental-general-gui-test --lib windows_general::tests
+          cargo test --locked --offline --release --manifest-path src-tauri/Cargo.toml --features experimental-general-gui-test --lib general_preview::tests
+          cargo test --locked --offline --release --manifest-path src-tauri/Cargo.toml --features experimental-general-gui-test --lib play_freshness::tests
+          cargo test --locked --offline --release --manifest-path src-tauri/Cargo.toml --features experimental-general-gui-test --lib login_test_policy::tests
+          unset TAURI_CONFIG
+          bun run tauri build --ci --no-sign --bundles nsis \
+            --config src-tauri/tauri.rust-general-windows-x64.conf.json --features experimental-general-gui-test -- --locked --offline
+          python ci/verify-windows-general-rust-gui.py
+      - name: Upload only the approved Windows test set for one day
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jmcl-rust-general-test-windows-x64-${{ github.sha }}
+          path: frontend/deliver/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

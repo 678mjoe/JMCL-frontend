@@ -361,6 +361,9 @@ fn replace_destination(temporary: &Path, destination: &Path) -> Result<(), Endpo
 
 #[tauri::command]
 pub fn endpoint_config_read(app: tauri::AppHandle) -> Result<EndpointConfigV1, String> {
+    if cfg!(feature = "experimental-general-gui-test") {
+        return Ok(canonical_endpoint_config());
+    }
     let dir = app
         .path()
         .app_data_dir()
