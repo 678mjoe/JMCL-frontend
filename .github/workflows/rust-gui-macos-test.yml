@@ -1,0 +1,120 @@
+name: Opt-in JMCL Rust GUI Apple Silicon test package
+on:
+  push:
+    branches: [qualify/rust-gui-macos-20261121]
+    paths: ['.github/workflows/rust-gui-macos-test.yml']
+permissions:
+  contents: read
+env:
+  FRONTEND: 83e3fa749c56af79d1760b9e85c277d84286ca19
+  FRONTEND_TREE: 973068b5ab2717ee192b6c03bc73fc7b35b8c969
+  CORE: 0b937fb1e68067a76b4324f22fb7af9a2d9cbd18
+  CORE_TREE: f042df58f5551fdbd3f275a20d6e7adcd0cc7f4b
+  VERSIONED_CORE_TREE: 78e666ffc7b42c3311a1ff8ddf3af5afed7e3880
+  CORE_LOCK: f86b8a710c59a0a34ffae55482858c8b83ce9d57
+  VERSIONED_CORE_LOCK: a97b701dddbe637abe56315f81b6f6f62403eff6
+  VERSION_PATCH_SHA256: 870ffa27e41ef131f13ce6bdd07dcfc8ab16d0ccbb9b16128332fb65cfb10896
+  BUN_LOCK: 4b6d360cec70b424fbae3760bd11afbeb5c98df0
+  FRONTEND_CARGO_LOCK: a387768780a12de119d3cf3cd288ec30f8391c7f
+  RUST_VERSION: 1.99.1
+  BUN_VERSION: 1.4.4
+jobs:
+  macos:
+    if: github.repository == '678mjoe/JMCL-frontend' && github.event.repository.visibility == 'public' && github.ref == 'refs/heads/qualify/rust-gui-macos-20261121' && github.event.created == true && github.event.deleted == false
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          path: frontend
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: ${{ env.CORE }}
+          path: frontend/.ci-core
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Independently check exact inputs, toolchain, and permitted diff
+        working-directory: frontend
+        run: |
+          test "$(git rev-parse HEAD^)" = "$FRONTEND"
+          test "$(git rev-parse 'HEAD^^{tree}')" = "$FRONTEND_TREE"
+          test "$(git hash-object bun.lock)" = "$BUN_LOCK"
+          test "$(git hash-object src-tauri/Cargo.lock)" = "$FRONTEND_CARGO_LOCK"
+          test "$(git diff --name-only HEAD^ HEAD | LC_ALL=C sort)" = "$(printf '%s\n' \
+            .github/workflows/rust-gui-macos-test.yml \
+            ci/rust-dev-version.patch ci/verify-macos-rust-gui.py \
+            src-tauri/Cargo.toml src-tauri/build.rs \
+            src-tauri/src/credentials.rs src-tauri/src/curseforge.rs src-tauri/src/lib.rs \
+            src-tauri/src/transport.rs src-tauri/src/update_config.rs \
+            src-tauri/tauri.rust-gui-test.conf.json src/lib/settings.tsx | LC_ALL=C sort)"
+          test "$(git hash-object ci/rust-dev-version.patch)" = '3532509742b3e9b724fcf3c9e127e266bf02f686'
+          test "$(git hash-object src-tauri/Cargo.toml)" = 'f48b52dd9e7f78fdfa4460bef7609bb7e3618c9f'
+          test "$(git hash-object src-tauri/build.rs)" = '0bf41517f027a000e1a0902c7004a73457641ec4'
+          test "$(git hash-object src-tauri/src/credentials.rs)" = '1fae22c0b3c9a708babc876c836bf2b1069c08f0'
+          test "$(git hash-object src-tauri/src/curseforge.rs)" = '3fa4609e0465d5635d23e4a87d9ce7cfe68cd39d'
+          test "$(git hash-object src-tauri/src/lib.rs)" = '60f03077804068baa48a4d0aca3cf4bbe168d411'
+          test "$(git hash-object src-tauri/src/transport.rs)" = '86921512aa964633cd966db605208291db971235'
+          test "$(git hash-object src-tauri/src/update_config.rs)" = '0e70aab66562a4f14bcb0bf73c81e1ce029b06e7'
+          test "$(git hash-object src-tauri/tauri.rust-gui-test.conf.json)" = '2eeb85738d9c9c2511ef08e8297ba2ca0c56ddc9'
+          test "$(git hash-object src/lib/settings.tsx)" = 'ae91d868558e162cff529a0dfd005e6b24a0eee7'
+          test "$(git -C .ci-core rev-parse HEAD)" = "$CORE"
+          test "$(git -C .ci-core rev-parse 'HEAD^{tree}')" = "$CORE_TREE"
+          test "$(git -C .ci-core hash-object rust/Cargo.lock)" = "$CORE_LOCK"
+          test "$(shasum -a 256 ci/rust-dev-version.patch | cut -d ' ' -f 1)" = "$VERSION_PATCH_SHA256"
+          git -C .ci-core apply --check ../ci/rust-dev-version.patch
+          git -C .ci-core apply --index ../ci/rust-dev-version.patch
+          test "$(git -C .ci-core write-tree)" = "$VERSIONED_CORE_TREE"
+          test "$(git -C .ci-core hash-object rust/Cargo.lock)" = "$VERSIONED_CORE_LOCK"
+          git -C .ci-core diff --quiet
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          rustc -vV
+          test "$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')" = 'aarch64-apple-darwin'
+          test "$(bun --version)" = "$BUN_VERSION"
+          test "$(uname -m)" = arm64
+          python3 -c 'import sys; assert sys.version_info >= (3, 12)'
+      - name: Prepare locked build dependencies only
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG
+          cargo fetch --locked --manifest-path .ci-core/rust/Cargo.toml
+          cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+          bun install --frozen-lockfile --ignore-scripts
+          test "$(bun run tauri --version | tail -n1 | tr -d '\r')" = 'tauri-cli 2.11.4'
+      - name: Compile exact ARM64 Rust Core and stage its native sidecar
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG JMCL_CORE VITE_JMCL_TRANSPORT
+          unset JMCL_REVIEWED_LARGE_MRPACK_SIDECAR_SHA256
+          cargo build --locked --offline --release --manifest-path .ci-core/rust/Cargo.toml --bin jmcl-core-rust
+          core='.ci-core/rust/target/release/jmcl-core-rust'
+          bash scripts/prepare-sidecar.sh "$core"
+          cmp "$core" src-tauri/binaries/jmcl-core-aarch64-apple-darwin
+      - name: Build real Apple Silicon app and verify archived files (no launch)
+        working-directory: frontend
+        run: |
+          unset CARGO_TARGET_DIR TAURI_CONFIG JMCL_CORE VITE_JMCL_TRANSPORT
+          unset JMCL_REVIEWED_LARGE_MRPACK_SIDECAR_SHA256
+          unset JMCL_UPDATE_ENDPOINT JMCL_UPDATE_PUBLIC_KEY JMCL_UPDATE_CHANNEL JMCL_UPDATE_VERIFIED
+          export VITE_JMCL_RUST_GUI_TEST=1 CARGO_NET_OFFLINE=true
+          bun run tauri build --ci --no-sign --bundles app \
+            --config src-tauri/tauri.rust-gui-test.conf.json --features experimental-gui-preview -- --locked --offline
+          python3 ci/verify-macos-rust-gui.py
+      - name: Upload only the approved Apple Silicon test set for one day
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jmcl-rust-gui-test-macos-arm64-${{ github.sha }}
+          path: frontend/deliver/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

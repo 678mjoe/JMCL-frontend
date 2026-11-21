@@ -87,6 +87,9 @@ async fn endpoint_session_open(
     endpoint_id: String,
     diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<pool::SessionInfo, SessionError> {
+    if cfg!(feature = "experimental-gui-preview") {
+        return Err(SessionError::coded("PREVIEW_SSH_DISABLED", "SSH is disabled in the Rust GUI test."));
+    }
     let mut operation =
         diagnostics.operation(diagnostics::Event::EndpointOpen, Some("core.version"));
     let result = pool.open_endpoint(&endpoint_id).await;
@@ -202,6 +205,12 @@ async fn core_request(
     curseforge: Option<bool>,
     diagnostics: State<'_, diagnostics::Diagnostics>,
 ) -> Result<Value, SessionError> {
+    if cfg!(feature = "experimental-gui-preview")
+        && (curseforge == Some(true) || method.starts_with("auth.")
+            || (method.starts_with("account.microsoft.") && method != "account.microsoft.list"))
+    {
+        return Err(SessionError::coded("PREVIEW_OPERATION_DISABLED", "Credentialed operations are disabled in the Rust GUI test."));
+    }
     let mut operation = diagnostics.operation(diagnostics::Event::CoreRequest, Some(&method));
     let result = async {
         let _activation_guard = activation.requests.read().await;
@@ -293,6 +302,21 @@ mod tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    let config = context.config();
+    let preview = cfg!(feature = "experimental-gui-preview");
+    assert_eq!(preview, config.identifier == "page.mjoe.jmcl.experimental-rust-preview", "invalid JMCL GUI test identity");
+    if preview {
+        assert_eq!(config.product_name.as_deref(), Some("JMCL Rust GUI Test"));
+        assert_eq!(config.main_binary_name.as_deref(), Some("jmcl-rust-gui-test"));
+        assert_eq!(config.bundle.create_updater_artifacts, tauri::utils::config::Updater::Bool(false));
+        assert!(update_config::compiled().is_none());
+        assert_eq!(config.app.windows.len(), 1);
+        let window = &config.app.windows[0];
+        assert!(!window.create);
+        #[cfg(windows)]
+        assert_eq!(window.data_directory.as_deref(), Some(std::path::Path::new("jmcl-rust-gui-test-profile-v1")));
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
@@ -300,7 +324,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updater::UpdateState::default())
         .manage(pack_activation::PackActivationState::default())
-        .setup(|app| {
+        .setup(move |app| {
             // Core children run with the app-data dir as CWD so the core's
             // CWD-relative defaults (e.g. the `accounts` registry, contract
             // §6) live under app data instead of polluting the repo in dev
@@ -309,12 +333,34 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map_err(|e| format!("app data dir unavailable: {e}"))?;
+            if preview {
+                assert_eq!(dir.file_name().and_then(|name| name.to_str()), Some("page.mjoe.jmcl.experimental-rust-preview"));
+                for path in std::iter::once(dir.clone()).chain(
+                    ["instances", "store", "servers", "diagnostics"].iter().map(|name| dir.join(name))
+                ) {
+                    match path.symlink_metadata() {
+                        Ok(meta) if !meta.file_type().is_dir() => return Err("Rust GUI test data path is not an ordinary directory".into()),
+                        Ok(_) => (),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+            }
             std::fs::create_dir_all(&dir)
                 .map_err(|e| format!("cannot create app data dir: {e}"))?;
             let diagnostics = diagnostics::Diagnostics::start(dir.join("diagnostics"));
             diagnostics.event(diagnostics::Event::AppStarted);
             app.manage(diagnostics);
             app.manage(SessionPool::new(Some(dir)));
+            if preview {
+                let window = &app.config().app.windows[0];
+                let builder = tauri::WebviewWindowBuilder::from_config(app, window)?;
+                #[cfg(target_os = "macos")]
+                let builder = builder.data_store_identifier([
+                    100, 225, 237, 75, 104, 231, 70, 250, 179, 100, 74, 2, 225, 20, 187, 42,
+                ]);
+                builder.build()?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -349,7 +395,7 @@ pub fn run() {
             endpoints::endpoint_config_read,
             endpoints::endpoint_config_write
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {

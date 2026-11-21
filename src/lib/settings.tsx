@@ -44,7 +44,8 @@ export interface Settings {
   launchOptions: LaunchOptionsStore;
 }
 
-const STORAGE_KEY = "jmcl.settings.v1";
+const RUST_GUI_TEST = import.meta.env.VITE_JMCL_RUST_GUI_TEST === "1";
+const STORAGE_KEY = RUST_GUI_TEST ? "jmcl.rust-gui-test.settings.v1" : "jmcl.settings.v1";
 
 const defaults: Settings = {
   theme: "system",
@@ -90,7 +91,14 @@ export function mergeStoredSettings(stored: unknown): Settings {
 function loadStored(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return mergeStoredSettings(JSON.parse(raw));
+    if (raw) {
+      const stored = mergeStoredSettings(JSON.parse(raw));
+      if (RUST_GUI_TEST) {
+        return { ...stored, instancesDir: "", storeDir: "", serversDir: "",
+          selectedServerEndpointId: "local", activeAccountId: null };
+      }
+      return stored;
+    }
   } catch {
     // Corrupted storage — fall back to defaults.
   }
@@ -152,7 +160,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [settings.theme]);
 
   const update = useCallback(
-    (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch })),
+    (patch: Partial<Settings>) => setSettings((s) => {
+      const next = { ...s, ...patch };
+      if (RUST_GUI_TEST) {
+        return { ...next, instancesDir: s.instancesDir, storeDir: s.storeDir, serversDir: s.serversDir,
+          selectedServerEndpointId: "local", activeAccountId: null };
+      }
+      return next;
+    }),
     [],
   );
 
