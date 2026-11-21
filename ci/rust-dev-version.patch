@@ -1,0 +1,52 @@
+diff --git a/rust/Cargo.lock b/rust/Cargo.lock
+index f86b8a7..a97b701 100644
+--- a/rust/Cargo.lock
++++ b/rust/Cargo.lock
+@@ -612,7 +612,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+ 
+ [[package]]
+ name = "jmcl-core-rust"
+-version = "0.1.0-dev"
++version = "0.1.0-rust-dev"
+ dependencies = [
+  "base64 0.22.1",
+  "flate2",
+diff --git a/rust/Cargo.toml b/rust/Cargo.toml
+index 37f904d..ef0d9f9 100644
+--- a/rust/Cargo.toml
++++ b/rust/Cargo.toml
+@@ -1,6 +1,6 @@
+ [package]
+ name = "jmcl-core-rust"
+-version = "0.1.0-dev"
++version = "0.1.0-rust-dev"
+ edition = "2024"
+ rust-version = "1.99"
+ license = "LGPL-3.0-or-later"
+diff --git a/rust/README.md b/rust/README.md
+index cbb8f02..ec28598 100644
+--- a/rust/README.md
++++ b/rust/README.md
+@@ -8,7 +8,8 @@ missing-feature list or acceptance result for later trees.
+ 
+ This additive implementation is **not a replacement for the Zig Core yet**.
+ The executable is deliberately named `jmcl-core-rust`, while implemented wire
+-identity stays `jmcl-core`, protocol 1, version `0.1.0-dev`. No Zig delegation or
++identity stays `jmcl-core`, protocol 1. The Rust test build reports version
++`0.1.0-rust-dev` from its Cargo manifest. No Zig delegation or
+ successful placeholder responses are used. Known unported methods return the
+ explicit development-only `NOT_IMPLEMENTED` error, which is a compatibility gap.
+ 
+diff --git a/rust/src/lib.rs b/rust/src/lib.rs
+index 359bf65..64740d2 100644
+--- a/rust/src/lib.rs
++++ b/rust/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Experimental native Rust implementation. Finite slice evidence does not establish full compatibility.
+ pub mod protocol;
+ pub const NAME: &str = "jmcl-core";
+-pub const VERSION: &str = "0.1.0-dev";
++pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+ pub const PROTOCOL: u32 = 1;
+ pub const ORACLE_COMMIT: &str = "5a4310debbcee26b3d2391bab2339f79cd6ec52e";
+ 

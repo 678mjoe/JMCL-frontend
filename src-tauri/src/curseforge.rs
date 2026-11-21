@@ -7,7 +7,10 @@ use serde_json::Value;
 use std::time::Duration;
 use tauri_plugin_http::reqwest::{self, Url};
 
+#[cfg(not(feature = "experimental-gui-preview"))]
 const SERVICE: &str = "page.mjoe.jmcl.curseforge";
+#[cfg(feature = "experimental-gui-preview")]
+const SERVICE: &str = "page.mjoe.jmcl.experimental-rust-preview.curseforge";
 const ACCOUNT: &str = "api-key";
 const MAX_RESPONSE: usize = 2 * 1024 * 1024;
 
@@ -21,9 +24,15 @@ pub fn valid_key(key: &str) -> bool {
     !key.is_empty() && key.len() <= 512 && key.bytes().all(|b| (33..=126).contains(&b))
 }
 fn entry() -> Result<Entry, SessionError> {
+    if cfg!(feature = "experimental-gui-preview") {
+        return Err(error("CURSEFORGE_DISABLED", "CurseForge is disabled in the Rust GUI test."));
+    }
     Entry::new(SERVICE, ACCOUNT).map_err(|_| keychain_error())
 }
 async fn stored_key() -> Result<Option<String>, SessionError> {
+    if cfg!(feature = "experimental-gui-preview") {
+        return Ok(None);
+    }
     tauri::async_runtime::spawn_blocking(|| match entry()?.get_password() {
         Ok(key) if valid_key(&key) => Ok(Some(key)),
         Ok(_) => Err(error(

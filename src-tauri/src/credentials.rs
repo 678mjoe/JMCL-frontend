@@ -6,7 +6,10 @@
 
 use keyring::Entry;
 
+#[cfg(not(feature = "experimental-gui-preview"))]
 const SERVICE: &str = "page.mjoe.jmcl";
+#[cfg(feature = "experimental-gui-preview")]
+const SERVICE: &str = "page.mjoe.jmcl.experimental-rust-preview.microsoft";
 
 #[derive(Debug, thiserror::Error, serde::Serialize)]
 #[serde(tag = "kind", content = "message")]
@@ -26,6 +29,9 @@ fn key(account_id: &str) -> String {
 }
 
 fn entry(account_id: &str) -> Result<Entry, CredentialError> {
+    if cfg!(feature = "experimental-gui-preview") {
+        return Err(CredentialError::Keychain("Microsoft credentials are disabled in the Rust GUI test".into()));
+    }
     Ok(Entry::new(SERVICE, &key(account_id))?)
 }
 

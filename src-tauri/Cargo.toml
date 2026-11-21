@@ -15,6 +15,9 @@ edition = "2021"
 name = "jmcl_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+experimental-gui-preview = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 base64 = "0.22"

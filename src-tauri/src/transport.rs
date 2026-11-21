@@ -99,6 +99,18 @@ fn find_core_near(executable: &Path) -> Option<PathBuf> {
 /// for a bundled sidecar; every build then falls back to the development
 /// `backend-binaries` directory.
 pub fn resolve_core_binary(explicit: Option<&str>) -> Result<PathBuf, String> {
+    if cfg!(feature = "experimental-gui-preview") {
+        if explicit.is_some() || std::env::var_os("JMCL_CORE").is_some() {
+            return Err("Rust GUI test only supports its bundled Core".into());
+        }
+        let exe = std::env::current_exe().map_err(|_| "cannot locate preview executable")?;
+        let adjacent = exe.parent().ok_or("preview application has no directory")?.join(CORE_EXE);
+        let metadata = adjacent.symlink_metadata().map_err(|_| "bundled Core is unavailable")?;
+        if !metadata.file_type().is_file() {
+            return Err("bundled Core must be a regular adjacent file".into());
+        }
+        return Ok(adjacent);
+    }
     let chosen = explicit
         .map(str::to_owned)
         .or_else(|| std::env::var("JMCL_CORE").ok())

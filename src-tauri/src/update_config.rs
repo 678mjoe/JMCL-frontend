@@ -56,6 +56,9 @@ pub fn parse(values: [Option<&str>; 4]) -> Result<Option<UpdateConfig>, &'static
 }
 
 pub fn compiled() -> Option<UpdateConfig> {
+    if cfg!(feature = "experimental-gui-preview") {
+        return None;
+    }
     parse([
         option_env!("JMCL_UPDATE_ENDPOINT"),
         option_env!("JMCL_UPDATE_PUBLIC_KEY"),
