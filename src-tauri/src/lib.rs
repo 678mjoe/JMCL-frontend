@@ -13,6 +13,10 @@ pub mod ssh_transport;
 pub mod transport;
 mod update_config;
 mod updater;
+#[cfg(feature = "rust-preview-qualification")]
+mod rust_qualification;
+#[cfg(feature = "rust-preview-qualification")]
+pub use rust_qualification::run;
 
 use std::time::{Duration, Instant};
 
@@ -291,8 +295,15 @@ mod tests {
     }
 }
 
+#[cfg(not(feature = "rust-preview-qualification"))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    assert_ne!(
+        context.config().identifier,
+        "page.mjoe.jmcl.rustqualification",
+        "the Rust qualification overlay requires its explicit Cargo feature"
+    );
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
@@ -349,7 +360,7 @@ pub fn run() {
             endpoints::endpoint_config_read,
             endpoints::endpoint_config_write
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {

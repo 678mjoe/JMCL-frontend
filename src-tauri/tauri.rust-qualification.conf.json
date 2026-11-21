@@ -1,0 +1,37 @@
+{
+  "productName": "JMCL Rust Qualification",
+  "mainBinaryName": "jmcl-rust-qualification",
+  "identifier": "page.mjoe.jmcl.rustqualification",
+  "build": {
+    "frontendDist": "../qualification-web",
+    "beforeBuildCommand": null
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "rust-qualification-disabled",
+          "description": "No WebView or native permissions in the qualification host",
+          "windows": [],
+          "permissions": []
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true,
+      "allowDowngrades": false
+    }
+  }
+}
